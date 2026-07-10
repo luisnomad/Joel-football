@@ -1,0 +1,24 @@
+{
+  "name": "skyhead-showdown",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "vite --host 0.0.0.0",
+    "build": "vite build",
+    "optimize:audio": "node scripts/optimize-audio.mjs",
+    "publish:website": "npm run build && node scripts/publish-to-website.mjs",
+    "preview": "vite preview --host 0.0.0.0",
+    "test": "vitest run",
+    "test:e2e": "node test/browser-game.mjs",
+    "test:watch": "vitest"
+  },
+  "dependencies": {
+    "phaser": "3.90.0"
+  },
+  "devDependencies": {
+    "playwright": "1.61.1",
+    "vite": "6.4.3",
+    "vitest": "3.2.6"
+  }
+}
