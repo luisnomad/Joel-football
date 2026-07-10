@@ -8,14 +8,16 @@ export const MUSIC_TRACKS = Object.freeze(
   Array.from({ length: 6 }, (_, index) => soundUrl(`track${index + 1}.mp3`)),
 );
 export const AUDIENCE_AMBIENT_URL = soundUrl('bg_audience_ambient.mp3');
-export const AUDIENCE_GOAL_URL = soundUrl('bg_audience_goal.mp3');
 export const BALL_EFFECT_URL = soundUrl('ball_sound_effect.mp3');
+export const WHISTLE_EFFECT_URL = soundUrl('whistle_sound_effect.mp3');
 export const AUDIO_ASSET_URLS = Object.freeze([
   AUDIENCE_AMBIENT_URL,
-  AUDIENCE_GOAL_URL,
   BALL_EFFECT_URL,
+  WHISTLE_EFFECT_URL,
   ...MUSIC_TRACKS,
 ]);
+
+const WHISTLE_INTERVAL_MS = 900;
 
 const safePlay = (media) => {
   try {
@@ -44,12 +46,19 @@ class ArcadeAudio {
     this.trackIndex = 0;
     this.music = null;
     this.audience = null;
-    this.goalCheer = null;
     this.ballEffect = null;
+    this.whistleEffect = null;
     this.musicRequested = false;
     this.audienceRequested = false;
     this.goalCheerPlays = 0;
     this.ballEffectPlays = 0;
+    this.whistlePlays = 0;
+    this.whistleRequestedPlays = 0;
+    this.whistleSequenceRequests = 0;
+    this.lastWhistleSequenceCount = 0;
+    this.whistleTimers = new Set();
+    this.whistlePlaybackSerial = 0;
+    this.recentWhistles = [];
     this.cacheWarmStarted = false;
   }
 
@@ -61,20 +70,22 @@ class ArcadeAudio {
     if (this.music) return;
     this.music = createMediaElement();
     this.audience = createMediaElement();
-    this.goalCheer = createMediaElement();
     this.ballEffect = createMediaElement();
+    this.whistleEffect = createMediaElement();
     if (!this.music) return;
 
     this.music.src = MUSIC_TRACKS[this.trackIndex];
     this.music.addEventListener('ended', () => this.playNextTrack());
     this.audience.src = AUDIENCE_AMBIENT_URL;
     this.audience.loop = true;
-    this.goalCheer.src = AUDIENCE_GOAL_URL;
     this.ballEffect.src = BALL_EFFECT_URL;
+    this.whistleEffect.src = WHISTLE_EFFECT_URL;
     this.applyVolumes();
   }
 
   setScene(mode) {
+    this.cancelWhistleSequence();
+    this.whistleEffect?.pause?.();
     this.sceneMode = mode === 'match' ? 'match' : 'menu';
     this.ensureMedia();
     this.primeMediaFromCache();
@@ -87,8 +98,10 @@ class ArcadeAudio {
   setPageVisible(visible) {
     this.pageVisible = Boolean(visible);
     if (!this.pageVisible) {
+      this.cancelWhistleSequence();
       this.music?.pause?.();
       this.audience?.pause?.();
+      this.whistleEffect?.pause?.();
       return;
     }
     if (!this.unlocked) return;
@@ -104,18 +117,19 @@ class ArcadeAudio {
     else if (this.unlocked) this.startMusic();
     if (this.settings.effectsMuted || this.sceneMode !== 'match') this.stopAudience();
     else if (this.unlocked) this.startAudience();
+    if (this.settings.effectsMuted) this.cancelWhistleSequence();
     return this.settings;
   }
 
   applyVolumes() {
     if (this.music) this.music.volume = this.settings.musicMuted ? 0 : this.settings.musicVolume;
     if (this.audience) this.audience.volume = this.settings.effectsMuted ? 0 : this.settings.effectsVolume;
-    if (this.goalCheer) this.goalCheer.volume = this.settings.effectsMuted
-      ? 0
-      : Math.min(1, this.settings.effectsVolume * 1.2);
     if (this.ballEffect) this.ballEffect.volume = this.settings.effectsMuted
       ? 0
       : Math.min(1, this.settings.effectsVolume * 1.4);
+    if (this.whistleEffect) this.whistleEffect.volume = this.settings.effectsMuted
+      ? 0
+      : Math.min(1, this.settings.effectsVolume * 1.7);
   }
 
   unlock() {
@@ -166,17 +180,17 @@ class ArcadeAudio {
   async primeMediaFromCache() {
     if (!this.music || this.unlocked || !this.music.paused) return;
     const trackIndex = this.trackIndex;
-    const [musicUrl, audienceUrl, goalUrl, ballUrl] = await Promise.all([
+    const [musicUrl, audienceUrl, ballUrl, whistleUrl] = await Promise.all([
       audioAssetCache.playableUrl(MUSIC_TRACKS[trackIndex]),
       audioAssetCache.playableUrl(AUDIENCE_AMBIENT_URL),
-      audioAssetCache.playableUrl(AUDIENCE_GOAL_URL),
       audioAssetCache.playableUrl(BALL_EFFECT_URL),
+      audioAssetCache.playableUrl(WHISTLE_EFFECT_URL),
     ]);
     if (this.unlocked || trackIndex !== this.trackIndex || !this.music.paused) return;
     this.music.src = musicUrl;
     this.audience.src = audienceUrl;
-    this.goalCheer.src = goalUrl;
     this.ballEffect.src = ballUrl;
+    this.whistleEffect.src = whistleUrl;
   }
 
   warmCacheProgressively() {
@@ -185,7 +199,7 @@ class ArcadeAudio {
     const connection = globalThis.navigator?.connection;
     const dataSaver = connection?.saveData || ['slow-2g', '2g'].includes(connection?.effectiveType);
     const urls = dataSaver
-      ? [AUDIENCE_AMBIENT_URL, AUDIENCE_GOAL_URL, BALL_EFFECT_URL, MUSIC_TRACKS[this.trackIndex]]
+      ? [AUDIENCE_AMBIENT_URL, BALL_EFFECT_URL, WHISTLE_EFFECT_URL, MUSIC_TRACKS[this.trackIndex]]
       : AUDIO_ASSET_URLS;
     audioAssetCache.warm(urls).catch(() => {});
   }
@@ -246,11 +260,53 @@ class ArcadeAudio {
   }
 
   goal() {
-    this.success();
-    if (this.settings.effectsMuted || !this.goalCheer) return;
-    this.goalCheer.currentTime = 0;
-    this.goalCheerPlays += 1;
-    safePlay(this.goalCheer);
+    this.whistle(1, { label: 'goal' });
+  }
+
+  cancelWhistleSequence() {
+    this.whistlePlaybackSerial += 1;
+    this.whistleTimers.forEach((timer) => globalThis.clearTimeout?.(timer));
+    this.whistleTimers.clear();
+  }
+
+  playWhistleNow({ cutoffMs = null, label = 'standard' } = {}) {
+    if (this.settings.effectsMuted || !this.whistleEffect) return;
+    try {
+      const safeCutoffMs = Number.isFinite(cutoffMs) && cutoffMs > 0 ? Math.round(cutoffMs) : null;
+      const playbackSerial = ++this.whistlePlaybackSerial;
+      this.whistleEffect.currentTime = 0;
+      this.whistlePlays += 1;
+      this.recentWhistles.push({ label, cutoffMs: safeCutoffMs });
+      this.recentWhistles = this.recentWhistles.slice(-12);
+      safePlay(this.whistleEffect);
+      if (safeCutoffMs) {
+        const timer = globalThis.setTimeout?.(() => {
+          this.whistleTimers.delete(timer);
+          if (playbackSerial === this.whistlePlaybackSerial) this.whistleEffect?.pause?.();
+        }, safeCutoffMs);
+        if (timer !== undefined) this.whistleTimers.add(timer);
+      }
+    } catch {
+      // A media element may be unavailable while the page is shutting down.
+    }
+  }
+
+  whistle(count = 1, options = {}) {
+    const safeCount = Math.min(3, Math.max(1, Math.floor(Number(count) || 1)));
+    this.cancelWhistleSequence();
+    this.ensureMedia();
+    this.whistleSequenceRequests += 1;
+    this.whistleRequestedPlays += safeCount;
+    this.lastWhistleSequenceCount = safeCount;
+    if (this.settings.effectsMuted || this.settings.effectsVolume <= 0) return;
+    this.playWhistleNow(options);
+    for (let index = 1; index < safeCount; index += 1) {
+      const timer = globalThis.setTimeout?.(() => {
+        this.whistleTimers.delete(timer);
+        this.playWhistleNow(options);
+      }, index * WHISTLE_INTERVAL_MS);
+      if (timer !== undefined) this.whistleTimers.add(timer);
+    }
   }
 
   counter() {
@@ -269,6 +325,12 @@ class ArcadeAudio {
       audienceRequested: this.audienceRequested,
       goalCheerPlays: this.goalCheerPlays,
       ballEffectPlays: this.ballEffectPlays,
+      whistlePlays: this.whistlePlays,
+      whistleRequestedPlays: this.whistleRequestedPlays,
+      whistleSequenceRequests: this.whistleSequenceRequests,
+      lastWhistleSequenceCount: this.lastWhistleSequenceCount,
+      pendingWhistles: this.whistleTimers.size,
+      recentWhistles: this.recentWhistles.map((whistle) => ({ ...whistle })),
       cache: { ...cache, total: AUDIO_ASSET_URLS.length },
     };
   }

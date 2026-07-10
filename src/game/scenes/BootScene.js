@@ -20,6 +20,7 @@ export class BootScene extends Phaser.Scene {
     this.load.on('progress', (progress) => loading.setText(`${t(language, 'boot.loading')} ${Math.round(progress * 100)}%`));
 
     this.load.image('arena', assetUrl('arena-skycourt.png'));
+    this.load.image('joel-football-splash', assetUrl('splash/joel-football-option-a.webp'));
     this.load.image('joel', assetUrl('player-nova.png'));
     this.load.image('vex', assetUrl('player-vex.png'));
     this.load.spritesheet('joel-sheet', assetUrl('player-nova-sheet.png'), { frameWidth: 418, frameHeight: 627 });
@@ -31,7 +32,7 @@ export class BootScene extends Phaser.Scene {
 
   create() {
     this.ensureFallbackTextures();
-    this.scene.start('Intro');
+    this.scene.start('Splash');
   }
 
   ensureFallbackTextures() {

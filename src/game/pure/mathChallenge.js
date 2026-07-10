@@ -12,6 +12,10 @@ const randomInt = (min, max, random) => {
   return min + Math.floor(sample * (max - min + 1));
 };
 
+export const chooseMathOperation = (random = Math.random) => MATH_OPERATIONS[
+  randomInt(0, MATH_OPERATIONS.length - 1, random)
+];
+
 export const generateMathProblem = (operation, random = Math.random) => {
   const safeOperation = MATH_OPERATIONS.includes(operation) ? operation : 'addition';
   let left;

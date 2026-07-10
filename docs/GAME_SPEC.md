@@ -1,4 +1,8 @@
-# Skyhead Showdown — Product and Acceptance Specification
+# Joel Football — Product and Acceptance Specification
+
+The project was originally developed under the working title “Skyhead
+Showdown.” Its V1 product requirements remain recorded below; the shipped name
+is Joel Football.
 
 ## Mission
 
@@ -36,10 +40,18 @@ asset.
 7. Escape/P pauses and resumes. F toggles fullscreen. R restarts a match.
    Touch layouts provide equivalent pause, resume, restart, menu, and
    fullscreen buttons without displaying keyboard-only instructions.
+8. A referee whistle sounds once for each visible countdown second and once
+   for a goal, replacing the former goal cheer. Countdown seconds 3 and 2 use
+   clipped 180 ms beeps; second 1 uses the full recording, creating a
+   beep–beep–beeeeeep cadence. The result signal is exactly three consecutive
+   full whistles and is emitted only once per finished match.
 
 ### Human controls
 
 - Move: A/D or Left/Right.
+- Sprint: double-tap the same direction within 280 ms and keep holding the
+  second press. Sprint runs at 1.5× speed, survives a jump already in progress,
+  cannot begin in mid-air, and stops on release, reversal, stun, or knockback.
 - Jump: W, Up, or Space.
 - Kick: X or K.
 - Lob: Z or I; Up + Kick is an alternate chord. The lob trades horizontal
@@ -47,6 +59,10 @@ asset.
   parabolic interception opportunity.
 - Dash: C or L.
 - Power shot: V or J, available only with a full meter.
+- Boosted basic kick: repeat either kick button during the current kick/lob
+  animation. Up to three extra presses borrow at most 24 meter only when the
+  ball is actually hit. A drive gains up to 27% speed; a lob gains up to 27%
+  lift and 16% speed. Neither exceeds the standard full-meter power shot.
 - Touch controls expose every gameplay action plus pause, restart, menu, and
   fullscreen on pointer-capable coarse/touch devices.
 
@@ -71,6 +87,8 @@ asset.
   and stable footing.
 - Running must feel fast for the confined arena and visibly alternate planted
   and extended-leg poses instead of sliding a static sprite.
+- Sustained sprint has a faster leg cadence, takeoff dust, and subtle speed
+  lines. Dash remains the separate short attacking lunge.
 - Before overtaking the defender, each player always faces the rival goal;
   retreating is a backpedal and cannot accidentally aim a shot at their own
   net. After overtaking the defender, horizontal movement may turn the attacker
@@ -93,12 +111,15 @@ asset.
 - A defender who makes a well-timed kick/head block during the counter window
   reverses the power ball, gains extra velocity, and earns meter.
 - A power shot expires after a bounded duration and is never an automatic goal.
+- Boosted basic kicks flash the spending player's meter and use a stronger
+  impact effect. A miss spends no energy.
 
 ### Provider-based opponent
 
 - The scene depends on an `AgentProvider` contract, not a concrete bot.
 - The contract receives a compact immutable world snapshot and returns an
-  action intent: horizontal movement plus jump, kick, dash, and power booleans.
+  action intent: horizontal movement plus jump, kick, lob, dash, power,
+  optional sprint, and optional kick-boost fields.
 - The included heuristic provider predicts ball landing/intercept position,
   guards the right-side defensive third, attacks favorable balls, jumps for
   reachable aerial threats, lobs over a nearby blocking defender, attempts
@@ -108,6 +129,10 @@ asset.
   system/LLM.
 - Provider failures must fail safe to a neutral intent rather than crash the
   match.
+- Persistent Easy/Normal/Hard difficulty is selected in bilingual Settings.
+  Easy strips sprint and kick-boost intents from every AI provider at the scene
+  boundary; Normal and Hard may use the same mechanics as Joel, with Hard
+  requesting them more aggressively. Human providers are never stripped.
 
 ### Presentation and original assets
 
@@ -181,7 +206,8 @@ asset.
   two-digit subtrahends and results of at least ten, multiplication from 3×3
   through 12×12, and exact division using divisors/quotients from 3 through 12.
   Division never presents fractions or division by zero.
-- Joel selects a power and operation, then answers a four-choice problem.
+- Joel selects a power, then the system randomly selects the operation for a
+  four-choice problem. The player cannot choose an easier operation family.
   An incorrect answer awards nothing, closes the attempt, and starts a global
   five-minute Power Lab cooldown so the choices cannot be brute-forced. The
   cooldown deadline persists across navigation and reloads and is shown as a
@@ -204,7 +230,8 @@ available when no equipped charge is available.
 3. Lightning / Relámpago — fastest direct shot.
 4. Tornado / Tornado — high-rising, strongly spinning shot.
 5. Rocket / Cohete — fast, flat shot for ground openings.
-6. Rainbow Arc / Arcoíris — extreme aerial lob over a grounded defender.
+6. Big Guy! / ¡Tío Grande! — Joel grows smoothly to twice his normal size for
+   ten seconds, then smoothly returns to normal.
 7. Boomerang / Bumerán — reverses horizontal direction once in flight.
 8. Warp / Teletransporte — jumps forward once without teleporting directly
    across a goal line.

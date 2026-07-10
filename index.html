@@ -4,13 +4,21 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
     <meta name="theme-color" content="#10172a" />
-    <meta name="description" content="Skyhead Showdown — a fast original arcade football duel." />
+    <meta name="description" content="Joel Football — a fast original arcade football adventure." />
+    <link rel="preload" as="image" type="image/webp" href="./assets/splash/joel-football-option-a.webp" fetchpriority="high" />
     <link rel="icon" type="image/png" href="./assets/ball.png" />
-    <title>Skyhead Showdown</title>
+    <title>Joel Football</title>
   </head>
   <body>
-    <main id="game-shell" aria-label="Skyhead Showdown game">
-      <div id="game" role="application" aria-label="Skyhead Showdown. Use the keyboard controls shown on the intro screen."></div>
+    <script>
+      window.__JOEL_SPLASH_STARTED_AT__ = performance.now();
+    </script>
+    <div id="startup-splash" aria-label="Joel Football loading">
+      <img src="./assets/splash/joel-football-option-a.webp" alt="Joel Football" fetchpriority="high" />
+      <div class="startup-spinner" role="status" aria-label="Loading"></div>
+    </div>
+    <main id="game-shell" aria-label="Joel Football game">
+      <div id="game" role="application" aria-label="Joel Football. Use the controls shown on the main menu."></div>
     </main>
     <script type="module" src="/src/main.js"></script>
   </body>

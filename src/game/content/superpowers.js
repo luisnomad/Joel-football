@@ -4,7 +4,7 @@ export const SUPERPOWERS = Object.freeze([
   { id: 'lightning', icon: '⚡', color: 0xffe45c, nameKey: 'power.lightning.name', descriptionKey: 'power.lightning.description' },
   { id: 'tornado', icon: 'T', color: 0x6ff0c7, nameKey: 'power.tornado.name', descriptionKey: 'power.tornado.description' },
   { id: 'rocket', icon: 'R', color: 0xff496f, nameKey: 'power.rocket.name', descriptionKey: 'power.rocket.description' },
-  { id: 'rainbow', icon: 'A', color: 0xf28cff, nameKey: 'power.rainbow.name', descriptionKey: 'power.rainbow.description' },
+  { id: 'big', icon: 'G', color: 0xffc653, nameKey: 'power.big.name', descriptionKey: 'power.big.description' },
   { id: 'boomerang', icon: '↩', color: 0xffb14a, nameKey: 'power.boomerang.name', descriptionKey: 'power.boomerang.description' },
   { id: 'warp', icon: '✦', color: 0xa78cff, nameKey: 'power.warp.name', descriptionKey: 'power.warp.description' },
   { id: 'shield', icon: '◆', color: 0x55e0ee, nameKey: 'power.shield.name', descriptionKey: 'power.shield.description' },
@@ -42,8 +42,8 @@ export const applySuperShot = (id, { direction = 1, baseSpeed = 23 } = {}) => {
       return shot(power, facing, speed * 0.95, { vy: -10, spin: facing * 0.68 });
     case 'rocket':
       return shot(power, facing, speed * 1.4, { vy: -0.8, spin: facing * 0.1 });
-    case 'rainbow':
-      return shot(power, facing, speed * 0.78, { vy: -15, spin: facing * 0.3 });
+    case 'big':
+      return shot(power, facing, speed, { effect: 'big' });
     case 'boomerang':
       return shot(power, facing, speed * 1.15, { effect: 'boomerang' });
     case 'warp':

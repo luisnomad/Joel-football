@@ -3,6 +3,7 @@ import { normalizeIntent } from '../pure/actions.js';
 
 export const createBufferedAsyncAgentProvider = ({
   id = 'buffered-async',
+  type = 'ai',
   decideAsync,
   minIntervalMs = 250,
   requestTimeoutMs = 1200,
@@ -52,6 +53,7 @@ export const createBufferedAsyncAgentProvider = ({
 
   return {
     id,
+    type,
     decide(snapshot) {
       if (!inFlight && now() - lastStartedAt >= minIntervalMs) requestDecision(snapshot);
       return { ...cachedIntent };

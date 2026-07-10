@@ -9,6 +9,10 @@ export const DEFAULT_AUDIO_SETTINGS = Object.freeze({
   effectsMuted: false,
 });
 
+export const DIFFICULTIES = Object.freeze(['easy', 'normal', 'hard']);
+
+export const sanitizeDifficulty = (value) => DIFFICULTIES.includes(value) ? value : 'normal';
+
 const cleanVolume = (value, fallback) => {
   const numeric = Number(value);
   if (!Number.isFinite(numeric)) return fallback;
@@ -23,8 +27,9 @@ export const sanitizeAudioSettings = (candidate) => ({
 });
 
 export const createDefaultProfile = () => ({
-  version: 3,
+  version: 5,
   language: 'en',
+  difficulty: 'normal',
   equippedPowerId: null,
   mathLockUntil: 0,
   powers: emptyPowers(),
@@ -38,12 +43,15 @@ export const sanitizeProfile = (candidate) => {
   if (!candidate || typeof candidate !== 'object') return fallback;
   const powers = emptyPowers();
   SUPERPOWERS.forEach(({ id }) => {
-    powers[id] = cleanCount(candidate.powers?.[id]);
+    const legacyValue = id === 'big' ? candidate.powers?.rainbow : undefined;
+    powers[id] = cleanCount(candidate.powers?.[id] ?? legacyValue);
   });
-  const equippedPowerId = getSuperpower(candidate.equippedPowerId) ? candidate.equippedPowerId : null;
+  const migratedEquippedPowerId = candidate.equippedPowerId === 'rainbow' ? 'big' : candidate.equippedPowerId;
+  const equippedPowerId = getSuperpower(migratedEquippedPowerId) ? migratedEquippedPowerId : null;
   return {
-    version: 3,
+    version: 5,
     language: candidate.language === 'es' ? 'es' : 'en',
+    difficulty: sanitizeDifficulty(candidate.difficulty),
     equippedPowerId,
     mathLockUntil: Math.max(0, Math.floor(Number(candidate.mathLockUntil) || 0)),
     powers,
@@ -54,6 +62,11 @@ export const sanitizeProfile = (candidate) => {
 export const setProfileLanguage = (profile, language) => ({
   ...sanitizeProfile(profile),
   language: language === 'es' ? 'es' : 'en',
+});
+
+export const setProfileDifficulty = (profile, difficulty) => ({
+  ...sanitizeProfile(profile),
+  difficulty: sanitizeDifficulty(difficulty),
 });
 
 export const setProfileAudio = (profile, patch) => {

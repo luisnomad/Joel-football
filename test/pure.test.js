@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { normalizeIntent, safeDecide } from '../src/game/pure/actions.js';
+import { applyAiDifficulty, normalizeIntent, safeDecide } from '../src/game/pure/actions.js';
 import { POWER_ARM_SECONDS, armPower, chargeMeter, counterPowerVelocity } from '../src/game/pure/power.js';
 import { addGoal, createScoreState, formatClock, tickMatchClock } from '../src/game/pure/rules.js';
 import { createWorldSnapshot } from '../src/game/pure/snapshot.js';
@@ -7,12 +7,80 @@ import { decideHeuristicIntent } from '../src/game/ai/HeuristicAgentProvider.js'
 import { predictBallXAtHeight } from '../src/game/pure/prediction.js';
 import { createBufferedAsyncAgentProvider } from '../src/game/ai/BufferedAsyncAgentProvider.js';
 import { resolveFacing } from '../src/game/pure/facing.js';
+import { nextCountdownWhistle } from '../src/game/pure/countdownWhistle.js';
+import {
+  CHILENA_FIRE_COLOR,
+  canStartChilena,
+  chilenaRotationAt,
+  resolveChilenaShot,
+} from '../src/game/pure/chilena.js';
 import { PLAYER_TUNING } from '../src/game/constants.js';
+import {
+  SPRINT_DOUBLE_TAP_MS,
+  SPRINT_SPEED_MULTIPLIER,
+  createDirectionTapState,
+  registerDirectionTap,
+} from '../src/game/pure/sprint.js';
+import {
+  KICK_BOOST_MAX_TAPS,
+  addKickBoostTaps,
+  kickBoostMultipliers,
+  resolveKickBoost,
+} from '../src/game/pure/kickBoost.js';
 
 describe('movement tuning', () => {
   it('keeps the requested twenty-percent speed increase', () => {
     expect(PLAYER_TUNING.moveForce).toBeCloseTo(0.017 * 1.2);
     expect(PLAYER_TUNING.maxSpeed).toBeCloseTo(11.8 * 1.2);
+  });
+});
+
+describe('double-tap sprint contract', () => {
+  it('starts only after a same-direction second tap within 280 ms', () => {
+    let state = createDirectionTapState();
+    state = registerDirectionTap(state, { direction: 1, at: 100 });
+    expect(state.sprintDirection).toBe(0);
+    state = registerDirectionTap(state, { direction: 1, at: 100 + SPRINT_DOUBLE_TAP_MS });
+    expect(state.sprintDirection).toBe(1);
+
+    state = registerDirectionTap(createDirectionTapState(), { direction: -1, at: 100 });
+    state = registerDirectionTap(state, { direction: 1, at: 200 });
+    expect(state.sprintDirection).toBe(0);
+
+    state = registerDirectionTap(createDirectionTapState(), { direction: -1, at: 100 });
+    state = registerDirectionTap(state, { direction: -1, at: 101 + SPRINT_DOUBLE_TAP_MS });
+    expect(state.sprintDirection).toBe(0);
+  });
+
+  it('uses the requested exact 1.5× maximum-speed multiplier', () => {
+    expect(SPRINT_SPEED_MULTIPLIER).toBe(1.5);
+  });
+});
+
+describe('meter-backed mash kick contract', () => {
+  it('caps repeated presses and spends energy proportionally only when resolved', () => {
+    expect(addKickBoostTaps(1, 9)).toBe(KICK_BOOST_MAX_TAPS);
+    expect(resolveKickBoost({ meter: 24, taps: 3, shotType: 'drive' })).toMatchObject({
+      boosted: true,
+      energySpent: 24,
+      meterAfter: 0,
+      speedMultiplier: 1.27,
+    });
+    expect(resolveKickBoost({ meter: 8, taps: 3, shotType: 'drive' })).toMatchObject({
+      boosted: true,
+      energySpent: 8,
+      meterAfter: 0,
+      speedMultiplier: 1.09,
+    });
+    expect(resolveKickBoost({ meter: 0, taps: 3, shotType: 'drive' }).boosted).toBe(false);
+  });
+
+  it('makes lobs higher but only slightly faster and stays below a full power shot', () => {
+    const lob = resolveKickBoost({ meter: 24, taps: 3, shotType: 'lob' });
+    expect(lob.speedMultiplier).toBe(1.16);
+    expect(lob.liftMultiplier).toBe(1.27);
+    expect(PLAYER_TUNING.kickSpeed * 1.27).toBeLessThan(PLAYER_TUNING.powerShotSpeed);
+    expect(kickBoostMultipliers(0.5, 'drive')).toEqual({ speedMultiplier: 1.135, liftMultiplier: 1.05 });
   });
 });
 
@@ -97,6 +165,81 @@ describe('rules', () => {
   });
 });
 
+describe('countdown whistle contract', () => {
+  it('uses a short-short-long cadence for 3–2–1', () => {
+    expect(nextCountdownWhistle(0, 2.7)).toEqual({
+      second: 3,
+      shouldWhistle: true,
+      style: 'short',
+      cutoffMs: 180,
+    });
+    expect(nextCountdownWhistle(3, 1.99)).toEqual({
+      second: 2,
+      shouldWhistle: true,
+      style: 'short',
+      cutoffMs: 180,
+    });
+    expect(nextCountdownWhistle(2, 0.99)).toEqual({
+      second: 1,
+      shouldWhistle: true,
+      style: 'long',
+      cutoffMs: null,
+    });
+  });
+
+  it('signals exactly once for each visible countdown second and never for GO', () => {
+    let previousSecond = 0;
+    const samples = [2.7, 2.4, 1.99, 1.2, 0.99, 0.4, 0];
+    const whistles = samples.map((countdown) => {
+      const signal = nextCountdownWhistle(previousSecond, countdown);
+      previousSecond = signal.second;
+      return signal.shouldWhistle;
+    });
+    expect(whistles).toEqual([true, false, true, false, true, false, false]);
+  });
+
+  it('starts a fresh round by signaling its first displayed second', () => {
+    expect(nextCountdownWhistle(0, 2.4)).toMatchObject({ second: 3, shouldWhistle: true, style: 'short' });
+    expect(nextCountdownWhistle(0, 1.9)).toMatchObject({ second: 2, shouldWhistle: true, style: 'short' });
+  });
+});
+
+describe('chilena contract', () => {
+  const fighter = { x: 600, y: 547, height: 240, grounded: true, stunned: false, active: false };
+
+  it('requires two fast presses and an overhead ball within one player-height', () => {
+    expect(canStartChilena({ fighter, ball: { x: 620, y: 360 }, kickPresses: 2 })).toBe(true);
+    expect(canStartChilena({ fighter, ball: { x: 620, y: 360 }, kickPresses: 1 })).toBe(false);
+    expect(canStartChilena({ fighter, ball: { x: 600, y: 300 }, kickPresses: 2 })).toBe(false);
+    expect(canStartChilena({ fighter, ball: { x: 730, y: 420 }, kickPresses: 2 })).toBe(false);
+  });
+
+  it('cannot begin airborne, stunned, already active, or without an overhead ball', () => {
+    expect(canStartChilena({ fighter: { ...fighter, grounded: false }, ball: { x: 600, y: 360 }, kickPresses: 2 })).toBe(false);
+    expect(canStartChilena({ fighter: { ...fighter, stunned: true }, ball: { x: 600, y: 360 }, kickPresses: 2 })).toBe(false);
+    expect(canStartChilena({ fighter: { ...fighter, active: true }, ball: { x: 600, y: 360 }, kickPresses: 2 })).toBe(false);
+    expect(canStartChilena({ fighter, ball: { x: 600, y: 560 }, kickPresses: 2 })).toBe(false);
+  });
+
+  it('fires toward the rival goal and rewards a full meter', () => {
+    expect(resolveChilenaShot({ attackDirection: 1 })).toEqual({
+      vx: 27,
+      vy: -6.4,
+      spin: 0.56,
+      color: CHILENA_FIRE_COLOR,
+      meterAfter: 100,
+    });
+    expect(resolveChilenaShot({ attackDirection: -1 }).vx).toBe(-27);
+  });
+
+  it('rotates clockwise through one full turn during the kick pose', () => {
+    expect(chilenaRotationAt(0)).toBe(0);
+    expect(chilenaRotationAt(0.29)).toBe(180);
+    expect(chilenaRotationAt(0.58)).toBe(360);
+    expect(chilenaRotationAt(2)).toBe(360);
+  });
+});
+
 describe('provider boundary', () => {
   const snapshot = createWorldSnapshot({
     score: createScoreState(),
@@ -114,8 +257,30 @@ describe('provider boundary', () => {
       lob: false,
       dash: false,
       power: false,
+      sprint: false,
+      kickBoost: 0,
     });
     expect(safeDecide({ decide: () => { throw new Error('offline'); } }, snapshot).move).toBe(0);
+  });
+
+  it('normalizes optional advanced intents and strips them from Easy AI', () => {
+    const advanced = normalizeIntent({ move: -1, sprint: true, kickBoost: 8 });
+    expect(advanced).toMatchObject({ sprint: true, kickBoost: 3 });
+    expect(applyAiDifficulty(advanced, 'easy')).toMatchObject({ sprint: false, kickBoost: 0 });
+    expect(applyAiDifficulty(advanced, 'normal')).toMatchObject({ sprint: true, kickBoost: 3 });
+  });
+
+  it('lets Normal and Hard AI request advanced mechanics while Easy plays without them', () => {
+    const chase = createWorldSnapshot({
+      score: createScoreState(),
+      ball: { x: 720, y: 520, vx: 0, vy: 0 },
+      left: { x: 300, y: 547, grounded: true, meter: 0, dashCooldown: 0 },
+      right: { x: 1080, y: 547, grounded: true, meter: 24, dashCooldown: 0, kickTimer: 0.1 },
+      powerBall: { active: false, owner: null },
+    });
+    expect(decideHeuristicIntent(chase, 'right', 'easy')).toMatchObject({ sprint: false, kickBoost: 0 });
+    expect(decideHeuristicIntent(chase, 'right', 'normal')).toMatchObject({ sprint: true, kickBoost: 1 });
+    expect(decideHeuristicIntent(chase, 'right', 'hard')).toMatchObject({ sprint: true, kickBoost: 2 });
   });
 
   it('produces a useful defensive/attacking intent from immutable state', () => {

@@ -7,6 +7,7 @@ import {
   lockMathPractice,
   sanitizeProfile,
   setProfileAudio,
+  setProfileDifficulty,
   setProfileLanguage,
 } from '../pure/profile.js';
 
@@ -51,6 +52,7 @@ export const createPlayerProfileStore = (storage = defaultStorage()) => {
   return Object.freeze({
     get: () => sanitizeProfile(current),
     setLanguage: (language) => commit(setProfileLanguage(current, language)),
+    setDifficulty: (difficulty) => commit(setProfileDifficulty(current, difficulty)),
     setAudio: (patch) => commit(setProfileAudio(current, patch)),
     earn: (powerId, amount = 1) => commit(earnPower(current, powerId, amount)),
     equip: (powerId) => commit(equipPower(current, powerId)),

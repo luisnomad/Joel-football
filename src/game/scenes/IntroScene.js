@@ -46,7 +46,7 @@ export class IntroScene extends Phaser.Scene {
     const ball = this.add.image(640, 465, 'ball').setDisplaySize(78, 78);
     this.tweens.add({ targets: ball, y: 430, angle: 180, duration: 850, yoyo: true, repeat: -1, ease: 'Sine.InOut' });
 
-    this.add.text(GAME_WIDTH / 2, 86, 'SKYHEAD', {
+    this.add.text(GAME_WIDTH / 2, 86, 'JOEL', {
       fontFamily: 'Arial Black, Arial Rounded MT Bold, sans-serif',
       fontSize: '92px',
       fontStyle: 'bold',
@@ -55,7 +55,7 @@ export class IntroScene extends Phaser.Scene {
       strokeThickness: 14,
       shadow: { color: '#19c5dd', blur: 18, fill: true, offsetY: 7 },
     }).setOrigin(0.5);
-    this.add.text(GAME_WIDTH / 2, 165, 'SHOWDOWN', {
+    this.add.text(GAME_WIDTH / 2, 165, 'FOOTBALL', {
       fontFamily: 'Arial Black, Arial Rounded MT Bold, sans-serif',
       fontSize: '52px',
       fontStyle: 'bold',
@@ -65,9 +65,9 @@ export class IntroScene extends Phaser.Scene {
       letterSpacing: 8,
     }).setOrigin(0.5);
 
-    const panel = this.add.rectangle(640, 310, 590, 190, 0x0b1730, 0.82).setStrokeStyle(2, 0x7ce8ff, 0.32);
+    const panel = this.add.rectangle(640, 312, 590, 226, 0x0b1730, 0.82).setStrokeStyle(2, 0x7ce8ff, 0.32);
     panel.setOrigin(0.5);
-    this.add.text(640, 265, t(this.language, 'intro.rule'), {
+    this.add.text(640, 235, t(this.language, 'intro.rule'), {
       fontFamily: 'Arial Rounded MT Bold, sans-serif',
       fontSize: '22px',
       fontStyle: 'bold',
@@ -76,17 +76,25 @@ export class IntroScene extends Phaser.Scene {
     const controlsCopy = this.isTouchLayout
       ? t(this.language, 'intro.touchControls')
       : t(this.language, 'intro.desktopControls');
-    this.add.text(640, 318, controlsCopy, {
+    this.add.text(640, 297, controlsCopy, {
       fontFamily: 'Trebuchet MS, sans-serif',
-      fontSize: '18px',
+      fontSize: '17px',
       color: '#ffffff',
       align: 'center',
-      lineSpacing: 11,
+      lineSpacing: 8,
+    }).setOrigin(0.5);
+    this.add.text(640, 354, t(this.language, 'intro.advancedControls'), {
+      fontFamily: 'Arial Rounded MT Bold, Trebuchet MS, sans-serif',
+      fontSize: this.language === 'es' ? '13px' : '14px',
+      fontStyle: 'bold',
+      color: '#ffcf62',
+      align: 'center',
+      wordWrap: { width: 550 },
     }).setOrigin(0.5);
     const systemCopy = this.isTouchLayout
       ? t(this.language, 'intro.touchSystem')
       : t(this.language, 'intro.desktopSystem');
-    this.add.text(640, 388, systemCopy, {
+    this.add.text(640, 397, systemCopy, {
       fontFamily: 'Trebuchet MS, sans-serif',
       fontSize: this.isTouchLayout ? '15px' : '16px',
       color: '#a9bdd8',
@@ -176,16 +184,20 @@ export class IntroScene extends Phaser.Scene {
     return {
       mode: 'intro',
       language: this.language,
+      difficulty: this.profile.difficulty,
       inputMode: this.isTouchLayout ? 'touch' : 'keyboard',
       coordinateSystem: 'origin top-left; +x right; +y down; logical canvas 1280x720',
-      title: 'Skyhead Showdown',
+      title: 'Joel Football',
       audio: arcadeAudio.diagnostics(),
       actions: ['play match', 'open power lab', 'open settings', 'set English', 'set Spanish'],
       controls: this.isTouchLayout ? {
         move: ['on-screen left', 'on-screen right'],
+        sprint: ['double-tap and hold the same direction'],
         jump: ['on-screen up'],
         kick: ['on-screen K'],
         lob: ['on-screen L'],
+        kickBoost: ['repeat K or L during the kick animation'],
+        chilena: ['tap K or L twice under a reachable overhead ball'],
         dash: ['on-screen D'],
         power: ['on-screen P'],
         pause: ['on-screen pause'],
@@ -194,9 +206,12 @@ export class IntroScene extends Phaser.Scene {
         fullscreen: ['on-screen fullscreen'],
       } : {
         move: ['A/D', 'Left/Right'],
+        sprint: ['double-tap and hold the same direction'],
         jump: ['W', 'Up', 'Space'],
         kick: ['X', 'K'],
         lob: ['Z', 'I', 'Up + Kick'],
+        kickBoost: ['repeat kick or lob during the kick animation'],
+        chilena: ['press any kick twice under a reachable overhead ball'],
         dash: ['C', 'L'],
         power: ['V', 'J'],
         pause: ['P', 'Escape'],

@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
   MATH_OPERATIONS,
+  chooseMathOperation,
   generateAnswerChoices,
   generateMathProblem,
   isCorrectAnswer,
@@ -16,6 +17,7 @@ import {
   sanitizeProfile,
   sanitizeAudioSettings,
   setProfileAudio,
+  setProfileDifficulty,
   setProfileLanguage,
 } from '../src/game/pure/profile.js';
 import { normalizeLanguage, t } from '../src/game/i18n.js';
@@ -23,7 +25,13 @@ import { SUPERPOWERS, applySuperShot, getSuperpower } from '../src/game/content/
 import { createPlayerProfileStore } from '../src/game/services/PlayerProfile.js';
 import { fitTextSize } from '../src/game/ui/textFit.js';
 import { createAudioAssetCache } from '../src/game/services/AudioAssetCache.js';
-import { AUDIO_ASSET_URLS, MUSIC_TRACKS } from '../src/game/services/ArcadeAudio.js';
+import { AUDIO_ASSET_URLS, MUSIC_TRACKS, WHISTLE_EFFECT_URL } from '../src/game/services/ArcadeAudio.js';
+import {
+  BIG_GUY_DURATION,
+  activateBigGuy,
+  createBigGuyState,
+  stepBigGuy,
+} from '../src/game/pure/bigGuy.js';
 
 const sequenceRandom = (...values) => {
   let index = 0;
@@ -31,6 +39,15 @@ const sequenceRandom = (...values) => {
 };
 
 describe('math challenge generation', () => {
+  it('selects all four operation families uniformly from the random sample', () => {
+    expect([
+      chooseMathOperation(() => 0),
+      chooseMathOperation(() => 0.25),
+      chooseMathOperation(() => 0.5),
+      chooseMathOperation(() => 0.999),
+    ]).toEqual(MATH_OPERATIONS);
+  });
+
   it('supports all four requested operations with child-friendly integer answers', () => {
     expect(MATH_OPERATIONS).toEqual(['addition', 'subtraction', 'multiplication', 'division']);
 
@@ -127,6 +144,19 @@ describe('persistent power inventory rules', () => {
     expect(setProfileLanguage(sanitized, 'es').language).toBe('es');
   });
 
+  it('migrates saved Rainbow charges and equipment into Big Guy', () => {
+    const migrated = sanitizeProfile({
+      version: 3,
+      language: 'es',
+      equippedPowerId: 'rainbow',
+      powers: { rainbow: 4 },
+    });
+    expect(migrated.version).toBe(5);
+    expect(migrated.powers.big).toBe(4);
+    expect(migrated.equippedPowerId).toBe('big');
+    expect(migrated.powers).not.toHaveProperty('rainbow');
+  });
+
   it('persists a global five-minute lock after an incorrect answer', () => {
     const now = 1_000_000;
     const locked = lockMathPractice(createDefaultProfile(), now);
@@ -140,7 +170,7 @@ describe('persistent power inventory rules', () => {
 describe('persistent audio settings', () => {
   it('starts at tablet-safe music and effects levels', () => {
     const profile = createDefaultProfile();
-    expect(profile.version).toBe(3);
+    expect(profile.version).toBe(5);
     expect(profile.audio).toEqual(DEFAULT_AUDIO_SETTINGS);
     expect(profile.audio.musicVolume).toBe(0.15);
     expect(profile.audio.effectsVolume).toBe(0.2);
@@ -163,10 +193,21 @@ describe('persistent audio settings', () => {
     expect(updated.audio).toMatchObject({ musicVolume: 0.4, effectsVolume: 0.2, effectsMuted: true });
   });
 
-  it('defines six rotating music tracks and three supplied effects', () => {
+  it('defines six rotating music tracks and caches the active whistle effect', () => {
     expect(MUSIC_TRACKS).toHaveLength(6);
     expect(AUDIO_ASSET_URLS).toHaveLength(9);
     expect(new Set(AUDIO_ASSET_URLS).size).toBe(9);
+    expect(AUDIO_ASSET_URLS).toContain(WHISTLE_EFFECT_URL);
+    expect(AUDIO_ASSET_URLS.some((url) => url.includes('bg_audience_goal'))).toBe(false);
+  });
+});
+
+describe('persistent difficulty', () => {
+  it('defaults to Normal, sanitizes invalid values, and persists Easy/Hard', () => {
+    expect(createDefaultProfile().difficulty).toBe('normal');
+    expect(sanitizeProfile({ difficulty: 'impossible' }).difficulty).toBe('normal');
+    expect(setProfileDifficulty(createDefaultProfile(), 'easy').difficulty).toBe('easy');
+    expect(setProfileDifficulty(createDefaultProfile(), 'hard').difficulty).toBe('hard');
   });
 });
 
@@ -211,10 +252,11 @@ describe('local player profile storage', () => {
     };
   };
 
-  it('survives a fresh store instance with charges, equipment, language, and penalty intact', () => {
+  it('survives a fresh store instance with charges, equipment, language, difficulty, and penalty intact', () => {
     const storage = makeStorage();
     const firstSession = createPlayerProfileStore(storage);
     firstSession.setLanguage('es');
+    firstSession.setDifficulty('hard');
     firstSession.earn('rocket');
     firstSession.earn('rocket');
     firstSession.equip('rocket');
@@ -224,6 +266,7 @@ describe('local player profile storage', () => {
     const refreshedSession = createPlayerProfileStore(storage);
     const restored = refreshedSession.get();
     expect(restored.language).toBe('es');
+    expect(restored.difficulty).toBe('hard');
     expect(restored.powers.rocket).toBe(2);
     expect(restored.equippedPowerId).toBe('rocket');
     expect(restored.audio).toMatchObject({ musicVolume: 0.35, effectsMuted: true });
@@ -246,6 +289,8 @@ describe('bilingual copy', () => {
     expect(t('en', 'intro.play')).toBe('PLAY MATCH');
     expect(t('es', 'intro.play')).toBe('JUGAR PARTIDO');
     expect(t('es', 'power.fireball.name')).toBe('Bola de fuego');
+    expect(t('en', 'power.big.name')).toBe('Big Guy!');
+    expect(t('es', 'power.big.name')).toBe('¡Tío Grande!');
     expect(t('xx', 'intro.powerLab')).toBe('POWER LAB');
     expect(t('es', 'missing.key')).toBe('missing.key');
     expect(t('es', 'intro.touchSystem').split('\n')).toHaveLength(2);
@@ -267,6 +312,10 @@ describe('ten superpower shot contracts', () => {
     expect(SUPERPOWERS.every(({ id }) => getSuperpower(id)?.nameKey === `power.${id}.name`)).toBe(true);
   });
 
+  it('does not present Big Guy with a multiplier-like icon beside a zero charge count', () => {
+    expect(getSuperpower('big').icon).not.toMatch(/[0-9×x]/i);
+  });
+
   it('produces a distinct, mirrored modifier for every power', () => {
     const rightward = SUPERPOWERS.map(({ id }) => applySuperShot(id, { direction: 1, baseSpeed: 23 }));
     const leftward = SUPERPOWERS.map(({ id }) => applySuperShot(id, { direction: -1, baseSpeed: 23 }));
@@ -280,6 +329,26 @@ describe('ten superpower shot contracts', () => {
     expect(applySuperShot('lightning', { direction: 1, baseSpeed: 23 }).vx).toBeGreaterThan(
       applySuperShot('fireball', { direction: 1, baseSpeed: 23 }).vx,
     );
-    expect(applySuperShot('rainbow', { direction: 1, baseSpeed: 23 }).vy).toBeLessThan(-12);
+    expect(applySuperShot('big', { direction: 1, baseSpeed: 23 }).effect).toBe('big');
+  });
+});
+
+describe('Big Guy transformation', () => {
+  it('grows smoothly to 2×, stays active for ten seconds, and shrinks smoothly', () => {
+    let state = activateBigGuy(createBigGuyState());
+    expect(state.secondsRemaining).toBe(BIG_GUY_DURATION);
+    state = stepBigGuy(state, 0.2);
+    expect(state.scale).toBeGreaterThan(1);
+    expect(state.scale).toBeLessThan(2);
+    state = stepBigGuy(state, 0.2);
+    expect(state.scale).toBe(2);
+    state = stepBigGuy(state, 9.1);
+    expect(state.scale).toBe(2);
+    state = stepBigGuy(state, 0.2);
+    expect(state.scale).toBeGreaterThan(1);
+    expect(state.scale).toBeLessThan(2);
+    state = stepBigGuy(state, 0.3);
+    expect(state.secondsRemaining).toBeCloseTo(0);
+    expect(state.scale).toBe(1);
   });
 });

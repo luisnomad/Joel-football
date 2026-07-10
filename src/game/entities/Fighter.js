@@ -1,7 +1,18 @@
 import Phaser from 'phaser';
 import { CATEGORIES, DEFAULT_STATS, GROUND_Y, PLAYER_TUNING } from '../constants.js';
 import { resolveFacing } from '../pure/facing.js';
+import { activateBigGuy, createBigGuyState, stepBigGuy } from '../pure/bigGuy.js';
 import { armPower, chargeMeter } from '../pure/power.js';
+import { addKickBoostTaps, kickBoostMultipliers, resolveKickBoost } from '../pure/kickBoost.js';
+import { SPRINT_FORCE_MULTIPLIER, SPRINT_SPEED_MULTIPLIER } from '../pure/sprint.js';
+import {
+  CHILENA_MAX_SECONDS,
+  CHILENA_MIN_AIRTIME_SECONDS,
+  CHILENA_TAKEOFF_VELOCITY,
+  canStartChilena,
+  chilenaRotationAt,
+  resolveChilenaShot,
+} from '../pure/chilena.js';
 
 const scaled = (base, stat) => base * (0.9 + stat * 0.1);
 
@@ -27,9 +38,21 @@ export class Fighter {
     this.ballHitSerial = -1;
     this.combatHitSerial = -1;
     this.shotType = 'drive';
+    this.kickBoostTaps = 0;
+    this.kickBoostAppliedTaps = 0;
+    this.kickBoostAppliedStrength = 0;
+    this.lastKickBoostSpent = 0;
+    this.lastStrikePowered = false;
+    this.chilenaActive = false;
+    this.chilenaElapsed = 0;
+    this.chilenaSuccesses = 0;
+    this.sprinting = false;
+    this.sprintDirection = 0;
+    this.sprintRequiresRelease = false;
     this.superShield = 0;
     this.hyperTimer = 0;
     this.freezeTimer = 0;
+    this.bigGuy = createBigGuyState();
     this.runCycle = 0;
     this.lastRunFrame = 0;
     this.currentPose = 'idle';
@@ -64,6 +87,8 @@ export class Fighter {
     this.sprite = scene.add.sprite(x, GROUND_Y - 89, texture, 0);
     this.hasPoseSheet = this.sprite.texture.frameTotal >= 6;
     this.sprite.setDisplaySize(this.hasPoseSheet ? 185 : 205, this.hasPoseSheet ? 240 : 205);
+    this.baseSpriteScale = { x: this.sprite.scaleX, y: this.sprite.scaleY };
+    this.bigGuyScale = 1;
     this.sprite.setDepth(18);
     scene.matter.add.gameObject(this.sprite, compound);
     this.sprite.setOrigin(0.5, 0.5);
@@ -71,12 +96,23 @@ export class Fighter {
     this.sprite.setFixedRotation();
     this.sprite.setCollisionCategory(CATEGORIES.PLAYER);
     this.sprite.setCollidesWith([CATEGORIES.WORLD, CATEGORIES.PLAYER, CATEGORIES.BALL, CATEGORIES.GOAL]);
+    this.baseBodyBottomOffset = this.sprite.body.bounds.max.y - this.sprite.body.position.y;
+
+    // Matter rotates the compound collider whenever its sprite rotates. Keep the
+    // acrobatic artwork separate so Joel's head-and-feet body stays upright and
+    // returns to the same ground height after a chilena.
+    this.chilenaVisual = scene.add.sprite(x, GROUND_Y - 89, texture, 0)
+      .setOrigin(0.5, 0.5)
+      .setDisplaySize(this.sprite.displayWidth, this.sprite.displayHeight)
+      .setDepth(18.5)
+      .setVisible(false);
 
     this.aura = scene.add.graphics().setDepth(17);
   }
 
   get grounded() {
-    return this.sprite.y >= GROUND_Y - 94 && Math.abs(this.sprite.body.velocity.y) < 1.8;
+    const growthOffset = this.baseBodyBottomOffset * (this.bigGuyScale - 1);
+    return this.sprite.y >= GROUND_Y - 94 - growthOffset && Math.abs(this.sprite.body.velocity.y) < 1.8;
   }
 
   get stunned() {
@@ -84,10 +120,22 @@ export class Fighter {
   }
 
   reset(x) {
+    this.bigGuy = createBigGuyState();
+    this.setBigGuyScale(1);
     this.sprite.setPosition(x, GROUND_Y - 89);
     this.sprite.setVelocity(0, 0);
     this.sprite.setAngularVelocity(0);
     this.kickTimer = 0;
+    this.kickBoostTaps = 0;
+    this.kickBoostAppliedTaps = 0;
+    this.kickBoostAppliedStrength = 0;
+    this.lastKickBoostSpent = 0;
+    this.lastStrikePowered = false;
+    this.chilenaActive = false;
+    this.chilenaElapsed = 0;
+    this.sprite.setAngle(0);
+    this.sprite.setVisible(true);
+    this.chilenaVisual.setAngle(0).setVisible(false);
     this.dashTimer = 0;
     this.stunTimer = 0;
     this.stunProtection = 0;
@@ -96,6 +144,9 @@ export class Fighter {
     this.superShield = 0;
     this.hyperTimer = 0;
     this.freezeTimer = 0;
+    this.sprinting = false;
+    this.sprintDirection = 0;
+    this.sprintRequiresRelease = false;
     this.runCycle = 0;
     this.lastRunFrame = 0;
     this.currentPose = 'idle';
@@ -106,7 +157,14 @@ export class Fighter {
   }
 
   update(intent, dt, opponentX) {
+    const wasKicking = this.kickTimer > 0;
     this.kickTimer = Math.max(0, this.kickTimer - dt);
+    if (wasKicking && this.kickTimer === 0) {
+      this.kickBoostTaps = 0;
+      this.kickBoostAppliedTaps = 0;
+      this.kickBoostAppliedStrength = 0;
+      this.lastStrikePowered = false;
+    }
     this.kickCooldown = Math.max(0, this.kickCooldown - dt);
     this.dashTimer = Math.max(0, this.dashTimer - dt);
     this.dashCooldown = Math.max(0, this.dashCooldown - dt);
@@ -116,15 +174,28 @@ export class Fighter {
     this.jumpCounterWindow = Math.max(0, this.jumpCounterWindow - dt);
     this.hyperTimer = Math.max(0, this.hyperTimer - dt);
     this.freezeTimer = Math.max(0, this.freezeTimer - dt);
+    this.bigGuy = stepBigGuy(this.bigGuy, dt);
+    this.setBigGuyScale(this.bigGuy.scale);
     this.meter = chargeMeter(this.meter, PLAYER_TUNING.passiveChargePerSecond * dt, this.stats.power);
 
+    if (!intent.sprint) this.sprintRequiresRelease = false;
+
     if (this.stunned) {
+      if (this.chilenaActive) this.finishChilena();
+      this.stopSprint(true);
       this.sprite.setTint(this.freezeTimer > 0 ? 0x78ddff : 0xb5c6d9);
       this.updatePose();
       this.renderAura();
       return;
     }
     this.sprite.clearTint();
+
+    if (this.chilenaActive) {
+      this.continueChilenaAnimation(dt);
+      return;
+    }
+
+    this.updateSprint(intent);
 
     this.setFacing(resolveFacing({
       attackDirection: this.baseFacing,
@@ -154,6 +225,13 @@ export class Fighter {
     }
     if (intent.lob) this.startKick('lob');
     else if (intent.kick) this.startKick('drive');
+    if (intent.kickBoost > 0 && this.kickTimer > 0 && this.powerArmed <= 0) {
+      const previousTaps = this.kickBoostTaps;
+      this.kickBoostTaps = addKickBoostTaps(this.kickBoostTaps, intent.kickBoost);
+      if (this.kickBoostTaps > previousTaps) {
+        this.scene.events.emit('fighter-kick-boost-charged', this, this.kickBoostTaps);
+      }
+    }
     if (intent.dash) this.startDash();
 
     const airborne = !this.grounded;
@@ -168,16 +246,22 @@ export class Fighter {
     } else if (intent.move !== 0) {
       const airMultiplier = airborne ? PLAYER_TUNING.airControlMultiplier : 1;
       const hyperForce = this.hyperTimer > 0 ? 1.35 : 1;
-      this.sprite.applyForce({ x: intent.move * scaled(PLAYER_TUNING.moveForce, this.stats.speed) * airMultiplier * hyperForce, y: 0 });
+      const sprintForce = this.sprinting ? SPRINT_FORCE_MULTIPLIER : 1;
+      this.sprite.applyForce({
+        x: intent.move * scaled(PLAYER_TUNING.moveForce, this.stats.speed) * airMultiplier * hyperForce * sprintForce,
+        y: 0,
+      });
       const hyperSpeed = this.hyperTimer > 0 ? 1.25 : 1;
-      const maxSpeed = scaled(PLAYER_TUNING.maxSpeed, this.stats.speed) * (airborne ? 1.08 : 1) * hyperSpeed;
+      const sprintSpeed = this.sprinting ? SPRINT_SPEED_MULTIPLIER : 1;
+      const maxSpeed = scaled(PLAYER_TUNING.maxSpeed, this.stats.speed) * (airborne ? 1.08 : 1) * hyperSpeed * sprintSpeed;
       this.sprite.setVelocityX(Phaser.Math.Clamp(this.sprite.body.velocity.x, -maxSpeed, maxSpeed));
     } else if (this.grounded) {
       this.sprite.setVelocityX(this.sprite.body.velocity.x * 0.82);
     }
 
     if (this.grounded && Math.abs(this.sprite.body.velocity.x) > 0.65) {
-      this.runCycle += dt * Math.max(7, Math.abs(this.sprite.body.velocity.x) * 1.25);
+      const sprintCadence = this.sprinting ? 1.5 : 1;
+      this.runCycle += dt * Math.max(7, Math.abs(this.sprite.body.velocity.x) * 1.25) * sprintCadence;
     } else {
       this.runCycle = 0;
       this.lastRunFrame = 0;
@@ -192,6 +276,7 @@ export class Fighter {
     if (!this.hasPoseSheet) return;
     let frame = 0;
     if (this.stunned) frame = 5;
+    else if (this.chilenaActive) frame = 3;
     else if (this.dashTimer > 0) frame = 4;
     else if (this.kickTimer > 0) frame = 3;
     else if (!this.grounded) frame = 2;
@@ -204,7 +289,8 @@ export class Fighter {
         this.scene.events.emit('fighter-step', this);
       }
     }
-    if (frame === 0 && Math.abs(this.sprite.body.velocity.x) <= 0.65) this.currentPose = 'idle';
+    if (this.chilenaActive) this.currentPose = 'chilena';
+    else if (frame === 0 && Math.abs(this.sprite.body.velocity.x) <= 0.65) this.currentPose = 'idle';
     else if (frame === 2) this.currentPose = 'jump';
     else if (frame === 3) this.currentPose = this.shotType === 'lob' ? 'lob' : 'kick';
     else if (frame === 4) this.currentPose = 'dash';
@@ -215,6 +301,11 @@ export class Fighter {
   startKick(shotType = 'drive') {
     if (this.kickCooldown > 0 || this.stunned) return false;
     this.shotType = shotType;
+    this.kickBoostTaps = 0;
+    this.kickBoostAppliedTaps = 0;
+    this.kickBoostAppliedStrength = 0;
+    this.lastKickBoostSpent = 0;
+    this.lastStrikePowered = false;
     this.kickTimer = PLAYER_TUNING.kickDuration;
     this.kickCooldown = PLAYER_TUNING.kickCooldown;
     this.kickSerial += 1;
@@ -224,6 +315,7 @@ export class Fighter {
 
   startDash() {
     if (this.dashCooldown > 0 || this.stunned) return false;
+    this.stopSprint(true);
     this.dashTimer = PLAYER_TUNING.dashDuration;
     this.dashCooldown = scaled(PLAYER_TUNING.dashCooldown, 2 - this.stats.dash);
     this.scene.events.emit('fighter-dash', this);
@@ -234,8 +326,9 @@ export class Fighter {
     if (this.kickTimer <= 0 || this.ballHitSerial === this.kickSerial) return null;
     const dx = ball.body.x - this.sprite.x;
     const dy = ball.body.y - this.sprite.y;
-    const inFront = dx * this.facing > -8 && dx * this.facing < 112;
-    if (!inFront || Math.abs(dy) > 104) return null;
+    if (dy < -this.sprite.displayHeight * 0.18) return null;
+    const inFront = dx * this.facing > -8 * this.bigGuyScale && dx * this.facing < 112 * this.bigGuyScale;
+    if (!inFront || Math.abs(dy) > 104 * this.bigGuyScale) return null;
     this.ballHitSerial = this.kickSerial;
     const powered = this.powerArmed > 0;
     const lob = this.shotType === 'lob' && !powered;
@@ -243,22 +336,169 @@ export class Fighter {
       ? PLAYER_TUNING.powerShotSpeed
       : scaled(lob ? PLAYER_TUNING.lobSpeed : PLAYER_TUNING.kickSpeed, this.stats.kick);
     const lift = powered ? -3.8 : lob ? PLAYER_TUNING.lobLift : PLAYER_TUNING.kickLift;
-    ball.body.setVelocity(this.facing * speed, lift);
+    const boost = powered
+      ? resolveKickBoost()
+      : resolveKickBoost({ meter: this.meter, taps: this.kickBoostTaps, shotType: lob ? 'lob' : 'drive' });
+    ball.body.setVelocity(this.facing * speed * boost.speedMultiplier, lift * boost.liftMultiplier);
     ball.body.setAngularVelocity(this.facing * 0.24);
     if (powered) {
       this.meter = 0;
       this.powerArmed = 0;
     } else {
-      this.meter = chargeMeter(this.meter, PLAYER_TUNING.contactCharge, this.stats.power);
+      this.meter = boost.boosted
+        ? boost.meterAfter
+        : chargeMeter(this.meter, PLAYER_TUNING.contactCharge, this.stats.power);
     }
-    return { powered, owner: this.side, shotType: lob ? 'lob' : 'drive' };
+    this.lastKickBoostSpent = boost.energySpent;
+    this.kickBoostAppliedTaps = this.kickBoostTaps;
+    this.kickBoostAppliedStrength = boost.strength;
+    this.lastStrikePowered = powered;
+    return {
+      powered,
+      owner: this.side,
+      shotType: lob ? 'lob' : 'drive',
+      boosted: boost.boosted,
+      boostStrength: boost.strength,
+      energySpent: boost.energySpent,
+    };
+  }
+
+  attemptChilena(ball) {
+    const kickPresses = 1 + this.kickBoostTaps;
+    const allowed = this.ballHitSerial !== this.kickSerial && canStartChilena({
+      fighter: {
+        x: this.sprite.x,
+        y: this.sprite.y,
+        height: this.sprite.displayHeight,
+        grounded: this.grounded,
+        stunned: this.stunned,
+        active: this.chilenaActive,
+      },
+      ball: { x: ball.body.x, y: ball.body.y },
+      kickPresses,
+    });
+    if (!allowed) return null;
+
+    const shot = resolveChilenaShot({ attackDirection: this.baseFacing });
+    this.chilenaActive = true;
+    this.chilenaElapsed = 0;
+    this.chilenaSuccesses += 1;
+    this.stopSprint(true);
+    this.dashTimer = 0;
+    this.kickTimer = 0;
+    this.kickBoostTaps = 0;
+    this.kickBoostAppliedTaps = 0;
+    this.powerArmed = 0;
+    this.ballHitSerial = this.kickSerial;
+    this.meter = shot.meterAfter;
+    this.setFacing(-this.baseFacing);
+    this.sprite.setAngle(0);
+    this.syncChilenaVisual(0);
+    this.sprite.setVelocity(
+      Phaser.Math.Clamp((ball.body.x - this.sprite.x) * 0.025, -2.4, 2.4),
+      CHILENA_TAKEOFF_VELOCITY,
+    );
+    ball.body.setVelocity(shot.vx, shot.vy);
+    ball.body.setAngularVelocity(shot.spin);
+    this.currentPose = 'chilena';
+    this.scene.events.emit('fighter-chilena', this, shot);
+    return {
+      owner: this.side,
+      shotType: 'chilena',
+      chilena: true,
+      powered: true,
+      color: shot.color,
+      meterAfter: shot.meterAfter,
+    };
+  }
+
+  updateChilena(dt) {
+    this.chilenaElapsed += dt;
+    this.setFacing(-this.baseFacing);
+    this.syncChilenaVisual(chilenaRotationAt(this.chilenaElapsed));
+    if (this.chilenaElapsed > 0.2) {
+      const fastFall = PLAYER_TUNING.fastFallAcceleration * 1.55 * dt * 60;
+      this.sprite.setVelocityY(this.sprite.body.velocity.y + fastFall);
+    }
+    if (this.chilenaElapsed >= CHILENA_MAX_SECONDS && !this.grounded) {
+      this.sprite.setVelocityY(Math.max(12, this.sprite.body.velocity.y));
+    }
+    if (this.chilenaElapsed >= CHILENA_MIN_AIRTIME_SECONDS && this.grounded) {
+      this.finishChilena();
+    }
+  }
+
+  continueChilenaAnimation(dt) {
+    if (!this.chilenaActive) return;
+    this.updateChilena(dt);
+    this.constrainToSide();
+    this.updatePose();
+    this.renderAura();
+  }
+
+  syncChilenaVisual(angle = this.chilenaVisual.angle) {
+    this.sprite.setVisible(false);
+    this.chilenaVisual
+      .setVisible(true)
+      .setPosition(this.sprite.x, this.sprite.y)
+      .setDisplaySize(this.sprite.displayWidth, this.sprite.displayHeight)
+      .setFlipX(this.facing !== this.baseFacing)
+      .setFrame(this.hasPoseSheet ? 3 : 0)
+      .setAngle(angle);
+  }
+
+  finishChilena() {
+    this.chilenaActive = false;
+    this.chilenaElapsed = 0;
+    this.sprite.setAngle(0);
+    this.sprite.setVisible(true);
+    this.chilenaVisual.setAngle(0).setVisible(false);
+    this.setFacing(this.baseFacing);
+  }
+
+  applyPostStrikeBoost(ball) {
+    const pendingTaps = this.kickBoostTaps - this.kickBoostAppliedTaps;
+    const ballDistance = Math.hypot(ball.body.x - this.sprite.x, ball.body.y - this.sprite.y);
+    if (
+      pendingTaps <= 0
+      || this.kickTimer <= 0
+      || this.ballHitSerial !== this.kickSerial
+      || this.lastStrikePowered
+      || ballDistance > 220
+    ) return null;
+
+    const shotType = this.shotType === 'lob' ? 'lob' : 'drive';
+    const boost = resolveKickBoost({ meter: this.meter, taps: pendingTaps, shotType });
+    this.kickBoostAppliedTaps = this.kickBoostTaps;
+    if (!boost.boosted) return null;
+
+    const previous = kickBoostMultipliers(this.kickBoostAppliedStrength, shotType);
+    const nextStrength = Math.min(1, this.kickBoostAppliedStrength + boost.strength);
+    const next = kickBoostMultipliers(nextStrength, shotType);
+    const velocity = ball.body.body.velocity;
+    ball.body.setVelocity(
+      velocity.x * (next.speedMultiplier / previous.speedMultiplier),
+      velocity.y * (next.liftMultiplier / previous.liftMultiplier),
+    );
+    this.meter = boost.meterAfter;
+    this.kickBoostAppliedStrength = nextStrength;
+    this.lastKickBoostSpent += boost.energySpent;
+    return {
+      powered: false,
+      owner: this.side,
+      shotType,
+      boosted: true,
+      boostStrength: nextStrength,
+      energySpent: this.lastKickBoostSpent,
+      incrementalEnergySpent: boost.energySpent,
+    };
   }
 
   canHitOpponent(opponent) {
     if (this.kickTimer <= 0 || this.combatHitSerial === this.kickSerial) return false;
     const dx = opponent.sprite.x - this.sprite.x;
     const dy = Math.abs(opponent.sprite.y - this.sprite.y);
-    return dx * this.facing > 4 && dx * this.facing < 104 && dy < 94;
+    return dx * this.facing > 4 && dx * this.facing < 104 * this.bigGuyScale && dy < 94 * this.bigGuyScale;
   }
 
   markCombatHit() {
@@ -272,7 +512,9 @@ export class Fighter {
       return false;
     }
     if (this.stunProtection > 0) return false;
+    if (this.chilenaActive) this.finishChilena();
     this.stunTimer = strong ? PLAYER_TUNING.stunDuration * 1.12 : PLAYER_TUNING.stunDuration;
+    this.stopSprint(true);
     this.stunProtection = this.stunTimer + PLAYER_TUNING.stunProtection;
     const knockback = strong ? PLAYER_TUNING.dashKnockback : PLAYER_TUNING.kickKnockback;
     this.sprite.setVelocity(fromDirection * knockback, strong ? -4.2 : -2.8);
@@ -280,6 +522,8 @@ export class Fighter {
   }
 
   applyFreeze(fromDirection, seconds = 2) {
+    if (this.chilenaActive) this.finishChilena();
+    this.stopSprint(true);
     this.freezeTimer = Math.max(this.freezeTimer, seconds);
     this.stunTimer = Math.max(this.stunTimer, seconds);
     this.stunProtection = Math.max(this.stunProtection, seconds + PLAYER_TUNING.stunProtection);
@@ -292,6 +536,45 @@ export class Fighter {
 
   activateHyper(seconds = 5) {
     this.hyperTimer = Math.max(this.hyperTimer, seconds);
+  }
+
+  activateBigGuy() {
+    this.bigGuy = activateBigGuy(this.bigGuy);
+  }
+
+  updateSprint(intent) {
+    const direction = Math.sign(intent.move);
+    if (!intent.sprint || direction === 0) {
+      this.stopSprint(false);
+      return;
+    }
+    if (this.sprinting && direction !== this.sprintDirection) {
+      this.stopSprint(false);
+      return;
+    }
+    if (!this.sprinting && !this.sprintRequiresRelease && this.grounded) {
+      this.sprinting = true;
+      this.sprintDirection = direction;
+      this.scene.events.emit('fighter-sprint-start', this);
+    }
+  }
+
+  stopSprint(requireRelease = false) {
+    this.sprinting = false;
+    this.sprintDirection = 0;
+    if (requireRelease) this.sprintRequiresRelease = true;
+  }
+
+  setBigGuyScale(scale) {
+    const nextScale = Phaser.Math.Clamp(Number(scale) || 1, 1, 2);
+    if (Math.abs(nextScale - this.bigGuyScale) < 0.0001) return;
+    const anchor = { x: this.sprite.body.position.x, y: this.sprite.body.bounds.max.y };
+    this.sprite.setScale(
+      this.baseSpriteScale.x * nextScale,
+      this.baseSpriteScale.y * nextScale,
+      anchor,
+    );
+    this.bigGuyScale = nextScale;
   }
 
   onBallContact(defensive = false) {
@@ -321,6 +604,25 @@ export class Fighter {
 
   renderAura() {
     this.aura.clear();
+    if (this.sprinting) {
+      const direction = Math.sign(this.sprite.body.velocity.x) || this.facing;
+      this.aura.lineStyle(3, 0xdffbff, 0.32);
+      for (let index = 0; index < 3; index += 1) {
+        const y = this.sprite.y - 44 + index * 34;
+        const startX = this.sprite.x - direction * (50 + index * 13);
+        this.aura.strokeLineShape(new Phaser.Geom.Line(startX, y, startX - direction * (24 + index * 8), y));
+      }
+    }
+    if (this.bigGuy.secondsRemaining > 0 || this.bigGuyScale > 1.01) {
+      const pulse = 0.62 + Math.sin(this.scene.time.now * 0.015) * 0.12;
+      this.aura.lineStyle(6, 0xffd25f, pulse);
+      this.aura.strokeEllipse(
+        this.sprite.x,
+        this.sprite.y,
+        126 * this.bigGuyScale,
+        208 * this.bigGuyScale,
+      );
+    }
     if (this.powerArmed > 0) {
       const pulse = 1 + Math.sin(this.scene.time.now * 0.018) * 0.12;
       this.aura.lineStyle(5, this.side === 'left' ? 0x62f5ff : 0xff9b42, 0.72);
@@ -335,8 +637,13 @@ export class Fighter {
       this.aura.strokeEllipse(this.sprite.x, this.sprite.y - 25, 104, 178);
     }
     if (this.kickTimer > 0) {
-      this.aura.fillStyle(0xffffff, 0.7);
-      this.aura.fillEllipse(this.sprite.x + this.facing * 57, this.sprite.y + 43, 42, 15);
+      const boostRatio = this.kickBoostTaps / 3;
+      this.aura.fillStyle(boostRatio > 0 ? 0xffdc62 : 0xffffff, 0.7 + boostRatio * 0.2);
+      this.aura.fillEllipse(this.sprite.x + this.facing * 57, this.sprite.y + 43, 42 + boostRatio * 18, 15 + boostRatio * 8);
+    }
+    if (this.chilenaActive) {
+      this.aura.lineStyle(5, 0xff7b32, 0.7);
+      this.aura.strokeCircle(this.sprite.x, this.sprite.y - 12, 66 + Math.sin(this.scene.time.now * 0.025) * 7);
     }
     if (this.stunned) {
       if (this.freezeTimer > 0) {
@@ -379,16 +686,29 @@ export class Fighter {
       meter: Math.round(this.meter * 10) / 10,
       kickCooldown: Math.round(this.kickCooldown * 100) / 100,
       dashCooldown: Math.round(this.dashCooldown * 100) / 100,
+      dashTimer: Math.round(this.dashTimer * 100) / 100,
+      kickTimer: Math.round(this.kickTimer * 100) / 100,
       powerArmed: this.powerArmed > 0,
+      sprinting: this.sprinting,
+      sprintSpeedMultiplier: this.sprinting ? SPRINT_SPEED_MULTIPLIER : 1,
+      kickBoostTaps: this.kickBoostTaps,
+      lastKickBoostSpent: this.lastKickBoostSpent,
+      chilenaActive: this.chilenaActive,
+      chilenaSeconds: Math.round(this.chilenaElapsed * 100) / 100,
+      chilenaRotation: Math.round(this.chilenaVisual.angle * 10) / 10,
+      chilenaSuccesses: this.chilenaSuccesses,
       pose: this.currentPose,
       visualFrame: this.hasPoseSheet ? Number(this.sprite.frame.name) : 0,
       shield: this.superShield,
       hyperSeconds: Math.round(this.hyperTimer * 100) / 100,
+      bigGuySeconds: Math.round(this.bigGuy.secondsRemaining * 100) / 100,
+      bigGuyScale: Math.round(this.bigGuyScale * 100) / 100,
     };
   }
 
   destroy() {
     this.aura.destroy();
+    this.chilenaVisual.destroy();
     this.sprite.destroy();
   }
 }

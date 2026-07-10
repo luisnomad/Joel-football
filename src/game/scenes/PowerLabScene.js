@@ -2,7 +2,7 @@ import Phaser from 'phaser';
 import { SUPERPOWERS, getSuperpower } from '../content/superpowers.js';
 import { GAME_HEIGHT, GAME_WIDTH } from '../constants.js';
 import { t } from '../i18n.js';
-import { MATH_OPERATIONS, generateAnswerChoices, generateMathProblem, isCorrectAnswer } from '../pure/mathChallenge.js';
+import { chooseMathOperation, generateAnswerChoices, generateMathProblem, isCorrectAnswer } from '../pure/mathChallenge.js';
 import { arcadeAudio } from '../services/ArcadeAudio.js';
 import { playerProfileStore } from '../services/PlayerProfile.js';
 import { clearActiveScene, setActiveScene } from '../stateBridge.js';
@@ -30,11 +30,10 @@ export class PowerLabScene extends Phaser.Scene {
     this.selectedPowerId = getSuperpower(data.selectedPowerId)?.id
       ?? this.profile.equippedPowerId
       ?? SUPERPOWERS[0].id;
-    this.operation = MATH_OPERATIONS.includes(data.operation) ? data.operation : 'addition';
+    this.lastOperation = null;
     this.challenge = null;
     this.challengeObjects = [];
     this.cards = new Map();
-    this.operationButtons = new Map();
 
     setActiveScene(this);
     this.events.once(Phaser.Scenes.Events.SHUTDOWN, () => {
@@ -61,20 +60,8 @@ export class PowerLabScene extends Phaser.Scene {
       onPress: () => this.scene.start('Intro'),
     });
 
-    this.add.text(185, 127, t(this.language, 'lab.operation'), this.textStyle(15, '#94b9d8')).setOrigin(0, 0.5);
-    const operationX = [430, 590, 765, 940];
-    MATH_OPERATIONS.forEach((operation, index) => {
-      const button = createButton(this, {
-        x: operationX[index],
-        y: 127,
-        width: 145,
-        height: 40,
-        label: t(this.language, `lab.${operation}`),
-        color: operation === this.operation ? 0x2aacc0 : 0x173858,
-        onPress: () => this.selectOperation(operation),
-      });
-      this.operationButtons.set(operation, button);
-    });
+    this.add.rectangle(640, 127, 440, 40, 0x0b1930, 0.76).setStrokeStyle(2, 0x7ce8ff, 0.22);
+    this.add.text(640, 127, `🎲  ${t(this.language, 'lab.randomMath')}`, this.textStyle(15, '#bfeeff')).setOrigin(0.5);
 
     SUPERPOWERS.forEach((power, index) => this.createPowerCard(power, cardPositions[index]));
     this.createActionBar();
@@ -88,7 +75,6 @@ export class PowerLabScene extends Phaser.Scene {
 
     window.__SKYHEAD_LAB_DEBUG__ = {
       selectPower: (powerId) => this.selectPower(powerId),
-      selectOperation: (operation) => this.selectOperation(operation),
       openChallenge: () => this.openChallenge(),
       answer: (value) => this.answerChallenge(value),
       closeChallenge: () => this.closeChallenge(),
@@ -177,13 +163,6 @@ export class PowerLabScene extends Phaser.Scene {
     this.refreshAll();
   }
 
-  selectOperation(operation) {
-    if (!MATH_OPERATIONS.includes(operation)) return;
-    this.operation = operation;
-    arcadeAudio.click();
-    this.refreshAll();
-  }
-
   equipSelected() {
     const count = this.profile.powers[this.selectedPowerId] ?? 0;
     if (count <= 0) {
@@ -207,10 +186,6 @@ export class PowerLabScene extends Phaser.Scene {
       card.count.setText(`×${this.profile.powers[power.id]}`);
       card.equipped.setVisible(equipped);
     });
-    this.operationButtons.forEach((button, operation) => {
-      button.background.setFillStyle(operation === this.operation ? 0x2aacc0 : 0x173858, 1);
-    });
-
     const selected = getSuperpower(this.selectedPowerId);
     this.selectedIconDisc.setFillStyle(selected.color, 0.2).setStrokeStyle(2, selected.color, 0.7);
     this.selectedIcon.setText(selected.icon);
@@ -242,7 +217,9 @@ export class PowerLabScene extends Phaser.Scene {
   openChallenge() {
     if (playerProfileStore.getMathLockRemaining(Date.now()) > 0 || this.challenge) return;
     arcadeAudio.click();
-    const problem = generateMathProblem(this.operation);
+    const operation = chooseMathOperation();
+    const problem = generateMathProblem(operation);
+    this.lastOperation = operation;
     const choices = generateAnswerChoices(problem.answer);
     this.challenge = { problem, choices, status: 'answering' };
 
@@ -345,7 +322,8 @@ export class PowerLabScene extends Phaser.Scene {
       coordinateSystem: 'origin top-left; +x right; +y down; logical canvas 1280x720',
       language: this.language,
       audio: arcadeAudio.diagnostics(),
-      operation: this.operation,
+      operationMode: 'random',
+      lastOperation: this.lastOperation,
       selectedPowerId: this.selectedPowerId,
       equippedPowerId: profile.equippedPowerId,
       powers: profile.powers,
@@ -359,7 +337,7 @@ export class PowerLabScene extends Phaser.Scene {
         choices: this.challenge.choices,
         status: this.challenge.status,
       } : null,
-      actions: ['select power', 'select operation', 'solve to earn', 'equip power', 'back'],
+      actions: ['select power', 'solve random challenge to earn', 'equip power', 'back'],
     };
   }
 

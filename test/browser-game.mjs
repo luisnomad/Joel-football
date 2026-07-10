@@ -54,11 +54,75 @@ const touchControl = async (page, logicalX, logicalY, milliseconds = 60) => {
   await page.mouse.up();
 };
 
+const waitThroughSplash = async (page, screenshotPath) => {
+  await page.waitForFunction(() => JSON.parse(window.render_game_to_text()).mode === 'splash');
+  const splashState = await readState(page);
+  assert.equal(splashState.title, 'Joel Football');
+  assert.equal(splashState.selectedArtwork, 'option-a');
+  assert.equal(splashState.requiredAssetsReady, true);
+  assert.equal(splashState.autoAdvance, true);
+  assert.equal(splashState.minDisplayMs, 3000);
+  assert.equal(splashState.maxDisplayMs, 5000);
+  assert.deepEqual(splashState.actions, [], 'the splash should not require input');
+  const overlayState = await page.evaluate(() => {
+    const overlay = document.getElementById('startup-splash');
+    const spinner = overlay?.querySelector('.startup-spinner');
+    const bounds = spinner?.getBoundingClientRect();
+    return {
+      text: overlay?.textContent?.trim() ?? null,
+      spinnerVisible: !!spinner && getComputedStyle(spinner).display !== 'none',
+      spinnerAnimation: spinner ? getComputedStyle(spinner).animationName : '',
+      spinnerRight: bounds ? window.innerWidth - bounds.right : null,
+      spinnerBottom: bounds ? window.innerHeight - bounds.bottom : null,
+    };
+  });
+  assert.equal(overlayState.text, '', 'the splash overlay should contain no visible copy');
+  assert.equal(overlayState.spinnerVisible, true);
+  assert.equal(overlayState.spinnerAnimation, 'startup-spin');
+  assert.ok(overlayState.spinnerRight < 50 && overlayState.spinnerBottom < 50, 'the spinner should sit in the bottom-right corner');
+  if (screenshotPath) await capture(page, screenshotPath);
+  await page.waitForFunction(() => document.getElementById('startup-splash')?.classList.contains('is-fading-to-white'));
+  const splashElapsedMs = await page.evaluate(() => performance.now() - window.__JOEL_SPLASH_STARTED_AT__);
+  assert.ok(splashElapsedMs >= 2950, `the splash should linger for at least three seconds; got ${splashElapsedMs}ms`);
+  if (screenshotPath) {
+    await page.waitForFunction(() => Number.parseFloat(
+      getComputedStyle(document.getElementById('startup-splash'), '::after').opacity,
+    ) > 0.42);
+    await capture(page, screenshotPath.replace('.png', '-fade-white.png'));
+  }
+  await page.waitForFunction(() => JSON.parse(window.render_game_to_text()).mode === 'intro');
+  await page.waitForFunction(() => document.getElementById('startup-splash')?.classList.contains('is-revealing-menu'));
+  if (screenshotPath) {
+    await page.waitForFunction(() => {
+      const opacity = Number.parseFloat(getComputedStyle(document.getElementById('startup-splash')).opacity);
+      return opacity > 0.3 && opacity < 0.7;
+    });
+    await capture(page, screenshotPath.replace('.png', '-fade-menu.png'));
+  }
+  await page.waitForFunction(() => !document.getElementById('startup-splash'));
+};
+
 const answerForChallenge = ({ operation, left, right }) => {
   if (operation === 'addition') return left + right;
   if (operation === 'subtraction') return left - right;
   if (operation === 'multiplication') return left * right;
   return left / right;
+};
+
+const assertAgeAppropriateChallenge = (challenge) => {
+  assert.ok(['addition', 'subtraction', 'multiplication', 'division'].includes(challenge.operation));
+  if (challenge.operation === 'addition') {
+    assert.ok(challenge.left >= 10 && challenge.right >= 10);
+  } else if (challenge.operation === 'subtraction') {
+    assert.ok(challenge.right >= 10 && challenge.left - challenge.right >= 10);
+  } else if (challenge.operation === 'multiplication') {
+    assert.ok(challenge.left >= 3 && challenge.left <= 12);
+    assert.ok(challenge.right >= 3 && challenge.right <= 12);
+  } else {
+    assert.ok(challenge.right >= 3 && challenge.right <= 12);
+    assert.ok(challenge.left / challenge.right >= 3 && challenge.left / challenge.right <= 12);
+    assert.equal(challenge.left % challenge.right, 0);
+  }
 };
 
 const answerChallenge = async (page, challenge, correct = true) => {
@@ -86,14 +150,18 @@ try {
     if (message.type() === 'error') errors.push(`console: ${message.text()}`);
   });
 
-  await page.goto(url, { waitUntil: 'networkidle' });
-  await page.waitForFunction(() => JSON.parse(window.render_game_to_text()).mode === 'intro');
+  await page.goto(url, { waitUntil: 'domcontentloaded' });
+  await waitThroughSplash(page, `${output}/00-splash-option-a.png`);
   let state = await readState(page);
   assert.equal(state.mode, 'intro');
+  assert.equal(state.title, 'Joel Football');
   assert.equal(state.language, 'en');
   assert.equal(state.audio.settings.musicVolume, 0.15);
   assert.equal(state.audio.settings.effectsVolume, 0.2);
   assert.equal(state.audio.trackCount, 6, 'all six supplied music tracks should rotate');
+  assert.deepEqual(state.controls.sprint, ['double-tap and hold the same direction']);
+  assert.deepEqual(state.controls.kickBoost, ['repeat kick or lob during the kick animation']);
+  assert.deepEqual(state.controls.chilena, ['press any kick twice under a reachable overhead ball']);
   await capture(page, `${output}/01-intro.png`);
 
   await touchControl(page, 640, 650, 35);
@@ -104,22 +172,55 @@ try {
   await page.evaluate(() => window.__SKYHEAD_AUDIO_DEBUG__.warmAll());
   state = await readState(page);
   assert.equal(state.audio.cache.cachedCount, state.audio.cache.total, 'all audio should be reusable from Cache Storage');
+  assert.equal(state.difficulty, 'normal', 'Normal should be the default AI difficulty');
   await capture(page, `${output}/01-settings.png`);
 
-  await touchControl(page, 600, 317, 35);
+  await touchControl(page, 535, 238, 35);
+  await page.waitForFunction(() => JSON.parse(window.render_game_to_text()).difficulty === 'easy');
+  assert.equal((await readState(page)).difficulty, 'easy');
+  await touchControl(page, 92, 52, 35);
+  await page.waitForFunction(() => JSON.parse(window.render_game_to_text()).mode === 'intro');
+  await touchControl(page, 640, 505, 35);
+  await page.waitForFunction(() => JSON.parse(window.render_game_to_text()).mode === 'countdown');
+  await advance(page, 3200);
+  await page.evaluate(() => {
+    window.__SKYHEAD_DEBUG__.resumePlay();
+    window.__SKYHEAD_DEBUG__.setHumanPosition(300);
+    window.__SKYHEAD_DEBUG__.setOpponentPosition(1080);
+    window.__SKYHEAD_DEBUG__.setOpponentMeter(24);
+    window.__SKYHEAD_DEBUG__.setBall({ x: 720, y: 520 });
+  });
+  await advance(page, 180);
+  state = await readState(page);
+  assert.equal(state.difficulty, 'easy');
+  assert.equal(state.aiAdvancedMechanicsEnabled, false);
+  assert.equal(state.lastAiAdvancedIntent.sprint, false, 'Easy AI must not sprint');
+  assert.equal(state.lastAiAdvancedIntent.kickBoost, 0, 'Easy AI must not boost kicks');
+  assert.equal(state.players.right.sprinting, false);
+  await page.keyboard.press('Escape');
+  await touchControl(page, 775, 475, 35);
+  await page.waitForFunction(() => JSON.parse(window.render_game_to_text()).mode === 'intro');
+  await touchControl(page, 640, 650, 35);
+  await page.waitForFunction(() => JSON.parse(window.render_game_to_text()).mode === 'settings');
+  assert.equal((await readState(page)).difficulty, 'easy', 'difficulty should persist after leaving a match');
+  await touchControl(page, 640, 238, 35);
+  await page.waitForFunction(() => JSON.parse(window.render_game_to_text()).difficulty === 'normal');
+
+  await touchControl(page, 600, 382, 35);
   state = await readState(page);
   assert.equal(state.audio.settings.musicVolume, 0.6, 'the music slider should use touch-friendly five-percent steps');
-  await touchControl(page, 935, 487, 35);
+  await touchControl(page, 935, 512, 35);
   assert.equal((await readState(page)).audio.settings.effectsMuted, true, 'effects should have an independent mute switch');
-  await touchControl(page, 935, 487, 35);
+  await touchControl(page, 935, 512, 35);
   assert.equal((await readState(page)).audio.settings.effectsMuted, false);
-  await touchControl(page, 510, 487, 35);
+  await touchControl(page, 510, 512, 35);
   assert.equal((await readState(page)).audio.settings.effectsVolume, 0.4);
-  await touchControl(page, 685, 180, 35);
+  await touchControl(page, 685, 154, 35);
   await page.waitForFunction(() => JSON.parse(window.render_game_to_text()).language === 'es');
   state = await readState(page);
   assert.equal(state.mode, 'settings');
   assert.equal(state.audio.settings.musicVolume, 0.6, 'language changes must preserve audio settings');
+  assert.equal(state.difficulty, 'normal', 'language changes must preserve difficulty');
   await capture(page, `${output}/01-settings-es.png`);
   await touchControl(page, 640, 640, 35);
   await page.waitForFunction(() => JSON.parse(window.render_game_to_text()).mode === 'intro');
@@ -135,15 +236,15 @@ try {
   state = await readState(page);
   assert.equal(state.language, 'es');
   assert.equal(state.powers.fireball, 0);
+  assert.equal(state.operationMode, 'random');
+  assert.equal(state.lastOperation, null);
+  assert.ok(!state.actions.includes('select operation'), 'the child should have no operation selector');
   await capture(page, `${output}/01-power-lab-es.png`);
 
-  await touchControl(page, 765, 127, 30);
-  assert.equal((await readState(page)).operation, 'multiplication');
   await touchControl(page, 805, 638, 35);
   state = await readState(page);
-  assert.equal(state.challenge?.operation, 'multiplication');
-  assert.ok(state.challenge.left >= 3 && state.challenge.left <= 12);
-  assert.ok(state.challenge.right >= 3 && state.challenge.right <= 12);
+  assertAgeAppropriateChallenge(state.challenge);
+  assert.equal(state.lastOperation, state.challenge.operation);
   await capture(page, `${output}/01-math-challenge.png`);
   await answerChallenge(page, state.challenge, true);
   state = await readState(page);
@@ -163,12 +264,13 @@ try {
   state = await readState(page);
   assert.equal(state.powers.fireball, 2, 'correct challenges should accumulate charges');
 
-  await page.reload({ waitUntil: 'networkidle' });
-  await page.waitForFunction(() => JSON.parse(window.render_game_to_text()).mode === 'intro');
+  await page.reload({ waitUntil: 'domcontentloaded' });
+  await waitThroughSplash(page);
   state = await readState(page);
   assert.equal(state.language, 'es', 'language should persist across refresh');
   assert.equal(state.audio.settings.musicVolume, 0.6, 'music volume should persist across refresh');
   assert.equal(state.audio.settings.effectsVolume, 0.4, 'effects volume should persist across refresh');
+  assert.equal(state.difficulty, 'normal', 'difficulty should persist across refresh');
   await touchControl(page, 640, 580, 35);
   await page.waitForFunction(() => JSON.parse(window.render_game_to_text()).mode === 'power-lab');
   state = await readState(page);
@@ -177,6 +279,9 @@ try {
   await touchControl(page, 74, 48, 30);
   await page.waitForFunction(() => JSON.parse(window.render_game_to_text()).mode === 'intro');
 
+  state = await readState(page);
+  const countdownWhistlesBefore = state.audio.whistleRequestedPlays;
+  const countdownWhistlePlaysBefore = state.audio.whistlePlays;
   await page.keyboard.press('Enter');
   await page.waitForFunction(() => JSON.parse(window.render_game_to_text()).mode === 'countdown');
   await advance(page, 3200);
@@ -189,7 +294,51 @@ try {
   assert.equal(state.audio.sceneMode, 'match');
   assert.equal(state.audio.musicRequested, true, 'music should continue into the match');
   assert.equal(state.audio.audienceRequested, true, 'audience ambience should be active only during the match');
+  assert.equal(state.audio.whistleRequestedPlays, countdownWhistlesBefore + 3, 'the 3–2–1 countdown should request one whistle per second');
+  assert.equal(state.audio.whistlePlays, countdownWhistlePlaysBefore + 3, 'all three countdown whistles should begin playback');
+  assert.deepEqual(state.audio.recentWhistles.slice(-3), [
+    { label: 'countdown-short', cutoffMs: 180 },
+    { label: 'countdown-short', cutoffMs: 180 },
+    { label: 'countdown-long', cutoffMs: null },
+  ], 'the countdown should sound like beep–beep–beeeeeep');
+  assert.equal(state.difficulty, 'normal');
+  assert.equal(state.aiAdvancedMechanicsEnabled, true);
+  assert.equal(state.controls.chilena, 'press any kick twice under a reachable overhead ball');
 
+  await page.evaluate(() => {
+    window.__SKYHEAD_DEBUG__.resumePlay();
+    window.__SKYHEAD_DEBUG__.setHumanPosition(300);
+    window.__SKYHEAD_DEBUG__.setOpponentPosition(1080);
+    window.__SKYHEAD_DEBUG__.setBall({ x: 720, y: 520 });
+  });
+  await advance(page, 160);
+  state = await readState(page);
+  assert.equal(state.lastAiAdvancedIntent.sprint, true, 'Normal AI should request sprint while chasing a distant ball');
+  assert.equal(state.players.right.sprinting, true, 'the shared Fighter mechanic should execute the AI sprint intent');
+  await capture(page, `${output}/02-ai-sprint.png`);
+
+  await page.evaluate(() => {
+    window.__SKYHEAD_DEBUG__.resumePlay();
+    window.__SKYHEAD_DEBUG__.setHumanPosition(300);
+    window.__SKYHEAD_DEBUG__.setOpponentPosition(700);
+    window.__SKYHEAD_DEBUG__.setOpponentMeter(24);
+    window.__SKYHEAD_DEBUG__.setBall({ x: 622, y: 537 });
+  });
+  await advance(page, 120);
+  state = await readState(page);
+  assert.equal(state.lastBoostedStrike?.side, 'right', 'Normal AI should use the provider kick-boost intent');
+  assert.ok(
+    state.lastBoostedStrike?.energySpent >= 8 && state.lastBoostedStrike?.energySpent <= 16,
+    'Normal AI should spend one boost step per intent while leaving the maximum mash to Hard',
+  );
+
+  await page.evaluate(() => {
+    window.__SKYHEAD_DEBUG__.resumePlay();
+    window.__SKYHEAD_DEBUG__.setHumanPosition(340);
+    window.__SKYHEAD_DEBUG__.setOpponentPosition(1080);
+    window.__SKYHEAD_DEBUG__.setBall({ x: 640, y: 300 });
+  });
+  state = await readState(page);
   const startingX = state.players.left.x;
   const runPoses = new Set();
   await page.keyboard.down('d');
@@ -203,6 +352,49 @@ try {
   assert.ok(runDistance > 95, `20%-faster movement should cover the pitch decisively; got ${runDistance}`);
   assert.ok(runPoses.has('run-stride') && runPoses.has('run-contact'), 'running should alternate two leg poses');
   await capture(page, `${output}/02-run-cycle.png`);
+
+  await page.evaluate(() => {
+    window.__SKYHEAD_DEBUG__.resumePlay();
+    window.__SKYHEAD_DEBUG__.setHumanPosition(400);
+    window.__SKYHEAD_DEBUG__.setOpponentPosition(1080);
+    window.__SKYHEAD_DEBUG__.setBall({ x: 350, y: 400 });
+  });
+  await page.keyboard.down('d');
+  await advance(page, 35);
+  await page.keyboard.up('d');
+  await advance(page, 80);
+  await page.keyboard.down('d');
+  await advance(page, 650);
+  state = await readState(page);
+  assert.equal(state.players.left.sprinting, true, 'holding the second same-direction tap should start sprinting');
+  assert.equal(state.players.left.sprintSpeedMultiplier, 1.5);
+  assert.ok(state.players.left.x > 530, `sprint should cover more ground than the baseline run; got x=${state.players.left.x}`);
+  await capture(page, `${output}/02-human-sprint.png`);
+  await page.keyboard.down('Space');
+  await advance(page, 65);
+  await page.keyboard.up('Space');
+  state = await readState(page);
+  assert.equal(state.players.left.sprinting, true, 'jumping while sprinting should preserve sprint momentum');
+  assert.ok(state.players.left.y < 545 && state.players.left.vy < 0);
+  await page.keyboard.up('d');
+  await advance(page, 20);
+  assert.equal((await readState(page)).players.left.sprinting, false, 'releasing the direction should stop sprinting');
+
+  await page.evaluate(() => {
+    window.__SKYHEAD_DEBUG__.resumePlay();
+    window.__SKYHEAD_DEBUG__.setHumanPosition(400);
+    window.__SKYHEAD_DEBUG__.setOpponentPosition(1080);
+    window.__SKYHEAD_DEBUG__.setBall({ x: 350, y: 400 });
+  });
+  await hold(page, 'Space', 70);
+  await page.keyboard.down('d');
+  await advance(page, 25);
+  await page.keyboard.up('d');
+  await advance(page, 60);
+  await page.keyboard.down('d');
+  await advance(page, 65);
+  assert.equal((await readState(page)).players.left.sprinting, false, 'a double-tap started in mid-air must not create a sprint');
+  await page.keyboard.up('d');
 
   await page.evaluate(() => {
     window.__SKYHEAD_DEBUG__.resumePlay();
@@ -226,7 +418,7 @@ try {
   assert.equal(state.players.left.facing, 1, 'retreating behind the defender should still face the rival goal');
   await capture(page, `${output}/02-defensive-facing.png`);
   await page.evaluate(({ x }) => window.__SKYHEAD_DEBUG__.setBall({ x: x + 78, y: 537 }), state.players.left);
-  await hold(page, 'x', 50);
+  await hold(page, 'x', 80);
   assert.ok((await readState(page)).ball.vx > 10, 'a defensive-side shot should still travel toward the rival goal');
 
   await advance(page, 520);
@@ -249,7 +441,7 @@ try {
   await hold(page, 'd', 80);
   state = await readState(page);
   assert.equal(state.players.left.facing, 1, 'running toward the rival goal should keep facing that goal after overtaking');
-  await hold(page, 'x', 50);
+  await hold(page, 'x', 80);
   assert.ok((await readState(page)).ball.vx > 10, 'the post-overtake shot should travel toward the rival goal');
 
   await page.evaluate(() => {
@@ -288,6 +480,59 @@ try {
   assert.ok(state.players.left.kickCooldown > 0, 'kick should start its cooldown');
   assert.ok(state.audio.ballEffectPlays > ballEffectBefore, 'a kick should trigger the supplied ball sound');
 
+  await page.evaluate(() => {
+    window.__SKYHEAD_DEBUG__.resumePlay();
+    window.__SKYHEAD_DEBUG__.setHumanPosition(600);
+    window.__SKYHEAD_DEBUG__.setHumanMeter(24);
+    window.__SKYHEAD_DEBUG__.setOpponentPosition(1080);
+    window.__SKYHEAD_DEBUG__.setBall({ x: 678, y: 537 });
+  });
+  await hold(page, 'x', 17);
+  assert.ok((await readState(page)).ball.vx > 15, 'the initial basic kick should connect immediately');
+  for (const key of ['k', 'x', 'k']) {
+    await hold(page, key, 17);
+  }
+  assert.equal((await readState(page)).players.left.kickBoostTaps, 3, 'three extra presses should cap the queued kick boost');
+  state = await readState(page);
+  assert.equal(state.lastBoostedStrike?.side, 'left');
+  assert.equal(state.lastBoostedStrike?.shotType, 'drive');
+  assert.equal(state.lastBoostedStrike?.energySpent, 24);
+  assert.ok(state.ball.vx > 19 && state.ball.vx < 23, `boosted drive should be stronger but below a power shot; got ${state.ball.vx}`);
+  assert.ok(state.players.left.meter < 12, 'the full boost cost should be deducted after the contact reward');
+  assert.ok(state.meterFlash.left > 0, 'the energy meter should flash after paying for a boosted hit');
+  await capture(page, `${output}/02-boosted-drive.png`);
+
+  await page.evaluate(() => {
+    window.__SKYHEAD_DEBUG__.resumePlay();
+    window.__SKYHEAD_DEBUG__.setHumanPosition(600);
+    window.__SKYHEAD_DEBUG__.setHumanMeter(24);
+    window.__SKYHEAD_DEBUG__.setOpponentPosition(1080);
+    window.__SKYHEAD_DEBUG__.setBall({ x: 350, y: 400 });
+  });
+  for (const key of ['x', 'k', 'x', 'k']) {
+    await hold(page, key, 17);
+  }
+  await advance(page, 220);
+  state = await readState(page);
+  assert.equal(state.lastBoostedStrike, null, 'a missed mash kick must not create a paid strike');
+  assert.equal(state.players.left.lastKickBoostSpent, 0);
+  assert.ok(state.players.left.meter >= 24, 'a miss must preserve the queued energy');
+
+  await page.evaluate(() => {
+    window.__SKYHEAD_DEBUG__.resumePlay();
+    window.__SKYHEAD_DEBUG__.setHumanPosition(600);
+    window.__SKYHEAD_DEBUG__.setHumanMeter(24);
+    window.__SKYHEAD_DEBUG__.setOpponentPosition(1080);
+    window.__SKYHEAD_DEBUG__.setBall({ x: 678, y: 537 });
+  });
+  await hold(page, 'z', 17);
+  for (const key of ['i', 'z', 'i']) {
+    await hold(page, key, 17);
+  }
+  state = await readState(page);
+  assert.equal(state.lastBoostedStrike?.shotType, 'lob');
+  assert.ok(state.ball.vy < -12.8 && state.ball.vx > 10, `boosted lob should still be rising faster after repeated taps; got ${state.ball.vx}, ${state.ball.vy}`);
+
   await advance(page, 600);
   state = await readState(page);
   await page.evaluate(() => {
@@ -296,7 +541,7 @@ try {
     window.__SKYHEAD_DEBUG__.setOpponentPosition(1080);
     window.__SKYHEAD_DEBUG__.setBall({ x: 678, y: 537 });
   });
-  await hold(page, 'z', 60);
+  await hold(page, 'z', 80);
   state = await readState(page);
   assert.equal(state.players.left.pose, 'lob');
   assert.ok(state.ball.vy < -9 && state.ball.vx > 6, 'lob should launch upward with a slower forward component');
@@ -304,6 +549,65 @@ try {
   await capture(page, `${output}/02-lob-shot.png`);
   await advance(page, 380);
   assert.ok((await readState(page)).ball.y < lobLaunchY - 30, 'lob should rise into a playable arc above a defender');
+
+  await page.evaluate(() => {
+    window.__SKYHEAD_DEBUG__.resumePlay();
+    window.__SKYHEAD_DEBUG__.setHumanPosition(600);
+    window.__SKYHEAD_DEBUG__.setHumanMeter(20);
+    window.__SKYHEAD_DEBUG__.setOpponentPosition(1080);
+    window.__SKYHEAD_DEBUG__.setBall({ x: 600, y: 280, vx: 0, vy: -1 });
+  });
+  const chilenaMissesBefore = (await readState(page)).players.left.chilenaSuccesses;
+  await hold(page, 'x', 17);
+  await hold(page, 'k', 17);
+  state = await readState(page);
+  assert.equal(state.players.left.chilenaSuccesses, chilenaMissesBefore, 'an overhead ball more than one player-height away must be unreachable');
+  assert.notEqual(state.powerBall.superpowerId, 'chilena');
+  assert.ok(state.players.left.meter >= 20 && state.players.left.meter < 100, 'an unreachable attempt must not award the meter');
+  await advance(page, 240);
+
+  await page.evaluate(() => {
+    window.__SKYHEAD_DEBUG__.resumePlay();
+    window.__SKYHEAD_DEBUG__.setHumanPosition(600);
+    window.__SKYHEAD_DEBUG__.setHumanMeter(12);
+    window.__SKYHEAD_DEBUG__.setOpponentPosition(1080);
+    window.__SKYHEAD_DEBUG__.setBall({ x: 620, y: 360, vx: 0.2, vy: -2 });
+  });
+  const chilenaSuccessesBefore = (await readState(page)).players.left.chilenaSuccesses;
+  await hold(page, 'x', 17);
+  state = await readState(page);
+  assert.equal(state.players.left.chilenaSuccesses, chilenaSuccessesBefore, 'one kick press must not trigger a chilena');
+  await hold(page, 'k', 17);
+  state = await readState(page);
+  assert.equal(state.players.left.chilenaSuccesses, chilenaSuccessesBefore + 1, 'the second fast kick press should trigger a reachable chilena');
+  assert.equal(state.players.left.chilenaActive, true);
+  assert.equal(state.players.left.pose, 'chilena');
+  assert.equal(state.players.left.facing, -1, 'Joel should turn his back to the rival goal during the rotation');
+  assert.ok(state.players.left.vy < 0, 'the chilena should lift Joel into the air');
+  assert.equal(state.players.left.meter, 100, 'a successful chilena should fully reward the energy meter');
+  assert.equal(state.powerBall.active, true);
+  assert.equal(state.powerBall.owner, 'left');
+  assert.equal(state.powerBall.superpowerId, 'chilena');
+  assert.ok(state.ball.vx > 25 && state.ball.vy < -5, `the chilena should launch a fast rising fireball; got ${state.ball.vx}, ${state.ball.vy}`);
+  assert.equal(state.lastChilenaStrike?.side, 'left');
+  assert.equal(state.lastChilenaStrike?.meterAfter, 100);
+  assert.equal(state.hud.announcement, '¡CHILENA!');
+  await advance(page, 150);
+  state = await readState(page);
+  assert.ok(state.players.left.chilenaRotation > 65 && state.players.left.chilenaRotation < 180, `the sprite should visibly rotate clockwise; got ${state.players.left.chilenaRotation}`);
+  await capture(page, `${output}/02-chilena.png`);
+  await advance(page, 1150);
+  state = await readState(page);
+  assert.equal(state.players.left.chilenaActive, false, 'Joel should land even if the shot reaches the goal during his rotation');
+  assert.equal(state.players.left.chilenaRotation, 0);
+  assert.equal(state.players.left.facing, 1, 'Joel should face the rival goal again after landing');
+  assert.equal(state.players.left.grounded, true);
+  assert.ok(Math.abs(state.players.left.y - 547) < 8, `the visual-only rotation must return Joel to his normal ground height; got y=${state.players.left.y}`);
+
+  await page.evaluate(() => {
+    window.__SKYHEAD_DEBUG__.resumePlay();
+    window.__SKYHEAD_DEBUG__.setBall({ x: 350, y: 400 });
+  });
 
   await advance(page, 820);
   await hold(page, 'c', 60);
@@ -335,7 +639,7 @@ try {
     window.__SKYHEAD_DEBUG__.setBall({ x: 350, y: 400 });
   });
   await page.keyboard.press('v');
-  await advance(page, 70);
+  await advance(page, 85);
   state = await readState(page);
   assert.equal(state.powerBall.active, false, 'a missed power kick should not create a power ball');
   assert.equal(state.inventory.equippedCount, 2, 'a missed power kick must not consume an earned charge');
@@ -351,7 +655,7 @@ try {
     window.__SKYHEAD_DEBUG__.setBall({ x: 676, y: 529 });
   });
   await page.keyboard.press('v');
-  await advance(page, 70);
+  await advance(page, 85);
   state = await readState(page);
   assert.equal(state.powerBall.active, true, 'full-meter power input should empower the ball');
   assert.equal(state.powerBall.owner, 'left');
@@ -387,6 +691,50 @@ try {
   await capture(page, `${output}/02-freeze-power.png`);
   await advance(page, 2200);
   assert.equal((await readState(page)).players.right.frozen, false, 'the opponent should recover after Freeze expires');
+
+  await page.keyboard.press('r');
+  await page.waitForFunction(() => JSON.parse(window.render_game_to_text()).mode === 'countdown');
+  await advance(page, 3100);
+  await page.evaluate(() => {
+    window.__SKYHEAD_DEBUG__.resumePlay();
+    window.__SKYHEAD_DEBUG__.grantEquippedPower('big', 1);
+    window.__SKYHEAD_DEBUG__.setHumanPosition(600);
+    window.__SKYHEAD_DEBUG__.setHumanMeter(100);
+    window.__SKYHEAD_DEBUG__.setOpponentPosition(1080);
+    window.__SKYHEAD_DEBUG__.stunOpponent(12);
+    window.__SKYHEAD_DEBUG__.setBall({ x: 676, y: 529 });
+  });
+  await page.keyboard.press('v');
+  await advance(page, 450);
+  state = await readState(page);
+  assert.equal(state.powerBall.superpowerId, 'big', 'Big Guy should activate from a successful powered strike');
+  assert.ok(state.players.left.bigGuySeconds > 9.5, 'Big Guy should remain active for ten seconds');
+  assert.equal(state.players.left.bigGuyScale, 2, 'Joel should finish expanding to exactly twice his normal size');
+  assert.equal(state.players.left.grounded, true, 'the larger physics body should keep its feet grounded');
+  assert.equal(state.hud.announcement, '¡TÍO GRANDE!');
+  await capture(page, `${output}/02-big-guy-grown.png`);
+
+  await page.evaluate(() => {
+    const match = window.__SKYHEAD_GAME__.scene.getScene('Match');
+    window.__SKYHEAD_DEBUG__.setBall({ x: 640, y: 220 });
+    match.ball.freeze();
+  });
+  await advance(page, 8800);
+  state = await readState(page);
+  assert.equal(state.players.left.bigGuyScale, 2, 'Joel should remain fully enlarged before the closing animation');
+  const millisecondsToShrinkSample = Math.max(0, (state.players.left.bigGuySeconds - 0.28) * 1000);
+  await advance(page, millisecondsToShrinkSample);
+  state = await readState(page);
+  assert.ok(
+    state.players.left.bigGuyScale > 1 && state.players.left.bigGuyScale < 2,
+    `Joel should visibly shrink near expiry; got ${state.players.left.bigGuyScale}`,
+  );
+  await capture(page, `${output}/02-big-guy-shrinking.png`);
+  await advance(page, 500);
+  state = await readState(page);
+  assert.equal(state.players.left.bigGuySeconds, 0);
+  assert.equal(state.players.left.bigGuyScale, 1, 'Joel should return exactly to normal size after ten seconds');
+  assert.equal(state.players.left.grounded, true, 'shrinking should not lift Joel away from the pitch');
 
   await page.keyboard.press('p');
   state = await readState(page);
@@ -467,24 +815,47 @@ try {
   const beforeGoalState = await readState(page);
   const scoreBefore = beforeGoalState.score.left;
   const goalCheerBefore = beforeGoalState.audio.goalCheerPlays;
+  const goalWhistlesBefore = beforeGoalState.audio.whistleRequestedPlays;
+  const goalWhistlePlaysBefore = beforeGoalState.audio.whistlePlays;
   await page.evaluate(() => window.__SKYHEAD_DEBUG__.setBall({ x: 1185, y: 520, vx: 1 }));
   await advance(page, 40);
   state = await readState(page);
   assert.equal(state.mode, 'goal');
   assert.equal(state.score.left, scoreBefore + 1, 'fully crossing the right goal line should score for Joel');
-  assert.equal(state.audio.goalCheerPlays, goalCheerBefore + 1, 'a goal should trigger the supplied audience cheer');
+  assert.equal(state.audio.goalCheerPlays, goalCheerBefore, 'the former audience goal effect should no longer play');
+  assert.equal(state.audio.whistleRequestedPlays, goalWhistlesBefore + 1, 'a goal should request one whistle');
+  assert.equal(state.audio.whistlePlays, goalWhistlePlaysBefore + 1, 'the goal whistle should begin playback immediately');
+  assert.deepEqual(state.audio.recentWhistles.at(-1), { label: 'goal', cutoffMs: null }, 'the goal should retain a full-length whistle');
   await advance(page, 1800);
   state = await readState(page);
   assert.equal(state.mode, 'countdown');
   await page.waitForTimeout(220);
   await capture(page, `${output}/04-post-goal-reset.png`);
+  state = await readState(page);
   assert.equal(state.players.left.visualFrame, 0, 'the scorer should show its initial idle frame during the countdown');
   assert.equal(state.players.right.visualFrame, 0, 'the defender should show its initial idle frame during the countdown');
 
+  const finalWhistlesBefore = state.audio.whistleRequestedPlays;
+  const finalWhistlePlaysBefore = state.audio.whistlePlays;
   await page.evaluate(() => window.__SKYHEAD_DEBUG__.forceResult('left'));
   state = await readState(page);
   assert.equal(state.mode, 'result');
   assert.equal(state.score.winner, 'left');
+  assert.equal(state.audio.lastWhistleSequenceCount, 3, 'the final signal should schedule exactly three whistles');
+  assert.equal(state.audio.whistleRequestedPlays, finalWhistlesBefore + 3);
+  assert.equal(state.audio.whistlePlays, finalWhistlePlaysBefore + 1, 'the first final whistle should play immediately');
+  assert.equal(state.audio.pendingWhistles, 2);
+  await page.evaluate(() => window.__SKYHEAD_DEBUG__.forceResult('left'));
+  assert.equal((await readState(page)).audio.whistleRequestedPlays, finalWhistlesBefore + 3, 'showing the result twice must not duplicate the final signal');
+  await page.waitForTimeout(1950);
+  state = await readState(page);
+  assert.equal(state.audio.whistlePlays, finalWhistlePlaysBefore + 3, 'all three final whistles should play in sequence');
+  assert.equal(state.audio.pendingWhistles, 0);
+  assert.deepEqual(state.audio.recentWhistles.slice(-3), [
+    { label: 'final', cutoffMs: null },
+    { label: 'final', cutoffMs: null },
+    { label: 'final', cutoffMs: null },
+  ], 'the match-end sequence should retain three full whistles');
   await capture(page, `${output}/04-result.png`);
   await page.keyboard.press('Enter');
   await page.waitForFunction(() => JSON.parse(window.render_game_to_text()).mode === 'countdown');
@@ -509,11 +880,14 @@ try {
     if (message.type() === 'error') mobileErrors.push(`console: ${message.text()}`);
   });
   let mobileState;
-  await mobilePage.goto(url, { waitUntil: 'networkidle' });
-  await mobilePage.waitForFunction(() => JSON.parse(window.render_game_to_text()).mode === 'intro');
+  await mobilePage.goto(url, { waitUntil: 'domcontentloaded' });
+  await waitThroughSplash(mobilePage, `${output}/05-touch-splash-option-a.png`);
   mobileState = await readState(mobilePage);
   assert.equal(mobileState.inputMode, 'touch');
   assert.equal(mobileState.controls.pause[0], 'on-screen pause');
+  assert.deepEqual(mobileState.controls.sprint, ['double-tap and hold the same direction']);
+  assert.deepEqual(mobileState.controls.kickBoost, ['repeat K or L during the kick animation']);
+  assert.deepEqual(mobileState.controls.chilena, ['tap K or L twice under a reachable overhead ball']);
   await capture(mobilePage, `${output}/05-touch-intro.png`);
 
   await touchControl(mobilePage, 640, 650, 45);
@@ -521,9 +895,10 @@ try {
   mobileState = await readState(mobilePage);
   assert.equal(mobileState.audio.settings.musicVolume, 0.15);
   assert.equal(mobileState.audio.settings.effectsVolume, 0.2);
-  await touchControl(mobilePage, 935, 487, 40);
+  assert.equal(mobileState.difficulty, 'normal');
+  await touchControl(mobilePage, 935, 512, 40);
   assert.equal((await readState(mobilePage)).audio.settings.effectsMuted, true, 'tablet settings should mute effects by touch');
-  await touchControl(mobilePage, 935, 487, 40);
+  await touchControl(mobilePage, 935, 512, 40);
   assert.equal((await readState(mobilePage)).audio.settings.effectsMuted, false);
   await capture(mobilePage, `${output}/05-touch-settings.png`);
   await touchControl(mobilePage, 92, 52, 40);
@@ -535,6 +910,7 @@ try {
   mobileState = await readState(mobilePage);
   assert.equal(mobileState.touchControls, true);
   assert.equal(mobileState.audio.audienceRequested, true, 'tablet matches should request the audience ambience');
+  assert.equal(mobileState.controls.chilena, 'tap K or L twice under a reachable overhead ball');
 
   const touchStartX = mobileState.players.left.x;
   await touchControl(mobilePage, 238, 630, 320);
@@ -543,6 +919,26 @@ try {
   const touchRightX = mobileState.players.left.x;
   await touchControl(mobilePage, 98, 630, 260);
   assert.ok((await readState(mobilePage)).players.left.x < touchRightX, 'touch left should reverse movement');
+
+  await mobilePage.evaluate(() => {
+    window.__SKYHEAD_DEBUG__.resumePlay();
+    window.__SKYHEAD_DEBUG__.setHumanPosition(400);
+    window.__SKYHEAD_DEBUG__.setOpponentPosition(1080);
+    window.__SKYHEAD_DEBUG__.setBall({ x: 350, y: 400 });
+  });
+  await touchControl(mobilePage, 238, 630, 35);
+  await advance(mobilePage, 70);
+  const touchSprintPoint = await canvasPoint(mobilePage, 238, 630);
+  await mobilePage.mouse.move(touchSprintPoint.x, touchSprintPoint.y);
+  await mobilePage.mouse.down();
+  await advance(mobilePage, 220);
+  mobileState = await readState(mobilePage);
+  assert.equal(mobileState.players.left.sprinting, true, 'touch double-tap-and-hold should use the same sprint mechanic');
+  assert.equal(mobileState.players.left.sprintSpeedMultiplier, 1.5);
+  await capture(mobilePage, `${output}/05-touch-sprint.png`);
+  await mobilePage.mouse.up();
+  await advance(mobilePage, 20);
+  assert.equal((await readState(mobilePage)).players.left.sprinting, false);
 
   const touchGroundY = (await readState(mobilePage)).players.left.y;
   await touchControl(mobilePage, 1020, 630, 80);
@@ -560,6 +956,52 @@ try {
   assert.ok((await readState(mobilePage)).players.left.kickCooldown > 0, 'touch kick should activate');
   await advance(mobilePage, 520);
 
+  await mobilePage.evaluate(() => {
+    window.__SKYHEAD_DEBUG__.resumePlay();
+    window.__SKYHEAD_DEBUG__.setHumanPosition(600);
+    window.__SKYHEAD_DEBUG__.setHumanMeter(0);
+    window.__SKYHEAD_DEBUG__.setOpponentPosition(1080);
+    window.__SKYHEAD_DEBUG__.setBall({ x: 620, y: 360, vx: 0.2, vy: -2 });
+  });
+  const touchChilenasBefore = (await readState(mobilePage)).players.left.chilenaSuccesses;
+  await touchControl(mobilePage, 1165, 610, 17);
+  assert.equal((await readState(mobilePage)).players.left.chilenaSuccesses, touchChilenasBefore, 'one touch kick must not trigger a chilena');
+  await touchControl(mobilePage, 1165, 610, 17);
+  mobileState = await readState(mobilePage);
+  assert.equal(mobileState.players.left.chilenaSuccesses, touchChilenasBefore + 1, 'the tablet kick button should trigger the same two-tap chilena');
+  assert.equal(mobileState.players.left.chilenaActive, true);
+  assert.equal(mobileState.players.left.meter, 100);
+  assert.equal(mobileState.powerBall.superpowerId, 'chilena');
+  await advance(mobilePage, 150);
+  await capture(mobilePage, `${output}/05-touch-chilena.png`);
+  await advance(mobilePage, 1150);
+  mobileState = await readState(mobilePage);
+  assert.equal(mobileState.players.left.chilenaActive, false);
+  assert.equal(mobileState.players.left.facing, 1);
+  assert.equal(mobileState.players.left.grounded, true);
+  assert.ok(Math.abs(mobileState.players.left.y - 547) < 8, `tablet chilena landing should preserve Joel's ground height; got y=${mobileState.players.left.y}`);
+
+  await mobilePage.evaluate(() => {
+    window.__SKYHEAD_DEBUG__.resumePlay();
+    window.__SKYHEAD_DEBUG__.setHumanPosition(600);
+    window.__SKYHEAD_DEBUG__.setHumanMeter(24);
+    window.__SKYHEAD_DEBUG__.setOpponentPosition(1080);
+    window.__SKYHEAD_DEBUG__.setBall({ x: 678, y: 537 });
+  });
+  for (let tap = 0; tap < 6; tap += 1) {
+    await touchControl(mobilePage, 1165, 610, 17);
+  }
+  mobileState = await readState(mobilePage);
+  assert.equal(mobileState.lastBoostedStrike?.side, 'left', 'touch mash should produce a boosted basic kick');
+  assert.equal(mobileState.lastBoostedStrike?.energySpent, 24);
+  assert.ok(
+    mobileState.ball.vx > 19 && mobileState.ball.vx < 23,
+    `touch boost should remain stronger than a basic kick and below power; got ${mobileState.ball.vx}`,
+  );
+  assert.ok(mobileState.meterFlash.left > 0);
+  await capture(mobilePage, `${output}/05-touch-boosted-kick.png`);
+  await advance(mobilePage, 520);
+
   mobileState = await readState(mobilePage);
   await mobilePage.evaluate(({ x, y }) => {
     window.__SKYHEAD_DEBUG__.resumePlay();
@@ -567,7 +1009,7 @@ try {
     window.__SKYHEAD_DEBUG__.setOpponentPosition(1080);
     window.__SKYHEAD_DEBUG__.setBall({ x: x + 78, y: 537 });
   }, mobileState.players.left);
-  await touchControl(mobilePage, 1010, 505, 60);
+  await touchControl(mobilePage, 1010, 505, 80);
   assert.ok((await readState(mobilePage)).ball.vy < -9, 'touch lob should launch the ball upward');
   await advance(mobilePage, 520);
 
@@ -631,8 +1073,8 @@ try {
   penaltyPage.on('console', (message) => {
     if (message.type() === 'error') penaltyErrors.push(`console: ${message.text()}`);
   });
-  await penaltyPage.goto(url, { waitUntil: 'networkidle' });
-  await penaltyPage.waitForFunction(() => JSON.parse(window.render_game_to_text()).mode === 'intro');
+  await penaltyPage.goto(url, { waitUntil: 'domcontentloaded' });
+  await waitThroughSplash(penaltyPage);
   await touchControl(penaltyPage, 1190, 34, 30);
   await penaltyPage.waitForFunction(() => JSON.parse(window.render_game_to_text()).language === 'es');
   await capture(penaltyPage, `${output}/07-intro-es-tablet.png`);
@@ -641,8 +1083,8 @@ try {
   await capture(penaltyPage, `${output}/07-power-lab-tablet.png`);
   await touchControl(penaltyPage, 805, 638, 35);
   let penaltyState = await readState(penaltyPage);
-  assert.equal(penaltyState.challenge.operation, 'addition');
-  assert.ok(penaltyState.challenge.left >= 10 && penaltyState.challenge.right >= 10);
+  assert.equal(penaltyState.operationMode, 'random');
+  assertAgeAppropriateChallenge(penaltyState.challenge);
   await answerChallenge(penaltyPage, penaltyState.challenge, false);
   penaltyState = await readState(penaltyPage);
   assert.equal(penaltyState.challenge?.status, 'locked', 'a wrong answer should immediately close further answer attempts');
@@ -650,8 +1092,8 @@ try {
   assert.equal(penaltyState.powers.fireball, 0, 'a wrong answer must not award a charge');
   await capture(penaltyPage, `${output}/07-math-penalty-tablet.png`);
 
-  await penaltyPage.reload({ waitUntil: 'networkidle' });
-  await penaltyPage.waitForFunction(() => JSON.parse(window.render_game_to_text()).mode === 'intro');
+  await penaltyPage.reload({ waitUntil: 'domcontentloaded' });
+  await waitThroughSplash(penaltyPage);
   await touchControl(penaltyPage, 640, 580, 35);
   await penaltyPage.waitForFunction(() => JSON.parse(window.render_game_to_text()).mode === 'power-lab');
   penaltyState = await readState(penaltyPage);
@@ -661,8 +1103,8 @@ try {
   assert.deepEqual(penaltyErrors, [], `penalty browser emitted errors:\n${penaltyErrors.join('\n')}`);
   await penaltyContext.close();
 
-  await writeFile(`${output}/summary.json`, JSON.stringify({ passed: true, scenarios: 60 }, null, 2));
-  process.stdout.write('Browser game checks passed: bilingual settings/audio caching, randomized math Lab, persistent earning/equipping/cooldown, enhanced power use, full gameplay, and touch system flow.\n');
+  await writeFile(`${output}/summary.json`, JSON.stringify({ passed: true, checks: 225 }, null, 2));
+  process.stdout.write('Browser game checks passed: splash, random math, persistence, bilingual settings, whistle signals, difficulty gating, sprint/boost, Big Guy, full gameplay, and touch flow.\n');
 } finally {
   await browser?.close();
   server.kill('SIGTERM');

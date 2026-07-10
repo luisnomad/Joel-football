@@ -29,6 +29,79 @@ body {
   touch-action: none;
 }
 
+#startup-splash {
+  position: fixed;
+  inset: 0;
+  z-index: 1000;
+  display: grid;
+  place-items: center;
+  overflow: hidden;
+  background: #071426;
+  opacity: 1;
+  isolation: isolate;
+}
+
+#startup-splash::after {
+  position: absolute;
+  z-index: 2;
+  inset: 0;
+  background: #ffffff;
+  content: "";
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 420ms ease-in-out;
+}
+
+#startup-splash.is-fading-to-white::after {
+  opacity: 1;
+}
+
+#startup-splash.is-revealing-menu {
+  pointer-events: none;
+  opacity: 0;
+  transition: opacity 460ms ease-in-out;
+}
+
+#startup-splash img {
+  position: relative;
+  z-index: 0;
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+}
+
+.startup-spinner {
+  position: absolute;
+  z-index: 1;
+  right: max(22px, env(safe-area-inset-right));
+  bottom: max(22px, env(safe-area-inset-bottom));
+  width: 38px;
+  height: 38px;
+  border: 4px solid rgb(255 255 255 / 30%);
+  border-top-color: #ffffff;
+  border-radius: 50%;
+  filter: drop-shadow(0 2px 7px rgb(0 0 0 / 55%));
+  animation: startup-spin 720ms linear infinite;
+  transition: opacity 120ms ease-out;
+}
+
+#startup-splash.is-fading-to-white .startup-spinner {
+  opacity: 0;
+}
+
+@keyframes startup-spin {
+  to {
+    transform: rotate(1turn);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .startup-spinner {
+    animation-duration: 1.6s;
+  }
+}
+
 canvas {
   display: block;
   margin: auto;

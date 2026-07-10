@@ -359,3 +359,157 @@ Original prompt: Create a polished, playable 2D browser game with the dynamics o
   client pass, inspected armed/desktop Freeze/tablet Freeze screenshots,
   dependency audit with zero findings, production build, refreshed website
   copy, and complete Astro build. No page or console errors were produced.
+
+## Big Guy power request
+
+- Original prompt for this iteration: replace Rainbow with “Big Guy!” / “¡Tío
+  Grande!”, making Joel twice his size for ten seconds with animated expansion
+  and contraction.
+- Traced Rainbow through the data-driven power catalog, profile persistence,
+  successful powered-strike flow, Fighter rendering/physics, diagnostics, and
+  browser tests.
+- Compatibility decision: migrate saved `rainbow` charges and equipment to the
+  new `big` power instead of discarding a child's earned inventory.
+- Added a pure ten-second transformation state with 0.4-second smoothstep grow
+  and shrink phases. Fighter scale drives both the rendered sprite and Matter
+  compound hitbox around a foot-level anchor, so the larger Joel remains
+  grounded and gains genuinely larger interception/contact reach.
+
+## Multiplayer architecture investigation
+
+- Explored the current roster, provider/input seams, Phaser/Matter update loop,
+  match lifecycle, powers, profile trust boundary, publishing model, and test
+  hooks for a selectable-character and same-LAN multiplayer approach.
+- Validated the working baseline: 37/37 unit tests, production build, current
+  browser E2E suite, and the required web-game Playwright client all complete.
+- Added `MULTIPLAYER-APPROACH.md` with a four-character roster plan, a local
+  Node/Colyseus authoritative server, headless Matter.js simulation extraction,
+  QR plus manual host/port/room/PIN joining, input/state/reconnect protocols,
+  phased file-level implementation, security limits, and acceptance tests.
+- No gameplay implementation was changed for this investigation.
+- Final document handoff after later worktree changes: 44/44 unit tests and the
+  production build pass. Two browser-suite reruns stopped at different tablet
+  settings touch assertions (music-slider adjustment and effects mute), so Phase
+  0 in the approach explicitly requires stabilizing that baseline before the
+  simulation extraction begins.
+- Replaced the bilingual Lab card and shot contract, added live diagnostics for
+  remaining seconds/scale, and verified the selected Spanish name and copy fit
+  the existing card without resizing regressions.
+- Browser coverage activates Big Guy through a real V-key powered strike,
+  asserts exact 2× scale and grounded physics, samples the closing shrink, and
+  confirms exact return to 1× after expiry. Two consecutive complete browser
+  runs passed; grown/shrinking screenshots were visually inspected.
+- Verification for this iteration: 37/37 unit tests, production build, all 67
+  browser scenarios twice, required web-game client match pass, and dependency
+  audit with zero vulnerabilities. No remaining TODOs for Big Guy.
+
+## Automatic loading splash request
+
+- Original prompt for this iteration: remove the splash interaction and all
+  overlay text; show only the selected image plus a small bottom-right spinner,
+  then automatically cross-fade through white into the menu after required
+  assets are cached or five seconds elapse, whichever happens first.
+- The required visual cache is Phaser's completed BootScene preload. Splash
+  begins its asset-ready transition only after that point, with the five-second
+  deadline measured from the first inline page paint so it is a true startup
+  cap rather than an additional five-second wait.
+- Follow-up clarified that children should have time to enjoy the artwork. The
+  asset-ready transition now has a strict three-second minimum display time,
+  while retaining the five-second cap.
+- A full regression run exposed the existing intermittent Phaser Escape-key
+  pause listener again. It now uses one lifecycle-bound browser `keydown`
+  listener, avoiding scene-restart timing loss without double toggles.
+- Final startup behavior: image and bottom-right spinner only; no prompt or
+  input; three-second minimum measured from first paint; required-texture-cache
+  readiness thereafter; five-second intentional cap; 420 ms fade to white,
+  menu scene swap, then 460 ms white reveal.
+- Inspected desktop, tablet, image-to-white, and white-to-menu captures. The
+  official web-game client confirmed automatic Splash → Intro → Match flow.
+  Final verification: 37/37 unit tests, all 71 browser scenarios twice,
+  production game build, zero dependency vulnerabilities, refreshed website
+  copy, and complete Astro production build. No remaining splash TODOs.
+
+## System-selected Math Lab operations
+
+- Original prompt for this iteration: children must not choose the operation
+  type because they will repeatedly select the easiest option.
+- Added a pure uniform operation selector and removed operation state, buttons,
+  scene parameters, debug selection, and action diagnostics from the Lab. Each
+  newly opened challenge independently chooses addition, subtraction,
+  multiplication, or division.
+- Replaced the selector row with a bilingual, non-interactive random-math
+  banner and updated the subtitle. Browser diagnostics expose
+  `operationMode: random` plus only the last system-selected operation.
+- Verified correct-answer earning and wrong-answer cooldown against randomly
+  selected operations on desktop and tablet, including operation-specific
+  age-nine operand bounds. The revised English/Spanish Lab and challenge were
+  visually inspected and the official web-game client confirmed there is no
+  operation-selection action.
+- Final verification: 38/38 unit tests, all 73 browser scenarios, production
+  game build, zero dependency vulnerabilities, refreshed Netlify website copy,
+  and complete Astro production build. No remaining random-operation TODOs.
+
+## Sprint, meter-backed kick boost, and AI difficulty
+
+- Added a shared double-tap direction contract with a 280 ms window. Holding
+  the second same-direction press starts a 1.5× sustained sprint; release,
+  reversal, dash, stun, and knockback stop it. A sprint already underway keeps
+  its momentum through a jump, while an airborne double-tap cannot start one.
+- Sprint presentation uses faster run-pose cadence, takeoff/step dust, and
+  subtle speed lines. Dash remains an independent short aggressive lunge.
+- Added optional provider intent fields `sprint` and `kickBoost`. They pass
+  through the same normalized Fighter mechanics for keyboard, touch, heuristic
+  AI, human providers, buffered network providers, and future LLM providers.
+- Repeated kick/lob taps during the active kick pose add up to three boost
+  steps. Each step costs at most eight meter, the total strength caps at 27%
+  for a drive, and a lob gains more lift than speed. A full basic boost remains
+  weaker than a 100% power shot.
+- The first kick contact remains immediate. Further taps during that same pose
+  continue accelerating the already-launched ball, making the mechanic usable
+  at real child tapping speeds. Meter is deducted only after contact; a miss is
+  free. Gold impact particles, camera feedback, and a brief meter flash show
+  the cost.
+- Added persistent bilingual Easy/Normal/Hard Settings. Easy strips both
+  advanced intents at the MatchScene AI boundary (including custom AI
+  providers); Normal and Hard allow them, with Hard choosing them more
+  aggressively. Human providers are never restricted.
+- Updated English/Spanish intro instructions, Settings layout, diagnostics,
+  provider documentation, README controls, and the acceptance spec. Both
+  Settings languages and desktop/tablet gameplay captures were inspected.
+- Final verification: 45/45 unit tests, 211 real-browser assertions covering
+  desktop and touch sprint/boost/difficulty flows, the required web-game client
+  with no console errors, production build, dependency audit with zero
+  vulnerabilities, refreshed `luisnomad.com` game copy, and a complete Astro
+  production build. No remaining TODOs for this iteration.
+
+## Big Guy zero-count badge fix
+
+- A `2×` ability icon beside the actual `×0` inventory count made an empty Big
+  Guy card look as though it owned two charges. Inventory persistence and
+  counts were correct; the ambiguity was purely presentational.
+- Added a regression test that rejects numeric or multiplier-like icons for Big
+  Guy, confirmed it failed against `2×`, then changed the badge to `G`.
+- Visually inspected English and Spanish Power Lab captures showing `G` and the
+  single authoritative `×0` count. Final verification: 46/46 unit tests, the
+  complete 211-assertion desktop/tablet browser suite, official web-game client
+  with no console errors, refreshed website copy, and successful Astro build.
+
+## Referee whistle match signals
+
+- Added the supplied 0.85-second whistle recording to the active effects cache
+  and effects-volume channel. It replaces the former audience goal cheer, so
+  the active cache remains nine files rather than growing on tablets.
+- Added a pure countdown transition helper: the visible 3–2–1 seconds each
+  request one whistle exactly once, while repeated fixed-update frames and the
+  `GO` frame request none. New rounds reset the transition state correctly.
+- Goals play one immediate whistle. A guarded result transition requests three
+  whistles at 0.9-second intervals; duplicate result calls do not schedule a
+  second sequence, and scene changes/muting/page hiding cancel pending timers.
+- Audio diagnostics expose requested/started whistles, the latest sequence
+  size, and pending sounds. Settings copy and product documentation now describe
+  the referee signals rather than the retired goal cheer.
+- Final verification: 48/48 unit tests, 222 browser assertions including real
+  three-whistle timing, official web-game client showing exactly three
+  countdown playbacks and no console errors, production build, and dependency
+  audit with zero vulnerabilities. Refreshed the website game copy and
+  completed the enclosing Astro production build.

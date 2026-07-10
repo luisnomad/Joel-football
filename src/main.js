@@ -7,6 +7,7 @@ import { IntroScene } from './game/scenes/IntroScene.js';
 import { MatchScene } from './game/scenes/MatchScene.js';
 import { PowerLabScene } from './game/scenes/PowerLabScene.js';
 import { SettingsScene } from './game/scenes/SettingsScene.js';
+import { SplashScene } from './game/scenes/SplashScene.js';
 import { arcadeAudio } from './game/services/ArcadeAudio.js';
 
 const config = {
@@ -37,7 +38,7 @@ const config = {
       debug: false,
     },
   },
-  scene: [BootScene, IntroScene, SettingsScene, PowerLabScene, MatchScene],
+  scene: [BootScene, SplashScene, IntroScene, SettingsScene, PowerLabScene, MatchScene],
 };
 
 const game = new Phaser.Game(config);
