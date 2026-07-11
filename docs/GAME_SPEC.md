@@ -63,6 +63,11 @@ asset.
   animation. Up to three extra presses borrow at most 24 meter only when the
   ball is actually hit. A drive gains up to 27% speed; a lob gains up to 27%
   lift and 16% speed. Neither exceeds the standard full-meter power shot.
+- Chilena: press either kick button twice under a reachable overhead ball. The
+  resulting shot is aimed from the ball toward the center of the opponent's
+  goal; aerial chilenas therefore drive downward instead of sailing over the
+  crossbar. Normal player collision remains active, so the defender can block
+  the shot with their body.
 - Touch controls expose every gameplay action plus pause, restart, menu, and
   fullscreen on pointer-capable coarse/touch devices.
 
@@ -74,10 +79,17 @@ asset.
   wall bounce, a terminal speed, and reliable collision groups.
 - A late/poorly positioned head contact can deflect the ball backward.
 - Kicks add a strong horizontal impulse with a smaller lift component.
+- The ball-kick sound plays only when a kick actually contacts the ball; a
+  missed swing is silent. Kick poses do not display a synthetic oval or strike
+  sensor marker beside the character.
 - Goals have physical posts/crossbars; the ball can ricochet off them.
 - If a slow ball settles on the flat top of either crossbar, it is returned
   toward the playable pitch after a brief dwell instead of remaining stuck.
 - A goal counts only when the ball fully crosses a goal line below the bar.
+- Goal detection evaluates the one-time swept line crossing at high speed and
+  requires the full ball to fit below the crossbar and above the pitch. A shot
+  that crosses above the bar cannot become a goal later by falling behind the
+  line. Any shot that tunnels completely off-screen is rebounded into view.
 - Both players can cross midfield and use the full playable pitch, but cannot
   enter the space behind either goal line.
 
@@ -85,8 +97,11 @@ asset.
 
 - Ground movement has quick acceleration, braking, a high arcade max speed,
   and stable footing.
-- Running must feel fast for the confined arena and visibly alternate planted
-  and extended-leg poses instead of sliding a static sprite.
+- Running must feel fast for the confined arena and use a distance-driven
+  four-phase contact/passing/contact/passing cycle instead of sliding or
+  alternating directly with the idle drawing.
+- Kicks visually progress through anticipation, contact, and recovery while
+  retaining the existing strike window, boost taps, and cooldown timing.
 - Sustained sprint has a faster leg cadence, takeoff dust, and subtle speed
   lines. Dash remains the separate short attacking lunge.
 - Before overtaking the defender, each player always faces the rival goal;
@@ -200,7 +215,7 @@ asset.
 
 ### Learning and inventory loop
 
-- The Power Lab presents ten collectible superpowers and four selectable math
+- The Power Lab presents five collectible superpowers and four selectable math
   operations: addition, subtraction, multiplication, and division.
 - The age-nine difficulty profile uses two-digit addition, subtraction with
   two-digit subtrahends and results of at least ten, multiplication from 3×3
@@ -221,29 +236,36 @@ asset.
 
 ### Superpower catalog
 
-Each equipped charge augments Joel's next successful full-meter power strike.
-A missed kick does not consume a charge. The ordinary meter power remains
-available when no equipped charge is available.
+Powers have one of two explicit activation rules. Shot powers augment Joel's
+next successful full-meter strike, and a miss does not consume their charge.
+Instant powers activate and consume their charge as soon as the power button is
+pressed at 100%. The ordinary meter power remains available when no equipped
+charge is available.
 
 1. Fireball / Bola de fuego — hotter trail and stronger shot velocity.
-2. Ice Freeze / Congelación — freezes the defender on contact.
-3. Lightning / Relámpago — fastest direct shot.
-4. Tornado / Tornado — high-rising, strongly spinning shot.
-5. Rocket / Cohete — fast, flat shot for ground openings.
-6. Big Guy! / ¡Tío Grande! — Joel grows smoothly to twice his normal size for
+2. Ice Freeze / Congelación — instantly freezes the opponent for two seconds,
+   independent of ball contact.
+3. Big Guy! / ¡Tío Grande! — Joel grows smoothly to twice his normal size for
    ten seconds, then smoothly returns to normal.
-7. Boomerang / Bumerán — reverses horizontal direction once in flight.
-8. Warp / Teletransporte — jumps forward once without teleporting directly
-   across a goal line.
-9. Shield / Escudo — grants Joel protection from the next physical stun.
-10. Hyper Mode / Modo turbo — temporarily boosts Joel's run, jump, and dash.
+4. Shield / Escudo — instantly grants protection from the next physical stun.
+5. Hyper Mode / Modo turbo — instantly boosts Joel's run, jump, and dash for
+   five seconds.
+
+Profiles from the former ten-power catalog preserve progress: Lightning,
+Tornado, Rocket, Boomerang, and Warp charges are consolidated into Fireball,
+and retired equipped powers migrate to Fireball.
 
 ### Match presentation and rules
 
 - The HUD shows the equipped power and remaining charge count without covering
-  gameplay. Power-shot trail color communicates the active special.
-- The charge is consumed only after the powered ball strike succeeds. The
-  resulting effect has a bounded duration and is cleared safely between rounds.
+  gameplay. Power-shot trail color communicates a shot special. Active
+  character effects use a pulsing sprite-local glow, contrast tint, and small
+  particles instead of a generic circle around the fighter.
+- Power activation callouts use short localized labels and are automatically
+  reduced to a bounded width instead of expanding across the full playfield.
+- Shot charges are consumed only after the powered ball strike succeeds;
+  instant charges are consumed on activation. Every effect has a bounded
+  duration or a single explicit use and is cleared safely between rounds.
 - Countering an enhanced shot removes its character-specific secondary effect;
   the defender returns a normal counter-power shot.
 - The provider-driven AI continues to use the standard meter power and does not
@@ -252,8 +274,8 @@ available when no equipped charge is available.
 ### V2 verification
 
 - Pure tests cover all math generators, answer choices, bilingual lookup,
-  inventory earning/equipping/consumption, sanitization, and all ten shot
-  modifiers.
+  inventory earning/equipping/consumption, retired-power migration, the five
+  focused powers, and goal-centered chilena aiming.
 - Browser tests cover language switching and persistence, Lab navigation,
   incorrect/correct answers, charge accumulation, equipping, match HUD state,
   successful charge consumption, and one representative gameplay effect.

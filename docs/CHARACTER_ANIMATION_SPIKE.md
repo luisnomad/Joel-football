@@ -2,11 +2,18 @@
 
 Date: 2026-07-10
 
+Implementation status: completed. The vertical slice was successful and was
+extended to both players. Runtime uses three unique authored run drawings in a
+four-phase distance-driven loop plus three staged kick drawings. Source prompts,
+reference sheets, candidates, selected frames, and final atlas mapping are in
+`source-assets/animation/README.md`.
+
 ## Decision
 
 Keep the characters as raster artwork. Add a small number of deliberately
-authored frames for the run and kick actions, pack them into trimmed texture
-atlases, and add subtle whole-sprite squash, stretch, lean, and vertical motion.
+authored frames for the run and kick actions and pack them into registered
+texture atlases. Keep planted feet on one shared ground anchor; do not add
+display-origin vertical motion to grounded poses.
 
 Do not convert the current flattened PNG characters to SVG for this iteration.
 SVG conversion does not recover joints or hidden body parts, and Phaser loads
@@ -17,7 +24,8 @@ The recommended vertical slice is one character with:
 - a four-frame run loop (three new frames plus the current running frame);
 - a three-frame kick (new anticipation, current contact, new follow-through);
 - the current idle, jump, dash, and stun poses;
-- procedural idle breathing, run bob/lean, takeoff stretch, and landing squash.
+- stable source-space foot registration plus optional non-vertical lean or
+  impact accents that never move planted feet through the pitch.
 
 That adds five drawings per character and brings each character to eleven
 frames. It should deliver most of the visible improvement without introducing a
@@ -50,7 +58,7 @@ should therefore remain very small for two fighters.
 
 | Option | Visual ceiling | Production risk | Runtime cost | Fit for this game |
 | --- | --- | --- | --- | --- |
-| Targeted raster frames plus procedural motion | High at the current display size | Medium; new drawings need cleanup | Very low | Best |
+| Targeted registered raster frames | High at the current display size | Medium; new drawings need cleanup | Very low | Best |
 | AI or optical-flow in-betweens, baked to raster | Medium when motion is small | High; limbs and facial features can morph | Very low after baking | Useful only as an authoring experiment |
 | Segmented raster puppet with bones | High for reusable movement, sometimes visibly puppet-like | High; hidden limbs and clean joints must be reconstructed | Low to medium | Consider only for a much larger move set or roster |
 | Auto-traced SVG poses and path morphing | Low without a manual redraw | Very high; traced poses do not share compatible paths | Medium | Poor |

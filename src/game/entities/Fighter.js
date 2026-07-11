@@ -1,10 +1,27 @@
 import Phaser from 'phaser';
-import { CATEGORIES, DEFAULT_STATS, GROUND_Y, PLAYER_TUNING } from '../constants.js';
+import {
+  CATEGORIES,
+  CROSSBAR_Y,
+  DEFAULT_STATS,
+  GOAL_LINE_LEFT,
+  GOAL_LINE_RIGHT,
+  GROUND_Y,
+  PLAYER_TUNING,
+} from '../constants.js';
 import { resolveFacing } from '../pure/facing.js';
 import { activateBigGuy, createBigGuyState, stepBigGuy } from '../pure/bigGuy.js';
 import { armPower, chargeMeter } from '../pure/power.js';
 import { addKickBoostTaps, kickBoostMultipliers, resolveKickBoost } from '../pure/kickBoost.js';
 import { SPRINT_FORCE_MULTIPLIER, SPRINT_SPEED_MULTIPLIER } from '../pure/sprint.js';
+import {
+  CHARACTER_GROUND_ANCHOR_Y,
+  CHARACTER_FRAMES,
+  ENHANCED_CHARACTER_FRAME_COUNT,
+  RUN_FRAME_DISTANCE,
+  isGroundedVisualFrame,
+  kickVisualAt,
+  runVisualAt,
+} from '../pure/characterAnimation.js';
 import {
   CHILENA_MAX_SECONDS,
   CHILENA_MIN_AIRTIME_SECONDS,
@@ -55,6 +72,10 @@ export class Fighter {
     this.bigGuy = createBigGuyState();
     this.runCycle = 0;
     this.lastRunFrame = 0;
+    this.lastAnimationX = x;
+    this.currentRunPhase = null;
+    this.currentAnimationStage = 'idle';
+    this.visualOffsetY = 0;
     this.currentPose = 'idle';
 
     const { Bodies, Body } = Phaser.Physics.Matter.Matter;
@@ -86,6 +107,7 @@ export class Fighter {
 
     this.sprite = scene.add.sprite(x, GROUND_Y - 89, texture, 0);
     this.hasPoseSheet = this.sprite.texture.frameTotal >= 6;
+    this.hasEnhancedPoseSheet = this.sprite.texture.frameTotal >= ENHANCED_CHARACTER_FRAME_COUNT;
     this.sprite.setDisplaySize(this.hasPoseSheet ? 185 : 205, this.hasPoseSheet ? 240 : 205);
     this.baseSpriteScale = { x: this.sprite.scaleX, y: this.sprite.scaleY };
     this.bigGuyScale = 1;
@@ -106,6 +128,9 @@ export class Fighter {
       .setDisplaySize(this.sprite.displayWidth, this.sprite.displayHeight)
       .setDepth(18.5)
       .setVisible(false);
+
+    this.statusGlow = this.sprite.preFX?.addGlow?.(0xffffff, 0, 0, false) ?? null;
+    this.chilenaGlow = this.chilenaVisual.preFX?.addGlow?.(0xff7b32, 0, 0, false) ?? null;
 
     this.aura = scene.add.graphics().setDepth(17);
   }
@@ -149,14 +174,23 @@ export class Fighter {
     this.sprintRequiresRelease = false;
     this.runCycle = 0;
     this.lastRunFrame = 0;
+    this.lastAnimationX = x;
+    this.currentRunPhase = null;
+    this.currentAnimationStage = 'idle';
+    this.visualOffsetY = 0;
     this.currentPose = 'idle';
     this.setFacing(this.baseFacing);
     if (this.hasPoseSheet) this.sprite.setFrame(0);
+    this.sprite.setOrigin(0.5, 0.5);
     this.sprite.clearTint();
+    if (this.statusGlow) this.statusGlow.outerStrength = 0;
+    if (this.chilenaGlow) this.chilenaGlow.outerStrength = 0;
     this.aura.clear();
   }
 
   update(intent, dt, opponentX) {
+    const animationDistance = Math.abs(this.sprite.x - this.lastAnimationX);
+    this.lastAnimationX = this.sprite.x;
     const wasKicking = this.kickTimer > 0;
     this.kickTimer = Math.max(0, this.kickTimer - dt);
     if (wasKicking && this.kickTimer === 0) {
@@ -183,12 +217,10 @@ export class Fighter {
     if (this.stunned) {
       if (this.chilenaActive) this.finishChilena();
       this.stopSprint(true);
-      this.sprite.setTint(this.freezeTimer > 0 ? 0x78ddff : 0xb5c6d9);
       this.updatePose();
       this.renderAura();
       return;
     }
-    this.sprite.clearTint();
 
     if (this.chilenaActive) {
       this.continueChilenaAnimation(dt);
@@ -260,8 +292,13 @@ export class Fighter {
     }
 
     if (this.grounded && Math.abs(this.sprite.body.velocity.x) > 0.65) {
-      const sprintCadence = this.sprinting ? 1.5 : 1;
-      this.runCycle += dt * Math.max(7, Math.abs(this.sprite.body.velocity.x) * 1.25) * sprintCadence;
+      if (this.hasEnhancedPoseSheet) {
+        const travelled = animationDistance > RUN_FRAME_DISTANCE * 2 ? 0 : animationDistance;
+        this.runCycle += travelled / RUN_FRAME_DISTANCE;
+      } else {
+        const sprintCadence = this.sprinting ? 1.5 : 1;
+        this.runCycle += dt * Math.max(7, Math.abs(this.sprite.body.velocity.x) * 1.25) * sprintCadence;
+      }
     } else {
       this.runCycle = 0;
       this.lastRunFrame = 0;
@@ -274,28 +311,62 @@ export class Fighter {
 
   updatePose() {
     if (!this.hasPoseSheet) return;
-    let frame = 0;
-    if (this.stunned) frame = 5;
-    else if (this.chilenaActive) frame = 3;
-    else if (this.dashTimer > 0) frame = 4;
-    else if (this.kickTimer > 0) frame = 3;
-    else if (!this.grounded) frame = 2;
+    let frame = CHARACTER_FRAMES.idle;
+    this.currentRunPhase = null;
+    this.currentAnimationStage = 'idle';
+    if (this.stunned) frame = CHARACTER_FRAMES.stun;
+    else if (this.chilenaActive) frame = CHARACTER_FRAMES.legacyKick;
+    else if (this.dashTimer > 0) frame = CHARACTER_FRAMES.dash;
+    else if (this.kickTimer > 0) {
+      if (this.hasEnhancedPoseSheet) {
+        const kickVisual = kickVisualAt({
+          remaining: this.kickTimer,
+          duration: PLAYER_TUNING.kickDuration,
+        });
+        frame = kickVisual.frame;
+        this.currentAnimationStage = kickVisual.stage;
+      } else {
+        frame = CHARACTER_FRAMES.legacyKick;
+        this.currentAnimationStage = 'contact';
+      }
+    } else if (!this.grounded) frame = CHARACTER_FRAMES.jump;
     else if (Math.abs(this.sprite.body.velocity.x) > 0.65) {
-      const stridePhase = Math.floor(this.runCycle) % 2;
-      frame = stridePhase === 0 ? 1 : 0;
-      this.currentPose = stridePhase === 0 ? 'run-stride' : 'run-contact';
-      if (stridePhase !== this.lastRunFrame) {
-        this.lastRunFrame = stridePhase;
-        this.scene.events.emit('fighter-step', this);
+      if (this.hasEnhancedPoseSheet) {
+        const runVisual = runVisualAt(this.runCycle);
+        frame = runVisual.frame;
+        this.currentPose = runVisual.pose;
+        this.currentRunPhase = runVisual.phase;
+        this.currentAnimationStage = runVisual.stage;
+        if (runVisual.phase !== this.lastRunFrame) {
+          this.lastRunFrame = runVisual.phase;
+          if (runVisual.footstep) this.scene.events.emit('fighter-step', this);
+        }
+      } else {
+        const stridePhase = Math.floor(this.runCycle) % 2;
+        frame = stridePhase === 0 ? CHARACTER_FRAMES.legacyRun : CHARACTER_FRAMES.idle;
+        this.currentPose = stridePhase === 0 ? 'run-stride' : 'run-contact';
+        this.currentAnimationStage = this.currentPose;
+        if (stridePhase !== this.lastRunFrame) {
+          this.lastRunFrame = stridePhase;
+          this.scene.events.emit('fighter-step', this);
+        }
       }
     }
     if (this.chilenaActive) this.currentPose = 'chilena';
-    else if (frame === 0 && Math.abs(this.sprite.body.velocity.x) <= 0.65) this.currentPose = 'idle';
-    else if (frame === 2) this.currentPose = 'jump';
-    else if (frame === 3) this.currentPose = this.shotType === 'lob' ? 'lob' : 'kick';
-    else if (frame === 4) this.currentPose = 'dash';
-    else if (frame === 5) this.currentPose = 'stun';
+    else if (frame === CHARACTER_FRAMES.idle && Math.abs(this.sprite.body.velocity.x) <= 0.65) this.currentPose = 'idle';
+    else if (frame === CHARACTER_FRAMES.jump) this.currentPose = 'jump';
+    else if (this.kickTimer > 0) this.currentPose = this.shotType === 'lob' ? 'lob' : 'kick';
+    else if (frame === CHARACTER_FRAMES.dash) this.currentPose = 'dash';
+    else if (frame === CHARACTER_FRAMES.stun) this.currentPose = 'stun';
     this.sprite.setFrame(frame);
+    this.applySecondaryMotion();
+  }
+
+  applySecondaryMotion() {
+    // Ground registration belongs to the atlas. Do not animate the display
+    // origin: even a one-pixel bob makes planted shoes visibly cross the pitch.
+    this.visualOffsetY = 0;
+    this.sprite.setDisplayOrigin(this.sprite.width / 2, this.sprite.height / 2);
   }
 
   startKick(shotType = 'drive') {
@@ -379,7 +450,15 @@ export class Fighter {
     });
     if (!allowed) return null;
 
-    const shot = resolveChilenaShot({ attackDirection: this.baseFacing });
+    const targetX = this.baseFacing > 0 ? GOAL_LINE_RIGHT + 24 : GOAL_LINE_LEFT - 24;
+    const targetY = (CROSSBAR_Y + GROUND_Y) / 2;
+    const shot = resolveChilenaShot({
+      attackDirection: this.baseFacing,
+      ballX: ball.body.x,
+      ballY: ball.body.y,
+      targetX,
+      targetY,
+    });
     this.chilenaActive = true;
     this.chilenaElapsed = 0;
     this.chilenaSuccesses += 1;
@@ -527,7 +606,8 @@ export class Fighter {
     this.freezeTimer = Math.max(this.freezeTimer, seconds);
     this.stunTimer = Math.max(this.stunTimer, seconds);
     this.stunProtection = Math.max(this.stunProtection, seconds + PLAYER_TUNING.stunProtection);
-    this.sprite.setVelocity(fromDirection * 3.2, -1.4);
+    if (fromDirection === 0) this.sprite.setVelocity(0, 0);
+    else this.sprite.setVelocity(fromDirection * 3.2, -1.4);
   }
 
   grantShield() {
@@ -604,6 +684,7 @@ export class Fighter {
 
   renderAura() {
     this.aura.clear();
+    this.updateStatusVisuals();
     if (this.sprinting) {
       const direction = Math.sign(this.sprite.body.velocity.x) || this.facing;
       this.aura.lineStyle(3, 0xdffbff, 0.32);
@@ -623,32 +704,8 @@ export class Fighter {
         208 * this.bigGuyScale,
       );
     }
-    if (this.powerArmed > 0) {
-      const pulse = 1 + Math.sin(this.scene.time.now * 0.018) * 0.12;
-      this.aura.lineStyle(5, this.side === 'left' ? 0x62f5ff : 0xff9b42, 0.72);
-      this.aura.strokeCircle(this.sprite.x, this.sprite.y - 35, 51 * pulse);
-    }
-    if (this.superShield > 0) {
-      this.aura.lineStyle(4, 0x7df7ff, 0.72);
-      this.aura.strokeCircle(this.sprite.x, this.sprite.y - 32, 58);
-    }
-    if (this.hyperTimer > 0) {
-      this.aura.lineStyle(4, 0x9aff75, 0.55 + Math.sin(this.scene.time.now * 0.02) * 0.12);
-      this.aura.strokeEllipse(this.sprite.x, this.sprite.y - 25, 104, 178);
-    }
-    if (this.kickTimer > 0) {
-      const boostRatio = this.kickBoostTaps / 3;
-      this.aura.fillStyle(boostRatio > 0 ? 0xffdc62 : 0xffffff, 0.7 + boostRatio * 0.2);
-      this.aura.fillEllipse(this.sprite.x + this.facing * 57, this.sprite.y + 43, 42 + boostRatio * 18, 15 + boostRatio * 8);
-    }
-    if (this.chilenaActive) {
-      this.aura.lineStyle(5, 0xff7b32, 0.7);
-      this.aura.strokeCircle(this.sprite.x, this.sprite.y - 12, 66 + Math.sin(this.scene.time.now * 0.025) * 7);
-    }
     if (this.stunned) {
       if (this.freezeTimer > 0) {
-        this.aura.lineStyle(5, 0xbef5ff, 0.85);
-        this.aura.strokeEllipse(this.sprite.x, this.sprite.y - 25, 112, 184);
         this.aura.fillStyle(0xe8fcff, 0.95);
         for (let i = 0; i < 6; i += 1) {
           const angle = this.scene.time.now * 0.002 + (i * Math.PI * 2) / 6;
@@ -669,8 +726,54 @@ export class Fighter {
     }
   }
 
+  updateStatusVisuals() {
+    let color = null;
+    let tint = null;
+    let strength = 0;
+    if (this.freezeTimer > 0) {
+      color = 0x9eeeff;
+      tint = 0xcaf7ff;
+      strength = 6;
+    } else if (this.superShield > 0) {
+      color = 0x55e0ee;
+      tint = 0xdcfdff;
+      strength = 4.5;
+    } else if (this.hyperTimer > 0) {
+      color = 0x8dff70;
+      tint = 0xe3ffda;
+      strength = 5;
+    } else if (this.powerArmed > 0) {
+      color = this.side === 'left' ? 0x62f5ff : 0xff9b42;
+      tint = this.side === 'left' ? 0xe2fdff : 0xffead8;
+      strength = 4;
+    } else if (this.stunned) {
+      tint = 0xb5c6d9;
+    }
+
+    if (this.statusGlow) {
+      if (color !== null) this.statusGlow.color = color;
+      this.statusGlow.outerStrength = strength > 0
+        ? strength + Math.sin(this.scene.time.now * 0.018) * 0.7
+        : 0;
+    }
+    if (tint === null) this.sprite.clearTint();
+    else this.sprite.setTint(tint);
+
+    if (this.chilenaGlow) {
+      this.chilenaGlow.outerStrength = this.chilenaActive
+        ? 5 + Math.sin(this.scene.time.now * 0.02) * 0.8
+        : 0;
+    }
+    if (this.chilenaActive) this.chilenaVisual.setTint(0xffe1c7);
+    else this.chilenaVisual.clearTint();
+  }
+
   snapshot() {
     const velocity = this.sprite.body.velocity;
+    const visualFrame = this.hasPoseSheet ? Number(this.sprite.frame.name) : 0;
+    const visualGroundAnchorY = this.hasEnhancedPoseSheet && isGroundedVisualFrame(visualFrame)
+      ? this.sprite.y + (CHARACTER_GROUND_ANCHOR_Y - this.sprite.displayOriginY) * this.sprite.scaleY
+      : null;
     return {
       id: this.id,
       name: this.name,
@@ -698,7 +801,14 @@ export class Fighter {
       chilenaRotation: Math.round(this.chilenaVisual.angle * 10) / 10,
       chilenaSuccesses: this.chilenaSuccesses,
       pose: this.currentPose,
-      visualFrame: this.hasPoseSheet ? Number(this.sprite.frame.name) : 0,
+      visualFrame,
+      enhancedAnimation: this.hasEnhancedPoseSheet,
+      animationStage: this.currentAnimationStage,
+      runPhase: this.currentRunPhase,
+      visualOffsetY: Math.round(this.visualOffsetY * 100) / 100,
+      visualGroundAnchorY: visualGroundAnchorY === null
+        ? null
+        : Math.round(visualGroundAnchorY * 10) / 10,
       shield: this.superShield,
       hyperSeconds: Math.round(this.hyperTimer * 100) / 100,
       bigGuySeconds: Math.round(this.bigGuy.secondsRemaining * 100) / 100,

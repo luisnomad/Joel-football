@@ -23,8 +23,8 @@ export class BootScene extends Phaser.Scene {
     this.load.image('joel-football-splash', assetUrl('splash/joel-football-option-a.webp'));
     this.load.image('joel', assetUrl('player-nova.png'));
     this.load.image('vex', assetUrl('player-vex.png'));
-    this.load.spritesheet('joel-sheet', assetUrl('player-nova-sheet.png'), { frameWidth: 418, frameHeight: 627 });
-    this.load.spritesheet('vex-sheet', assetUrl('player-vex-sheet.png'), { frameWidth: 418, frameHeight: 627 });
+    this.load.spritesheet('joel-sheet', assetUrl('player-nova-sheet-v2.webp'), { frameWidth: 320, frameHeight: 480 });
+    this.load.spritesheet('vex-sheet', assetUrl('player-vex-sheet-v2.webp'), { frameWidth: 320, frameHeight: 480 });
     this.load.image('ball', assetUrl('ball.png'));
     this.load.image('flare', assetUrl('power-flare.png'));
     this.load.svg('goal-side', assetUrl('goal-side.svg'), { width: 180, height: 320 });

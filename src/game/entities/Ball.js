@@ -4,6 +4,7 @@ import {
   CATEGORIES,
   CROSSBAR_HEIGHT,
   CROSSBAR_Y,
+  GAME_WIDTH,
   GOAL_LINE_LEFT,
   GOAL_LINE_RIGHT,
 } from '../constants.js';
@@ -24,6 +25,7 @@ export class Ball {
     this.body.body.label = 'ball';
     this.body.setDepth(20);
     this.goalPerchTimer = 0;
+    this.outOfBoundsRecoveries = 0;
   }
 
   reset(x = 640, y = 340) {
@@ -33,6 +35,26 @@ export class Ball {
     this.body.setAngularVelocity(0);
     this.body.setRotation(0);
     this.goalPerchTimer = 0;
+  }
+
+  recoverOutOfBounds() {
+    const { x: vx, y: vy } = this.body.body.velocity;
+    let recovered = false;
+    if (this.body.x < -BALL_RADIUS) {
+      this.body.setPosition(BALL_RADIUS, Math.max(BALL_RADIUS, this.body.y));
+      this.body.setVelocity(Math.max(4, Math.abs(vx) * 0.78), vy);
+      recovered = true;
+    } else if (this.body.x > GAME_WIDTH + BALL_RADIUS) {
+      this.body.setPosition(GAME_WIDTH - BALL_RADIUS, Math.max(BALL_RADIUS, this.body.y));
+      this.body.setVelocity(-Math.max(4, Math.abs(vx) * 0.78), vy);
+      recovered = true;
+    } else if (this.body.y < -BALL_RADIUS) {
+      this.body.setPosition(this.body.x, BALL_RADIUS);
+      this.body.setVelocity(vx, Math.max(4, Math.abs(vy) * 0.78));
+      recovered = true;
+    }
+    if (recovered) this.outOfBoundsRecoveries += 1;
+    return recovered;
   }
 
   freeze() {
@@ -84,6 +106,7 @@ export class Ball {
       vx: Math.round(x * 100) / 100,
       vy: Math.round(y * 100) / 100,
       radius: BALL_RADIUS,
+      outOfBoundsRecoveries: this.outOfBoundsRecoveries,
     };
   }
 }

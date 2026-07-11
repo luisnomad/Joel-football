@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { applyAiDifficulty, normalizeIntent, safeDecide } from '../src/game/pure/actions.js';
 import { POWER_ARM_SECONDS, armPower, chargeMeter, counterPowerVelocity } from '../src/game/pure/power.js';
-import { addGoal, createScoreState, formatClock, tickMatchClock } from '../src/game/pure/rules.js';
+import { addGoal, createScoreState, detectGoalCrossing, formatClock, tickMatchClock } from '../src/game/pure/rules.js';
 import { createWorldSnapshot } from '../src/game/pure/snapshot.js';
 import { decideHeuristicIntent } from '../src/game/ai/HeuristicAgentProvider.js';
 import { predictBallXAtHeight } from '../src/game/pure/prediction.js';
@@ -27,6 +27,58 @@ import {
   kickBoostMultipliers,
   resolveKickBoost,
 } from '../src/game/pure/kickBoost.js';
+import {
+  CHARACTER_GROUND_ANCHOR_Y,
+  CHARACTER_FRAMES,
+  GROUNDED_VISUAL_FRAMES,
+  RUN_FRAME_DISTANCE,
+  RUN_VISUAL_SEQUENCE,
+  isGroundedVisualFrame,
+  kickVisualAt,
+  runVisualAt,
+} from '../src/game/pure/characterAnimation.js';
+
+describe('enhanced character animation', () => {
+  it('defines one shared grounded foot anchor for every planted pose', () => {
+    expect(CHARACTER_GROUND_ANCHOR_Y).toBe(418);
+    expect(GROUNDED_VISUAL_FRAMES).toEqual([0, 1, 4, 5, 6, 7, 8, 9, 10, 11]);
+    expect(GROUNDED_VISUAL_FRAMES.every(isGroundedVisualFrame)).toBe(true);
+    expect(isGroundedVisualFrame(2)).toBe(false);
+    expect(isGroundedVisualFrame(3)).toBe(false);
+  });
+
+  it('uses a four-phase distance-driven run loop with two planted contacts', () => {
+    expect(RUN_FRAME_DISTANCE).toBe(30);
+    expect(RUN_VISUAL_SEQUENCE).toEqual([
+      CHARACTER_FRAMES.runContactA,
+      CHARACTER_FRAMES.runPassing,
+      CHARACTER_FRAMES.runContactB,
+      CHARACTER_FRAMES.runPassing,
+    ]);
+    expect([0, 1, 2, 3].map((phase) => runVisualAt(phase).stage)).toEqual([
+      'contact-a',
+      'passing-a',
+      'contact-b',
+      'passing-b',
+    ]);
+    expect([0, 1, 2, 3].filter((phase) => runVisualAt(phase).footstep)).toEqual([0, 2]);
+  });
+
+  it('stages the kick without changing its gameplay duration', () => {
+    expect(kickVisualAt({ remaining: 0.16, duration: 0.16 })).toMatchObject({
+      frame: CHARACTER_FRAMES.kickAnticipation,
+      stage: 'anticipation',
+    });
+    expect(kickVisualAt({ remaining: 0.1, duration: 0.16 })).toMatchObject({
+      frame: CHARACTER_FRAMES.kickContact,
+      stage: 'contact',
+    });
+    expect(kickVisualAt({ remaining: 0.02, duration: 0.16 })).toMatchObject({
+      frame: CHARACTER_FRAMES.kickRecovery,
+      stage: 'recovery',
+    });
+  });
+});
 
 describe('movement tuning', () => {
   it('keeps the requested twenty-percent speed increase', () => {
@@ -144,6 +196,18 @@ describe('power economy', () => {
 });
 
 describe('rules', () => {
+  it('scores only when the whole ball crosses the goal line inside the mouth', () => {
+    expect(detectGoalCrossing({ previous: { x: 1160, y: 520 }, current: { x: 1195, y: 520 } })).toBe('left');
+    expect(detectGoalCrossing({ previous: { x: 120, y: 520 }, current: { x: 80, y: 520 } })).toBe('right');
+    expect(detectGoalCrossing({ previous: { x: 1160, y: 450 }, current: { x: 1195, y: 450 } })).toBeNull();
+    expect(detectGoalCrossing({ previous: { x: 1160, y: 620 }, current: { x: 1195, y: 620 } })).toBeNull();
+  });
+
+  it('does not turn an earlier over-goal crossing into a goal after the ball falls behind the line', () => {
+    expect(detectGoalCrossing({ previous: { x: 1140, y: 400 }, current: { x: 1200, y: 410 } })).toBeNull();
+    expect(detectGoalCrossing({ previous: { x: 1200, y: 410 }, current: { x: 1250, y: 520 } })).toBeNull();
+  });
+
   it('enters golden goal on a tied clock and ends on the next score', () => {
     const tied = tickMatchClock({ ...createScoreState(), secondsLeft: 0.1 }, 0.2);
     expect(tied.suddenDeath).toBe(true);
@@ -222,14 +286,33 @@ describe('chilena contract', () => {
   });
 
   it('fires toward the rival goal and rewards a full meter', () => {
-    expect(resolveChilenaShot({ attackDirection: 1 })).toEqual({
-      vx: 27,
-      vy: -6.4,
-      spin: 0.56,
-      color: CHILENA_FIRE_COLOR,
-      meterAfter: 100,
+    const rightward = resolveChilenaShot({
+      attackDirection: 1,
+      ballX: 620,
+      ballY: 360,
+      targetX: 1178,
+      targetY: 534,
     });
-    expect(resolveChilenaShot({ attackDirection: -1 }).vx).toBe(-27);
+    const leftward = resolveChilenaShot({
+      attackDirection: -1,
+      ballX: 660,
+      ballY: 360,
+      targetX: 102,
+      targetY: 534,
+    });
+    expect(rightward.vx).toBeGreaterThan(0);
+    expect(rightward.vy).toBeGreaterThan(0);
+    expect(leftward.vx).toBeCloseTo(-rightward.vx);
+    expect(leftward.vy).toBeCloseTo(rightward.vy);
+    expect(Math.hypot(rightward.vx, rightward.vy)).toBeCloseTo(27);
+    expect(rightward).toMatchObject({ spin: 0.56, color: CHILENA_FIRE_COLOR, meterAfter: 100 });
+  });
+
+  it('aims low aerial balls up and high aerial balls down toward goal center', () => {
+    const lowBall = resolveChilenaShot({ attackDirection: 1, ballX: 620, ballY: 580, targetX: 1178, targetY: 534 });
+    const highBall = resolveChilenaShot({ attackDirection: 1, ballX: 620, ballY: 340, targetX: 1178, targetY: 534 });
+    expect(lowBall.vy).toBeLessThan(0);
+    expect(highBall.vy).toBeGreaterThan(0);
   });
 
   it('rotates clockwise through one full turn during the kick pose', () => {

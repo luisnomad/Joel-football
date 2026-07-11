@@ -513,3 +513,119 @@ Original prompt: Create a polished, playable 2D browser game with the dynamics o
   countdown playbacks and no console errors, production build, and dependency
   audit with zero vulnerabilities. Refreshed the website game copy and
   completed the enclosing Astro production build.
+
+## Character animation spike
+
+- Inspected the two current six-pose character sheets, their actual 185 x 240
+  rendering size, frame-selection logic, action timing, and representative
+  gameplay captures. The largest discontinuity is the run loop alternating a
+  planted idle pose with a full airborne stride; kick and dash also snap to a
+  single short-lived frame.
+- Recommended retaining raster sprites and adding five targeted drawings per
+  character: three additional run-cycle frames plus kick anticipation and
+  follow-through. Subtle whole-sprite breathing, lean, bob, squash, and stretch
+  should supplement those frames without changing the physics body.
+- Rejected automatic SVG conversion for this iteration. Flat tracing does not
+  recover joints or occluded artwork, independently traced poses cannot be
+  cleanly path-morphed, and Phaser rasterizes standard SVG loads into textures.
+- Defined an AI-assisted, human-cleaned frame workflow, trimmed-atlas runtime
+  architecture, texture/performance limits, acceptance checks, and a one-player
+  vertical-slice decision gate in `docs/CHARACTER_ANIMATION_SPIKE.md`.
+- No gameplay code or assets were changed, so no runtime regression test was
+  required for this documentation-only spike. The next action is the Joel
+  four-frame run and three-frame kick vertical slice.
+
+## Character animation v2 implementation
+
+- Used the built-in image-generation workflow with both original player sheets
+  and idle cutouts as identity anchors. Created and visually reviewed a six-cell
+  character reference sheet plus a six-cell run/kick candidate sheet for Joel
+  and Vex, then generated one targeted Vex kick-recovery candidate.
+- Selected three consistent run drawings and three kick drawings per player.
+  Removed magenta/green chroma with the installed soft-matte/despill helper,
+  cleaned a few disconnected cell-edge artifacts, registered ground anchors,
+  and normalized every frame into 320 x 480 cells.
+- Packed twelve-frame 1280 x 1440 source sheets and lossless runtime WebP
+  sheets. The runtime downloads are about 1.6 MB combined—smaller than the two
+  legacy PNG sheets—while decoded texture memory rises modestly from about 12
+  MiB to 14.1 MiB.
+- Added a pure animation contract. Running now uses authored frames `6 → 7 → 8
+  → 7`, advances from distance travelled, emits footstep dust only on the two
+  contact phases, and preserves the existing `run-contact`/`run-stride`
+  diagnostics. Kicks use anticipation/contact/recovery frames `9 → 10 → 11`
+  over the unchanged 160 ms gameplay window.
+- Added restrained display-origin secondary motion without rescaling or
+  rotating the Matter body. The fixed collider, strike timing, kick boost,
+  lob, dash, jump, stun, chilena, Big Guy scaling, and facing rules remain
+  authoritative.
+- Extended diagnostics and browser assertions to verify the enhanced sheet,
+  all three authored run drawings, both planted-foot phases, and staged kick
+  logic. Added pure tests for frame sequencing and timing thresholds.
+- Visually inspected the reference sheets, selected transparent frames,
+  final-size run/kick sequences, runtime atlases, official web-game client
+  captures, and refreshed run/sprint/lob/dash gameplay captures.
+- Verification: 55/55 unit tests, production build, the complete browser game
+  suite, and the required web-game client with no console/page errors. Full
+  prompts, selection decisions, mappings, and source paths are recorded in
+  `source-assets/animation/README.md`. No remaining animation-v2 TODOs.
+
+## Ground registration, faster cadence, focused powers, and aimed chilenas
+
+- Added a reproducible atlas builder that cleans disconnected chroma fragments,
+  enforces eight-pixel horizontal safety margins, and registers every grounded
+  Joel and Vex frame to the same source foot anchor (`y=418`). This fixes Joel's
+  initial low placement, Vex's clipped rear foot, and chilena landing drift.
+- Removed display-origin run bob so authored foot registration remains the sole
+  visual ground authority. Reduced distance per run frame from 44 to 30 logical
+  pixels, making the `6 → 7 → 8 → 7` cycle about 47% faster without adding
+  frame-rate-dependent animation work.
+- Reduced the power catalog from ten overlapping or unpredictable choices to
+  Fireball, Freeze, Big Guy, Shield, and Hyper. Retired charges migrate into
+  Fireball. Freeze now affects the opponent immediately; Shield and Hyper also
+  activate immediately. Fireball and Big Guy retain the successful-strike rule.
+- Replaced generic status circles with one guarded Phaser pre-FX glow per
+  fighter plus a light contrast tint and small particles. Canvas fallback keeps
+  the tint, while WebGL receives the pulse, limiting the runtime cost to the two
+  existing character sprites.
+- Fixed custom match event listeners accumulating on scene restart, which could
+  process a single power press multiple times and overwrite its feedback.
+- Chilena velocity now points from the ball to the center of the rival goal.
+  High aerial attempts drive downward, low attempts rise slightly, and ordinary
+  fighter collision remains enabled so the defender can body-block the shot.
+- Verification: 58/58 unit tests, production build, and the full desktop/tablet
+  browser suite pass. Browser assertions cover atlas padding/anchors, landing
+  height, faster frame cycling, instant Freeze/Shield/Hyper behavior, Big Guy,
+  goal-centered chilena direction, profile migration, and touch activation.
+
+## High-speed over-goal scoring fix
+
+- Replaced position-based scoring with a swept goal-line crossing rule. The
+  crossing height is interpolated at the exact line, and the full ball must fit
+  between the underside of the crossbar and the pitch.
+- An over-goal fireball can no longer fall behind the line and retroactively
+  score because only the original outward crossing is eligible.
+- Added a guarded ball recovery for rare high-speed tunneling beyond the left,
+  right, or top screen boundary; it returns the ball with a damped inward
+  velocity rather than leaving play stuck off-screen.
+- Added pure regressions for both goal directions, bar/ground exclusion, and
+  delayed falling behind the line, plus a browser fireball scenario and visual
+  capture. Verification: 60/60 unit tests, production build, the full
+  desktop/tablet browser suite, and the required web-game client pass without
+  console or page errors.
+
+## Kick and power-feedback cleanup
+
+- Moved the supplied ball-kick effect from kick-animation start to confirmed
+  ball contact. Misses are now silent; ordinary, powered, countered, and AI
+  contacts retain the contact sound, while chilena audio remains tied to its
+  successful activation.
+- Removed the white kick ellipse from the fighter aura. Boost feedback remains
+  available through the existing gold impact particles and meter flash.
+- Shortened Freeze, Shield, and Hyper activation messages to compact labels and
+  added a reusable announcement fitter with an explicit maximum width. Text
+  diagnostics now expose the rendered width and font size for regression tests.
+- Browser coverage verifies zero ball-effect plays on a miss, exactly one on
+  the following contact, no kick marker in the inspected capture, and bounded
+  Spanish activation banners. Verification: 60/60 unit tests, production
+  build, full desktop/tablet browser suite, and the required web-game client
+  pass without console or page errors.

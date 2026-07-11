@@ -95,12 +95,12 @@ describe('math challenge generation', () => {
 });
 
 describe('persistent power inventory rules', () => {
-  it('starts bilingual-ready with ten empty powers and no equipped selection', () => {
+  it('starts bilingual-ready with five focused powers and no equipped selection', () => {
     const profile = createDefaultProfile();
     expect(profile.language).toBe('en');
     expect(profile.equippedPowerId).toBeNull();
     expect(profile.mathLockUntil).toBe(0);
-    expect(Object.keys(profile.powers)).toHaveLength(10);
+    expect(Object.keys(profile.powers)).toHaveLength(5);
     expect(Object.values(profile.powers).every((count) => count === 0)).toBe(true);
   });
 
@@ -119,12 +119,12 @@ describe('persistent power inventory rules', () => {
 
   it('consumes exactly one equipped charge and leaves all other powers intact', () => {
     let profile = earnPower(createDefaultProfile(), 'ice');
-    profile = earnPower(profile, 'lightning');
+    profile = earnPower(profile, 'hyper');
     profile = equipPower(profile, 'ice');
     const result = consumeEquippedPower(profile);
     expect(result.consumedPowerId).toBe('ice');
     expect(result.profile.powers.ice).toBe(0);
-    expect(result.profile.powers.lightning).toBe(1);
+    expect(result.profile.powers.hyper).toBe(1);
     expect(profile.powers.ice).toBe(1);
   });
 
@@ -151,10 +151,22 @@ describe('persistent power inventory rules', () => {
       equippedPowerId: 'rainbow',
       powers: { rainbow: 4 },
     });
-    expect(migrated.version).toBe(5);
+    expect(migrated.version).toBe(6);
     expect(migrated.powers.big).toBe(4);
     expect(migrated.equippedPowerId).toBe('big');
     expect(migrated.powers).not.toHaveProperty('rainbow');
+  });
+
+  it('converts retired trick-shot charges and equipment into Fireball without losing inventory', () => {
+    const migrated = sanitizeProfile({
+      version: 5,
+      equippedPowerId: 'warp',
+      powers: { fireball: 2, lightning: 1, tornado: 2, rocket: 3, boomerang: 4, warp: 5 },
+    });
+    expect(migrated.version).toBe(6);
+    expect(migrated.equippedPowerId).toBe('fireball');
+    expect(migrated.powers.fireball).toBe(17);
+    expect(migrated.powers).not.toHaveProperty('warp');
   });
 
   it('persists a global five-minute lock after an incorrect answer', () => {
@@ -170,7 +182,7 @@ describe('persistent power inventory rules', () => {
 describe('persistent audio settings', () => {
   it('starts at tablet-safe music and effects levels', () => {
     const profile = createDefaultProfile();
-    expect(profile.version).toBe(5);
+    expect(profile.version).toBe(6);
     expect(profile.audio).toEqual(DEFAULT_AUDIO_SETTINGS);
     expect(profile.audio.musicVolume).toBe(0.15);
     expect(profile.audio.effectsVolume).toBe(0.2);
@@ -257,9 +269,9 @@ describe('local player profile storage', () => {
     const firstSession = createPlayerProfileStore(storage);
     firstSession.setLanguage('es');
     firstSession.setDifficulty('hard');
-    firstSession.earn('rocket');
-    firstSession.earn('rocket');
-    firstSession.equip('rocket');
+    firstSession.earn('hyper');
+    firstSession.earn('hyper');
+    firstSession.equip('hyper');
     firstSession.lockMath(50_000);
     firstSession.setAudio({ musicVolume: 0.35, effectsMuted: true });
 
@@ -267,8 +279,8 @@ describe('local player profile storage', () => {
     const restored = refreshedSession.get();
     expect(restored.language).toBe('es');
     expect(restored.difficulty).toBe('hard');
-    expect(restored.powers.rocket).toBe(2);
-    expect(restored.equippedPowerId).toBe('rocket');
+    expect(restored.powers.hyper).toBe(2);
+    expect(restored.equippedPowerId).toBe('hyper');
     expect(restored.audio).toMatchObject({ musicVolume: 0.35, effectsMuted: true });
     expect(refreshedSession.getMathLockRemaining(50_000)).toBe(5 * 60 * 1_000);
   });
@@ -305,30 +317,30 @@ describe('localized button text fitting', () => {
   });
 });
 
-describe('ten superpower shot contracts', () => {
-  it('defines ten distinct powers with bilingual content keys', () => {
-    expect(SUPERPOWERS).toHaveLength(10);
-    expect(new Set(SUPERPOWERS.map(({ id }) => id)).size).toBe(10);
+describe('focused superpower contracts', () => {
+  it('defines five distinct powers with explicit activation rules and bilingual content keys', () => {
+    expect(SUPERPOWERS).toHaveLength(5);
+    expect(new Set(SUPERPOWERS.map(({ id }) => id)).size).toBe(5);
     expect(SUPERPOWERS.every(({ id }) => getSuperpower(id)?.nameKey === `power.${id}.name`)).toBe(true);
+    expect(SUPERPOWERS.filter(({ activation }) => activation === 'instant').map(({ id }) => id)).toEqual(['ice', 'shield', 'hyper']);
   });
 
   it('does not present Big Guy with a multiplier-like icon beside a zero charge count', () => {
     expect(getSuperpower('big').icon).not.toMatch(/[0-9×x]/i);
   });
 
-  it('produces a distinct, mirrored modifier for every power', () => {
-    const rightward = SUPERPOWERS.map(({ id }) => applySuperShot(id, { direction: 1, baseSpeed: 23 }));
-    const leftward = SUPERPOWERS.map(({ id }) => applySuperShot(id, { direction: -1, baseSpeed: 23 }));
-    expect(new Set(rightward.map(({ mechanic }) => mechanic)).size).toBe(10);
+  it('produces mirrored shots for the two ball-strike powers', () => {
+    const shotPowers = SUPERPOWERS.filter(({ activation }) => activation === 'shot');
+    const rightward = shotPowers.map(({ id }) => applySuperShot(id, { direction: 1, baseSpeed: 23 }));
+    const leftward = shotPowers.map(({ id }) => applySuperShot(id, { direction: -1, baseSpeed: 23 }));
+    expect(new Set(rightward.map(({ mechanic }) => mechanic)).size).toBe(2);
     rightward.forEach((shot, index) => {
       expect(shot.vx).toBeGreaterThan(0);
       expect(leftward[index].vx).toBeCloseTo(-shot.vx);
       expect(leftward[index].vy).toBe(shot.vy);
       expect(Number.isInteger(shot.color)).toBe(true);
     });
-    expect(applySuperShot('lightning', { direction: 1, baseSpeed: 23 }).vx).toBeGreaterThan(
-      applySuperShot('fireball', { direction: 1, baseSpeed: 23 }).vx,
-    );
+    expect(applySuperShot('fireball', { direction: 1, baseSpeed: 23 }).vx).toBeGreaterThan(23);
     expect(applySuperShot('big', { direction: 1, baseSpeed: 23 }).effect).toBe('big');
   });
 });

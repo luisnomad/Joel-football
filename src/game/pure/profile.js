@@ -1,6 +1,7 @@
 import { SUPERPOWERS, getSuperpower } from '../content/superpowers.js';
 
 const emptyPowers = () => Object.fromEntries(SUPERPOWERS.map(({ id }) => [id, 0]));
+const RETIRED_SHOT_POWERS = Object.freeze(['lightning', 'tornado', 'rocket', 'boomerang', 'warp']);
 
 export const DEFAULT_AUDIO_SETTINGS = Object.freeze({
   musicVolume: 0.15,
@@ -27,7 +28,7 @@ export const sanitizeAudioSettings = (candidate) => ({
 });
 
 export const createDefaultProfile = () => ({
-  version: 5,
+  version: 6,
   language: 'en',
   difficulty: 'normal',
   equippedPowerId: null,
@@ -46,10 +47,18 @@ export const sanitizeProfile = (candidate) => {
     const legacyValue = id === 'big' ? candidate.powers?.rainbow : undefined;
     powers[id] = cleanCount(candidate.powers?.[id] ?? legacyValue);
   });
-  const migratedEquippedPowerId = candidate.equippedPowerId === 'rainbow' ? 'big' : candidate.equippedPowerId;
+  const retiredCharges = RETIRED_SHOT_POWERS.reduce(
+    (total, id) => total + cleanCount(candidate.powers?.[id]),
+    0,
+  );
+  powers.fireball = cleanCount(powers.fireball + retiredCharges);
+  const legacyEquippedPowerId = candidate.equippedPowerId === 'rainbow' ? 'big' : candidate.equippedPowerId;
+  const migratedEquippedPowerId = RETIRED_SHOT_POWERS.includes(legacyEquippedPowerId)
+    ? 'fireball'
+    : legacyEquippedPowerId;
   const equippedPowerId = getSuperpower(migratedEquippedPowerId) ? migratedEquippedPowerId : null;
   return {
-    version: 5,
+    version: 6,
     language: candidate.language === 'es' ? 'es' : 'en',
     difficulty: sanitizeDifficulty(candidate.difficulty),
     equippedPowerId,

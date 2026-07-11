@@ -14,8 +14,10 @@ copied, traced, edited, or included in the project.
 | `goal-side.png` | 512x479 | yes | Unused generated design study retained as source exploration; runtime code uses the simpler SVG. |
 | `player-nova.png` | 512x512 | yes | Left/human boy's idle cutout, facing right. Start near 185-205 px display height. |
 | `player-vex.png` | 512x512 | yes | Right/provider boy's idle cutout, facing left. Start near 185-205 px display height. |
-| `player-nova-sheet.png` | 1254x1254 | yes | Optional 3x2 pose source sheet; frame size 418x627. |
-| `player-vex-sheet.png` | 1254x1254 | yes | Optional 3x2 pose source sheet; frame size 418x627. |
+| `player-nova-sheet.png` | 1254x1254 | yes | Legacy 3x2 pose source sheet; frame size 418x627. |
+| `player-vex-sheet.png` | 1254x1254 | yes | Legacy 3x2 pose source sheet; frame size 418x627. |
+| `player-nova-sheet-v2.webp` | 1280x1440 | yes | Runtime 4x3 animation sheet for Joel; twelve 320x480 frames. |
+| `player-vex-sheet-v2.webp` | 1280x1440 | yes | Runtime 4x3 animation sheet for Vex; twelve 320x480 frames. |
 | `ball.png` | 256x256 | yes | Rotation-safe ball. Start near 58-66 px display diameter. |
 | `power-flare.png` | 1024x512 | yes | Right-facing comet overlay with a transparent ball aperture. Flip X for left-facing shots; start near 230-260 px display width and render behind the ball. |
 
@@ -32,6 +34,15 @@ The sheets divide exactly into three 418 px columns and two 627 px rows. Each
 pose stays inside its cell. The normalized standalone player PNGs are easier
 for a simple bob/scale animation; the sheets are available for richer pose
 swaps.
+
+The v2 runtime sheets divide into four 320 px columns and three 480 px rows.
+Frames 0-5 preserve the legacy actions; frames 6-8 are the selected run contact,
+passing, and opposite contact drawings; frames 9-11 are kick anticipation,
+contact, and recovery. Full generation prompts and selected transparent frames
+are retained under `source-assets/animation/`.
+All grounded v2 frames use source foot anchor y=418 and at least eight pixels of
+horizontal cell padding. Rebuild them with
+`scripts/build-character-animation-atlases.py` after changing selected art.
 
 ## Goal placement contract
 

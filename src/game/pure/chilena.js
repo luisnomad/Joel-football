@@ -21,11 +21,24 @@ export const canStartChilena = ({ fighter = {}, ball = {}, kickPresses = 0 } = {
   );
 };
 
-export const resolveChilenaShot = ({ attackDirection = 1 } = {}) => {
+export const CHILENA_SHOT_SPEED = 27;
+
+export const resolveChilenaShot = ({
+  attackDirection = 1,
+  ballX = 0,
+  ballY = 0,
+  targetX,
+  targetY,
+} = {}) => {
   const direction = attackDirection >= 0 ? 1 : -1;
+  const safeTargetX = Number.isFinite(targetX) ? targetX : ballX + direction * 500;
+  const safeTargetY = Number.isFinite(targetY) ? targetY : ballY;
+  const dx = Math.max(60, Math.abs(safeTargetX - ballX)) * direction;
+  const dy = safeTargetY - ballY;
+  const length = Math.max(1, Math.hypot(dx, dy));
   return {
-    vx: direction * 27,
-    vy: -6.4,
+    vx: dx / length * CHILENA_SHOT_SPEED,
+    vy: dy / length * CHILENA_SHOT_SPEED,
     spin: direction * 0.56,
     color: CHILENA_FIRE_COLOR,
     meterAfter: 100,

@@ -1,19 +1,16 @@
 export const SUPERPOWERS = Object.freeze([
-  { id: 'fireball', icon: 'F', color: 0xff6b32, nameKey: 'power.fireball.name', descriptionKey: 'power.fireball.description' },
-  { id: 'ice', icon: 'I', color: 0x78ddff, nameKey: 'power.ice.name', descriptionKey: 'power.ice.description' },
-  { id: 'lightning', icon: '⚡', color: 0xffe45c, nameKey: 'power.lightning.name', descriptionKey: 'power.lightning.description' },
-  { id: 'tornado', icon: 'T', color: 0x6ff0c7, nameKey: 'power.tornado.name', descriptionKey: 'power.tornado.description' },
-  { id: 'rocket', icon: 'R', color: 0xff496f, nameKey: 'power.rocket.name', descriptionKey: 'power.rocket.description' },
-  { id: 'big', icon: 'G', color: 0xffc653, nameKey: 'power.big.name', descriptionKey: 'power.big.description' },
-  { id: 'boomerang', icon: '↩', color: 0xffb14a, nameKey: 'power.boomerang.name', descriptionKey: 'power.boomerang.description' },
-  { id: 'warp', icon: '✦', color: 0xa78cff, nameKey: 'power.warp.name', descriptionKey: 'power.warp.description' },
-  { id: 'shield', icon: '◆', color: 0x55e0ee, nameKey: 'power.shield.name', descriptionKey: 'power.shield.description' },
-  { id: 'hyper', icon: '★', color: 0x8dff70, nameKey: 'power.hyper.name', descriptionKey: 'power.hyper.description' },
+  { id: 'fireball', activation: 'shot', icon: 'F', color: 0xff6b32, nameKey: 'power.fireball.name', descriptionKey: 'power.fireball.description' },
+  { id: 'ice', activation: 'instant', icon: 'I', color: 0x78ddff, nameKey: 'power.ice.name', descriptionKey: 'power.ice.description', activationKey: 'power.ice.activation' },
+  { id: 'big', activation: 'shot', icon: 'G', color: 0xffc653, nameKey: 'power.big.name', descriptionKey: 'power.big.description' },
+  { id: 'shield', activation: 'instant', icon: '◆', color: 0x55e0ee, nameKey: 'power.shield.name', descriptionKey: 'power.shield.description', activationKey: 'power.shield.activation' },
+  { id: 'hyper', activation: 'instant', icon: '★', color: 0x8dff70, nameKey: 'power.hyper.name', descriptionKey: 'power.hyper.description', activationKey: 'power.hyper.activation' },
 ]);
 
 const byId = new Map(SUPERPOWERS.map((power) => [power.id, power]));
 
 export const getSuperpower = (id) => byId.get(id) ?? null;
+
+export const isInstantSuperpower = (id) => getSuperpower(id)?.activation === 'instant';
 
 const shot = (power, direction, baseSpeed, overrides = {}) => ({
   powerId: power.id,
@@ -34,24 +31,8 @@ export const applySuperShot = (id, { direction = 1, baseSpeed = 23 } = {}) => {
   switch (power.id) {
     case 'fireball':
       return shot(power, facing, speed * 1.3);
-    case 'ice':
-      return shot(power, facing, speed, { effect: 'freeze' });
-    case 'lightning':
-      return shot(power, facing, speed * 1.55, { vy: -2.4, spin: facing * 0.34 });
-    case 'tornado':
-      return shot(power, facing, speed * 0.95, { vy: -10, spin: facing * 0.68 });
-    case 'rocket':
-      return shot(power, facing, speed * 1.4, { vy: -0.8, spin: facing * 0.1 });
     case 'big':
       return shot(power, facing, speed, { effect: 'big' });
-    case 'boomerang':
-      return shot(power, facing, speed * 1.15, { effect: 'boomerang' });
-    case 'warp':
-      return shot(power, facing, speed * 1.15, { effect: 'warp' });
-    case 'shield':
-      return shot(power, facing, speed, { effect: 'shield' });
-    case 'hyper':
-      return shot(power, facing, speed, { effect: 'hyper' });
     default:
       return shot(power, facing, speed);
   }

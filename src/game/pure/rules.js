@@ -1,4 +1,40 @@
-import { MATCH_SECONDS } from '../constants.js';
+import {
+  BALL_RADIUS,
+  CROSSBAR_HEIGHT,
+  CROSSBAR_Y,
+  GOAL_LINE_LEFT,
+  GOAL_LINE_RIGHT,
+  GROUND_Y,
+  MATCH_SECONDS,
+} from '../constants.js';
+
+const crossingHeightAt = (previous, current, lineX) => {
+  const dx = current.x - previous.x;
+  if (Math.abs(dx) < 0.0001) return current.y;
+  const progress = Math.min(1, Math.max(0, (lineX - previous.x) / dx));
+  return previous.y + (current.y - previous.y) * progress;
+};
+
+export const detectGoalCrossing = ({ previous, current } = {}) => {
+  if (!previous || !current) return null;
+  const crossbarBottom = CROSSBAR_Y + CROSSBAR_HEIGHT / 2;
+  const fitsGoalMouth = (centerY) => (
+    centerY - BALL_RADIUS > crossbarBottom
+    && centerY + BALL_RADIUS < GROUND_Y
+  );
+
+  const rightThreshold = GOAL_LINE_RIGHT + BALL_RADIUS;
+  if (previous.x <= rightThreshold && current.x > rightThreshold) {
+    return fitsGoalMouth(crossingHeightAt(previous, current, rightThreshold)) ? 'left' : null;
+  }
+
+  const leftThreshold = GOAL_LINE_LEFT - BALL_RADIUS;
+  if (previous.x >= leftThreshold && current.x < leftThreshold) {
+    return fitsGoalMouth(crossingHeightAt(previous, current, leftThreshold)) ? 'right' : null;
+  }
+
+  return null;
+};
 
 export const createScoreState = () => ({
   left: 0,
