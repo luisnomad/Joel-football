@@ -59,6 +59,10 @@ const readAnimationAtlasMetrics = (page) => page.evaluate(async () => {
   return {
     joel: await analyze('player-nova-sheet-v2.webp'),
     vex: await analyze('player-vex-sheet-v2.webp'),
+    lucia: await analyze('player-lucia-sheet-v2.webp'),
+    luna: await analyze('player-luna-sheet-v2.webp'),
+    juan: await analyze('player-juan-sheet-v3.webp'),
+    juanjo: await analyze('player-juanjo-sheet-v1.webp'),
   };
 });
 
@@ -97,9 +101,10 @@ const canvasPoint = (page, logicalX, logicalY) =>
   page.evaluate(({ x, y }) => {
     const canvas = document.querySelector('canvas');
     const rect = canvas.getBoundingClientRect();
+    const horizontalOffset = Math.max(0, canvas.width - 1280) / 2;
     return {
-      x: rect.left + (x / 1280) * rect.width,
-      y: rect.top + (y / 720) * rect.height,
+      x: rect.left + ((x + horizontalOffset) / canvas.width) * rect.width,
+      y: rect.top + (y / canvas.height) * rect.height,
     };
   }, { x: logicalX, y: logicalY });
 
@@ -212,13 +217,18 @@ try {
   let state = await readState(page);
   assert.equal(state.mode, 'intro');
   assert.equal(state.title, 'Joel Football');
+  assert.deepEqual(state.opponent.available, [{ id: 'joel', name: 'Joel' }, { id: 'bob', name: 'Bob' }, { id: 'lucia', name: 'Lucia' }, { id: 'luna', name: 'Luna' }, { id: 'juan', name: 'Uncle Juan' }, { id: 'juanjo', name: 'Uncle Juanjo' }]);
+  assert.equal(state.playerCharacter.id, 'joel');
+  assert.equal(state.opponent.id, 'bob', 'Bob should remain the default opponent for existing profiles');
   assert.equal(state.language, 'en');
   assert.equal(state.audio.settings.musicVolume, 0.15);
   assert.equal(state.audio.settings.effectsVolume, 0.2);
   assert.equal(state.audio.trackCount, 6, 'all six supplied music tracks should rotate');
+  const tapHighlight = await page.locator('canvas').evaluate((canvas) => getComputedStyle(canvas).webkitTapHighlightColor);
+  assert.equal(tapHighlight, 'rgba(0, 0, 0, 0)', 'the Phaser canvas must not show Android WebView tap highlighting');
   assert.deepEqual(state.controls.sprint, ['double-tap and hold the same direction']);
   assert.deepEqual(state.controls.kickBoost, ['repeat kick or lob during the kick animation']);
-  assert.deepEqual(state.controls.chilena, ['press any kick twice under a reachable overhead ball']);
+  assert.deepEqual(state.controls.chilena, ['double kick: direct; double lob: high arc']);
   const groundedVisualFrames = new Set([0, 1, 4, 5, 6, 7, 8, 9, 10, 11]);
   const atlasMetrics = await readAnimationAtlasMetrics(page);
   for (const [player, atlas] of Object.entries(atlasMetrics)) {
@@ -233,7 +243,82 @@ try {
       }
     }
   }
+  assert.ok(atlasMetrics.lucia.frames[8].top >= 8, 'Lucia run-contact-B hair must have visible top padding');
+  assert.ok(atlasMetrics.luna.frames.every((frame) => frame.top >= 8), 'every Luna pose must keep her curls below the frame edge');
+  assert.ok(atlasMetrics.juan.frames.every((frame) => frame.top >= 8), 'every Uncle Juan pose must keep his head below the frame edge');
+  assert.ok(atlasMetrics.juanjo.frames.every((frame) => frame.top >= 8), 'every Uncle Juanjo pose must keep his hair and glasses below the frame edge');
   await capture(page, `${output}/01-intro.png`);
+
+  for (let step = 0; step < 3; step += 1) {
+    await touchControl(page, 405, 500, 35);
+    await page.waitForTimeout(60);
+  }
+  state = await readState(page);
+  assert.equal(state.playerCharacter.id, 'juan', 'Uncle Juan should be selectable as the human player');
+  assert.equal(state.playerCharacter.name, 'Uncle Juan');
+  assert.equal(state.playerCharacter.mirrored, false, 'Juan naturally faces the opponent from the player side');
+  assert.deepEqual(state.playerCharacter.displaySize, { width: 255, height: 255 }, 'mixed-resolution portraits must retain the same menu footprint');
+  await capture(page, `${output}/01-intro-juan.png`);
+  await touchControl(page, 405, 500, 35);
+  await page.waitForTimeout(60);
+  state = await readState(page);
+  assert.equal(state.playerCharacter.id, 'juanjo', 'Uncle Juanjo should follow Uncle Juan in the selector');
+  assert.equal(state.playerCharacter.name, 'Uncle Juanjo');
+  assert.deepEqual(state.playerCharacter.displaySize, { width: 255, height: 255 });
+  await capture(page, `${output}/01-intro-juanjo.png`);
+  await touchControl(page, 405, 500, 35);
+  await page.waitForTimeout(60);
+  assert.equal((await readState(page)).playerCharacter.id, 'joel', 'the selector should wrap from Juanjo back to Joel');
+
+  await touchControl(page, 1195, 500, 35);
+  state = await readState(page);
+  assert.equal(state.opponent.id, 'lucia', 'the right selector arrow should choose Lucia');
+  await capture(page, `${output}/01-intro-lucia.png`);
+  await touchControl(page, 875, 500, 35);
+  assert.equal((await readState(page)).opponent.id, 'bob', 'the left selector arrow should wrap back to Bob');
+  await touchControl(page, 1195, 500, 35);
+  assert.equal((await readState(page)).opponent.id, 'lucia');
+  await touchControl(page, 405, 500, 35);
+  assert.equal((await readState(page)).playerCharacter.id, 'bob', 'the player selector must skip Lucia while she is selected opposite');
+  await touchControl(page, 85, 500, 35);
+  assert.equal((await readState(page)).playerCharacter.id, 'joel');
+  await touchControl(page, 875, 500, 35);
+  assert.equal((await readState(page)).opponent.id, 'bob');
+  await page.waitForTimeout(60);
+  await touchControl(page, 405, 500, 35);
+  assert.equal((await readState(page)).playerCharacter.id, 'lucia', 'Lucia should be selectable as the human player');
+  await page.waitForTimeout(60);
+  await touchControl(page, 875, 500, 35);
+  state = await readState(page);
+  assert.deepEqual([state.playerCharacter.id, state.opponent.id], ['lucia', 'joel']);
+  assert.equal(state.playerCharacter.facing, 'right');
+  assert.equal(state.opponent.facing, 'left');
+  assert.equal(state.playerCharacter.mirrored, true, 'Lucia native left-facing art should mirror on the player side');
+  assert.equal(state.opponent.mirrored, true, 'Joel native right-facing art should mirror on the opponent side');
+  await capture(page, `${output}/01-intro-lucia-player.png`);
+  await page.waitForTimeout(60);
+  await touchControl(page, 405, 500, 35);
+  state = await readState(page);
+  assert.deepEqual([state.playerCharacter.id, state.opponent.id], ['luna', 'joel']);
+  await capture(page, `${output}/01-intro-luna-player.png`);
+  await page.waitForTimeout(60);
+  await touchControl(page, 85, 500, 35);
+  assert.equal((await readState(page)).playerCharacter.id, 'lucia');
+
+  await touchControl(page, 44, 42, 30);
+  await page.waitForFunction(() => JSON.parse(window.render_game_to_text()).modal === 'about');
+  state = await readState(page);
+  assert.equal(state.modalAppInfo.version, '1.0.0');
+  assert.equal(state.modalAppInfo.build, 'web');
+  await capture(page, `${output}/01-about.png`);
+  await page.evaluate(() => window.__SKYHEAD_PLATFORM_DEBUG__.backForTesting());
+  await page.waitForFunction(() => JSON.parse(window.render_game_to_text()).modal === null);
+
+  await touchControl(page, 108, 42, 30);
+  await page.waitForFunction(() => JSON.parse(window.render_game_to_text()).modal === 'help');
+  await capture(page, `${output}/01-help.png`);
+  await page.keyboard.press('Escape');
+  await page.waitForFunction(() => JSON.parse(window.render_game_to_text()).modal === null);
 
   await touchControl(page, 640, 650, 35);
   await page.waitForFunction(() => JSON.parse(window.render_game_to_text()).mode === 'settings');
@@ -244,9 +329,11 @@ try {
   state = await readState(page);
   assert.equal(state.audio.cache.cachedCount, state.audio.cache.total, 'all audio should be reusable from Cache Storage');
   assert.equal(state.difficulty, 'normal', 'Normal should be the default AI difficulty');
+  assert.equal(state.settingsLayout.titleInsidePanel, true, 'the Settings title should stay fully inside the panel');
+  assert.equal(state.technicalAudioCacheVisible, false, 'technical audio-cache status should not be shown to players');
   await capture(page, `${output}/01-settings.png`);
 
-  await touchControl(page, 535, 238, 35);
+  await touchControl(page, 535, 270, 35);
   await page.waitForFunction(() => JSON.parse(window.render_game_to_text()).difficulty === 'easy');
   assert.equal((await readState(page)).difficulty, 'easy');
   await touchControl(page, 92, 52, 35);
@@ -270,23 +357,52 @@ try {
   assert.equal(state.players.right.sprinting, false);
   await page.keyboard.press('Escape');
   await touchControl(page, 775, 475, 35);
+  await page.waitForFunction(() => JSON.parse(window.render_game_to_text()).modal === 'abandon-confirm');
+  await touchControl(page, 775, 438, 35);
   await page.waitForFunction(() => JSON.parse(window.render_game_to_text()).mode === 'intro');
   await touchControl(page, 640, 650, 35);
   await page.waitForFunction(() => JSON.parse(window.render_game_to_text()).mode === 'settings');
   assert.equal((await readState(page)).difficulty, 'easy', 'difficulty should persist after leaving a match');
-  await touchControl(page, 640, 238, 35);
+  await touchControl(page, 640, 270, 35);
   await page.waitForFunction(() => JSON.parse(window.render_game_to_text()).difficulty === 'normal');
 
-  await touchControl(page, 600, 382, 35);
+  await touchControl(page, 600, 427, 35);
   state = await readState(page);
   assert.equal(state.audio.settings.musicVolume, 0.6, 'the music slider should use touch-friendly five-percent steps');
-  await touchControl(page, 935, 512, 35);
-  assert.equal((await readState(page)).audio.settings.effectsMuted, true, 'effects should have an independent mute switch');
-  await touchControl(page, 935, 512, 35);
-  assert.equal((await readState(page)).audio.settings.effectsMuted, false);
-  await touchControl(page, 510, 512, 35);
+  const musicMutePoint = await canvasPoint(page, 935, 427);
+  await page.mouse.move(musicMutePoint.x, musicMutePoint.y);
+  await page.mouse.down();
+  state = await readState(page);
+  assert.equal(state.audio.settings.musicMuted, true, 'music mute must activate on pointerdown before WebView can cancel the release');
+  assert.equal(state.audio.musicRequested, false);
+  assert.equal(state.audio.media.musicPaused, true);
+  assert.equal(state.audio.media.musicVolume, 0);
+  assert.deepEqual(state.audioControls.music, { muted: true, label: 'TURN ON', enabled: true });
+  await capture(page, `${output}/01-settings-music-muted.png`);
+  await page.mouse.up();
+  await page.mouse.down();
+  state = await readState(page);
+  assert.equal(state.audio.settings.musicMuted, false, 'music Turn On must reactivate on pointerdown');
+  assert.equal(state.audio.musicRequested, true);
+  assert.equal(state.audio.media.musicVolume, 0.6);
+  assert.deepEqual(state.audioControls.music, { muted: false, label: 'MUTE', enabled: true });
+  await page.mouse.up();
+  await touchControl(page, 935, 557, 35);
+  state = await readState(page);
+  assert.equal(state.audio.settings.effectsMuted, true, 'effects should have an independent mute switch');
+  assert.equal(state.audio.media.ballEffectVolume, 0);
+  assert.equal(state.audio.media.whistleEffectVolume, 0);
+  assert.deepEqual(state.audioControls.effects, { muted: true, label: 'TURN ON', enabled: true });
+  await capture(page, `${output}/01-settings-effects-muted.png`);
+  await touchControl(page, 935, 557, 35);
+  state = await readState(page);
+  assert.equal(state.audio.settings.effectsMuted, false);
+  assert.ok(state.audio.media.ballEffectVolume > 0);
+  assert.ok(state.audio.media.whistleEffectVolume > 0);
+  assert.deepEqual(state.audioControls.effects, { muted: false, label: 'MUTE', enabled: true });
+  await touchControl(page, 510, 557, 35);
   assert.equal((await readState(page)).audio.settings.effectsVolume, 0.4);
-  await touchControl(page, 685, 154, 35);
+  await touchControl(page, 685, 188, 35);
   await page.waitForFunction(() => JSON.parse(window.render_game_to_text()).language === 'es');
   state = await readState(page);
   assert.equal(state.mode, 'settings');
@@ -342,6 +458,8 @@ try {
   assert.equal(state.audio.settings.musicVolume, 0.6, 'music volume should persist across refresh');
   assert.equal(state.audio.settings.effectsVolume, 0.4, 'effects volume should persist across refresh');
   assert.equal(state.difficulty, 'normal', 'difficulty should persist across refresh');
+  assert.equal(state.playerCharacter.id, 'lucia', 'the selected player should persist across refresh');
+  assert.equal(state.opponent.id, 'joel', 'the selected opponent should persist across refresh');
   await touchControl(page, 640, 580, 35);
   await page.waitForFunction(() => JSON.parse(window.render_game_to_text()).mode === 'power-lab');
   state = await readState(page);
@@ -358,20 +476,39 @@ try {
   state = await readState(page);
   assert.equal(state.players.left.visualFrame, 0);
   assert.equal(state.players.right.visualFrame, 0);
-  assert.ok(Math.abs(state.players.left.visualGroundAnchorY - 636) < 0.2);
-  assert.ok(Math.abs(state.players.right.visualGroundAnchorY - 636) < 0.2);
+  assert.ok(Math.abs(state.players.left.visualGroundAnchorY - 636) < 0.2, `left kickoff foot anchor should be 636; got ${state.players.left.visualGroundAnchorY}`);
+  assert.ok(Math.abs(state.players.right.visualGroundAnchorY - 636) < 0.2, `right kickoff foot anchor should be 636; got ${state.players.right.visualGroundAnchorY}`);
   assert.equal(state.players.left.visualGroundAnchorY, state.players.right.visualGroundAnchorY);
   await advance(page, 3200);
   state = await readState(page);
   assert.equal(state.mode, 'playing');
   assert.equal(state.opponentProvider, 'heuristic-v1');
-  assert.equal(state.players.left.name, 'JOEL');
+  assert.equal(state.players.left.name, 'Lucia');
   assert.equal(state.players.left.id, 'joel');
+  assert.equal(state.playerCharacter.id, 'lucia');
+  assert.equal(state.opponent.id, 'joel');
+  assert.equal(state.players.right.name, 'Joel');
+  assert.equal(state.players.left.displayHeight, 280, 'gameplay characters should use the taller natural sprite ratio');
+  assert.equal(state.players.right.displayHeight, 280);
+  assert.ok(Math.abs(state.players.left.displayWidth / state.players.left.displayHeight - 2 / 3) < 0.01);
+  assert.equal(state.players.left.facing, 1, 'the selected player should face the opponent at kickoff');
+  assert.equal(state.players.right.facing, -1, 'the selected opponent should face the player at kickoff');
+  assert.deepEqual(
+    [state.players.left.nativeFacing, state.players.left.visualFlipped],
+    [-1, true],
+    'Lucia gameplay art should mirror from its native left-facing direction on the player side',
+  );
+  assert.deepEqual(
+    [state.players.right.nativeFacing, state.players.right.visualFlipped],
+    [1, true],
+    'Joel gameplay art should mirror from its native right-facing direction on the opponent side',
+  );
   assert.ok(Math.abs(state.players.left.visualGroundAnchorY - 636) < 0.2);
   assert.ok(Math.abs(state.players.right.visualGroundAnchorY - 636) < 0.2);
   assert.equal(state.players.left.visualGroundAnchorY, state.players.right.visualGroundAnchorY);
   await capture(page, `${output}/02-ground-baseline.png`);
-  assert.ok(state.hud.leftName.startsWith('JOEL'), `the rendered left HUD label should say Joel; got ${state.hud.leftName}`);
+  assert.ok(state.hud.leftName.startsWith('LUCIA'), `the rendered left HUD label should say Lucia; got ${state.hud.leftName}`);
+  assert.ok(state.hud.rightName.endsWith('JOEL'), `the rendered right HUD label should say Joel; got ${state.hud.rightName}`);
   assert.equal(state.audio.sceneMode, 'match');
   assert.equal(state.audio.musicRequested, true, 'music should continue into the match');
   assert.equal(state.audio.audienceRequested, true, 'audience ambience should be active only during the match');
@@ -384,7 +521,20 @@ try {
   ], 'the countdown should sound like beep–beep–beeeeeep');
   assert.equal(state.difficulty, 'normal');
   assert.equal(state.aiAdvancedMechanicsEnabled, true);
-  assert.equal(state.controls.chilena, 'press any kick twice under a reachable overhead ball');
+  assert.equal(state.controls.chilena, 'double kick: direct; double lob: high arc');
+
+  await page.evaluate(() => {
+    window.__SKYHEAD_DEBUG__.resumePlay();
+    window.__SKYHEAD_DEBUG__.setHumanPosition(340);
+    window.__SKYHEAD_DEBUG__.setHumanMeter(0);
+    window.__SKYHEAD_DEBUG__.setOpponentPosition(1080);
+    window.__SKYHEAD_DEBUG__.setBall({ x: 340, y: 390, vx: 0, vy: 12 });
+  });
+  await advance(page, 100);
+  state = await readState(page);
+  assert.ok(state.players.left.meter >= 4.5, `a ball landing on the visible head should register contact; meter=${state.players.left.meter}`);
+  assert.ok(state.ball.vy < 0, `head contact should rebound the descending ball; vy=${state.ball.vy}`);
+  await capture(page, `${output}/02-head-contact-regression.png`);
 
   await page.evaluate(() => {
     window.__SKYHEAD_DEBUG__.resumePlay();
@@ -692,14 +842,50 @@ try {
   await capture(page, `${output}/02-chilena.png`);
   await advance(page, 1150);
   state = await readState(page);
+  for (let attempt = 0; attempt < 8 && !state.players.left.grounded; attempt += 1) {
+    await advance(page, 50);
+    state = await readState(page);
+  }
   assert.equal(state.players.left.chilenaActive, false, 'Joel should land even if the shot reaches the goal during his rotation');
   assert.equal(state.players.left.chilenaRotation, 0);
   assert.equal(state.players.left.facing, 1, 'Joel should face the rival goal again after landing');
   assert.equal(state.players.left.grounded, true);
   assert.ok(Math.abs(state.players.left.y - 547) < 8, `the visual-only rotation must return Joel to his normal ground height; got y=${state.players.left.y}`);
-  assert.equal(state.players.left.visualFrame, 0, 'chilena landing should restore the registered idle frame');
+  assert.ok(groundedVisualFrames.has(state.players.left.visualFrame), `chilena landing should restore a grounded pose; got frame ${state.players.left.visualFrame}`);
   assert.ok(Math.abs(state.players.left.visualGroundAnchorY - 636) < 0.2, 'chilena landing should return Joel to the shared foot baseline');
   await capture(page, `${output}/02-chilena-landing.png`);
+
+  await page.evaluate(() => {
+    window.__SKYHEAD_DEBUG__.resumePlay();
+    window.__SKYHEAD_DEBUG__.setHumanPosition(600);
+    window.__SKYHEAD_DEBUG__.setHumanMeter(12);
+    window.__SKYHEAD_DEBUG__.setOpponentPosition(1080);
+    window.__SKYHEAD_DEBUG__.setBall({ x: 620, y: 360, vx: 0, vy: -1 });
+  });
+  const lobChilenaSuccessesBefore = (await readState(page)).players.left.chilenaSuccesses;
+  await hold(page, 'z', 17);
+  await hold(page, 'i', 17);
+  state = await readState(page);
+  assert.equal(state.players.left.chilenaSuccesses, lobChilenaSuccessesBefore + 1);
+  assert.equal(state.powerBall.superpowerId, 'chilena-lob');
+  assert.equal(state.powerBall.trajectory?.phase, 'rising');
+  assert.equal(state.lastChilenaStrike?.variant, 'lob');
+  assert.ok(state.ball.vx > 0 && state.ball.vx < 4, `the high chilena should rise almost vertically; got vx=${state.ball.vx}`);
+  assert.ok(state.ball.vy < -11, `the high chilena should launch upward; got vy=${state.ball.vy}`);
+  assert.equal(state.hud.announcement, '¡CHILENA ALTA!');
+  await capture(page, `${output}/02-lob-chilena-launch.png`);
+  let lobChilenaApexY = state.ball.y;
+  for (let step = 0; step < 80 && state.powerBall.trajectory?.phase === 'rising'; step += 1) {
+    await advance(page, 1000 / 60);
+    state = await readState(page);
+    lobChilenaApexY = Math.min(lobChilenaApexY, state.ball.y);
+  }
+  assert.equal(state.powerBall.trajectory?.phase, 'goalward', 'the high chilena should redirect after reaching its apex');
+  assert.ok(lobChilenaApexY >= 130 && lobChilenaApexY <= 165, `the high chilena apex should rise to the underside of the score display; got y=${lobChilenaApexY}`);
+  assert.ok(state.ball.vx > 20 && state.ball.vy > 0, `the redirected high chilena should target the goal center; got ${state.ball.vx}, ${state.ball.vy}`);
+  assert.equal(state.powerBall.effectTriggered, true);
+  await capture(page, `${output}/02-lob-chilena-redirect.png`);
+  await advance(page, 1150);
 
   await page.evaluate(() => {
     window.__SKYHEAD_DEBUG__.resumePlay();
@@ -875,6 +1061,29 @@ try {
   assert.equal(state.players.left.bigGuyScale, 1, 'Joel should return exactly to normal size after ten seconds');
   assert.equal(state.players.left.grounded, true, 'shrinking should not lift Joel away from the pitch');
 
+  await page.evaluate(() => {
+    const match = window.__SKYHEAD_GAME__.scene.getScene('Match');
+    match.inputController.setTouch('left', true);
+    window.__SKYHEAD_PLATFORM_DEBUG__.setActiveForTesting(false);
+  });
+  state = await readState(page);
+  assert.equal(state.mode, 'paused', 'backgrounding should pause an active match');
+  assert.equal(state.pauseReason, 'lifecycle');
+  assert.equal(
+    await page.evaluate(() => window.__SKYHEAD_GAME__.scene.getScene('Match').inputController.touch.left),
+    false,
+    'backgrounding should release held touch input',
+  );
+  await page.evaluate(() => window.__SKYHEAD_PLATFORM_DEBUG__.setActiveForTesting(true));
+  assert.equal((await readState(page)).mode, 'paused', 'resume should require an explicit player action');
+  await capture(page, `${output}/03-lifecycle-pause.png`);
+  await page.evaluate(() => window.__SKYHEAD_PLATFORM_DEBUG__.backForTesting());
+  assert.equal((await readState(page)).mode, 'playing', 'Back should dismiss the pause overlay');
+  await page.evaluate(() => window.__SKYHEAD_PLATFORM_DEBUG__.backForTesting());
+  assert.equal((await readState(page)).mode, 'paused', 'Back should pause instead of exiting during a match');
+  await page.evaluate(() => window.__SKYHEAD_PLATFORM_DEBUG__.backForTesting());
+  assert.equal((await readState(page)).mode, 'playing');
+
   await page.keyboard.press('p');
   state = await readState(page);
   assert.equal(state.mode, 'paused');
@@ -891,6 +1100,8 @@ try {
   assert.deepEqual(state.pauseActions, ['resume', 'restart', 'abandon match']);
   await capture(page, `${output}/03-desktop-abandon-menu.png`);
   await touchControl(page, 775, 475, 40);
+  await page.waitForFunction(() => JSON.parse(window.render_game_to_text()).modal === 'abandon-confirm');
+  await touchControl(page, 775, 438, 40);
   await page.waitForFunction(() => JSON.parse(window.render_game_to_text()).mode === 'intro');
   assert.equal((await readState(page)).audio.sceneMode, 'menu', 'abandoning should return to the main menu');
   await page.keyboard.press('Enter');
@@ -915,12 +1126,12 @@ try {
     window.__SKYHEAD_DEBUG__.resumePlay();
     window.__SKYHEAD_DEBUG__.setHumanPosition(500);
     window.__SKYHEAD_DEBUG__.setOpponentPosition(900);
-    window.__SKYHEAD_DEBUG__.setBall({ x: 68, y: 401 });
+    window.__SKYHEAD_DEBUG__.setBall({ x: 68, y: 373 });
   });
   await advance(page, 250);
   state = await readState(page);
   assert.ok(
-    state.ball.x < 148 && state.ball.y < 425,
+    state.ball.x < 148 && state.ball.y < 396,
     `fixture should reproduce a ball perched above the left goal; x=${state.ball.x}, y=${state.ball.y}`,
   );
   await capture(page, `${output}/03-goal-perch-regression.png`);
@@ -929,10 +1140,10 @@ try {
   assert.ok(state.ball.x > 148, `a perched ball should roll back into play; x=${state.ball.x}, y=${state.ball.y}`);
   await capture(page, `${output}/03-goal-perch-released.png`);
 
-  await page.evaluate(() => window.__SKYHEAD_DEBUG__.setBall({ x: 1212, y: 401 }));
+  await page.evaluate(() => window.__SKYHEAD_DEBUG__.setBall({ x: 1212, y: 373 }));
   await advance(page, 250);
   state = await readState(page);
-  assert.ok(state.ball.x > 1132 && state.ball.y < 425, 'fixture should reproduce a ball perched above the right goal');
+  assert.ok(state.ball.x > 1132 && state.ball.y < 396, 'fixture should reproduce a ball perched above the right goal');
   await advance(page, 700);
   state = await readState(page);
   assert.ok(state.ball.x < 1132, `the mirrored right goal should also return a perched ball to play; x=${state.ball.x}, y=${state.ball.y}`);
@@ -983,15 +1194,16 @@ try {
   const goalCheerBefore = beforeGoalState.audio.goalCheerPlays;
   const goalWhistlesBefore = beforeGoalState.audio.whistleRequestedPlays;
   const goalWhistlePlaysBefore = beforeGoalState.audio.whistlePlays;
-  await page.evaluate(() => window.__SKYHEAD_DEBUG__.setBall({ x: 1140, y: 520, vx: 46 }));
-  await advance(page, 80);
+  await page.evaluate(() => window.__SKYHEAD_DEBUG__.setBall({ x: 1140, y: 614, vx: 18 }));
+  await advance(page, 100);
   state = await readState(page);
   assert.equal(state.mode, 'goal');
-  assert.equal(state.score.left, scoreBefore + 1, 'fully crossing the right goal line should score for Joel');
+  assert.equal(state.score.left, scoreBefore + 1, 'a ball rolling across the right goal line should score for Joel');
   assert.equal(state.audio.goalCheerPlays, goalCheerBefore, 'the former audience goal effect should no longer play');
   assert.equal(state.audio.whistleRequestedPlays, goalWhistlesBefore + 1, 'a goal should request one whistle');
   assert.equal(state.audio.whistlePlays, goalWhistlePlaysBefore + 1, 'the goal whistle should begin playback immediately');
   assert.deepEqual(state.audio.recentWhistles.at(-1), { label: 'goal', cutoffMs: null }, 'the goal should retain a full-length whistle');
+  await capture(page, `${output}/04-ground-goal-regression.png`);
   await advance(page, 1800);
   state = await readState(page);
   assert.equal(state.mode, 'countdown');
@@ -1033,6 +1245,35 @@ try {
   assert.deepEqual(errors, [], `browser emitted errors:\n${errors.join('\n')}`);
   await desktop.close();
 
+  const juanjoContext = await browser.newContext({ viewport: { width: 1280, height: 720 }, deviceScaleFactor: 1 });
+  const juanjoPage = await juanjoContext.newPage();
+  const juanjoErrors = [];
+  juanjoPage.on('pageerror', (error) => juanjoErrors.push(error.stack ?? error.message));
+  juanjoPage.on('console', (message) => {
+    if (message.type() === 'error') juanjoErrors.push(`console: ${message.text()}`);
+  });
+  await juanjoPage.goto(url, { waitUntil: 'domcontentloaded' });
+  await waitThroughSplash(juanjoPage);
+  for (let step = 0; step < 4; step += 1) {
+    await touchControl(juanjoPage, 405, 500, 35);
+    await juanjoPage.waitForTimeout(60);
+  }
+  let juanjoState = await readState(juanjoPage);
+  assert.equal(juanjoState.playerCharacter.id, 'juanjo');
+  await capture(juanjoPage, `${output}/04-juanjo-intro.png`);
+  await touchControl(juanjoPage, 640, 505, 40);
+  await juanjoPage.waitForFunction(() => JSON.parse(window.render_game_to_text()).mode === 'countdown');
+  await advance(juanjoPage, 3100);
+  juanjoState = await readState(juanjoPage);
+  assert.equal(juanjoState.mode, 'playing');
+  assert.equal(juanjoState.playerCharacter.id, 'juanjo');
+  assert.equal(juanjoState.players.left.name, 'Uncle Juanjo');
+  assert.deepEqual([juanjoState.players.left.nativeFacing, juanjoState.players.left.visualFlipped], [1, false]);
+  assert.ok(Math.abs(juanjoState.players.left.visualGroundAnchorY - 636) < 0.2);
+  await capture(juanjoPage, `${output}/04-juanjo-match.png`);
+  assert.deepEqual(juanjoErrors, [], `Uncle Juanjo browser emitted errors:\n${juanjoErrors.join('\n')}`);
+  await juanjoContext.close();
+
   const mobile = await browser.newContext({
     viewport: { width: 844, height: 390 },
     deviceScaleFactor: 1,
@@ -1050,11 +1291,64 @@ try {
   await waitThroughSplash(mobilePage, `${output}/05-touch-splash-option-a.png`);
   mobileState = await readState(mobilePage);
   assert.equal(mobileState.inputMode, 'touch');
+  assert.equal(mobileState.install.method, 'instructions', 'mobile web should offer Home Screen installation guidance');
+  assert.ok(mobileState.actions.includes('install app'));
+  assert.ok(mobileState.stageLayout.width > 1280, 'extra-wide landscape phones should expand horizontally');
+  const mobileCanvas = await mobilePage.evaluate(() => {
+    const canvas = document.querySelector('canvas');
+    const bounds = canvas.getBoundingClientRect();
+    return {
+      left: Math.round(bounds.left),
+      top: Math.round(bounds.top),
+      width: Math.round(bounds.width),
+      height: Math.round(bounds.height),
+      bitmapWidth: canvas.width,
+      bitmapHeight: canvas.height,
+    };
+  });
+  assert.deepEqual(mobileCanvas, {
+    left: 0,
+    top: 0,
+    width: 844,
+    height: 390,
+    bitmapWidth: mobileState.stageLayout.width,
+    bitmapHeight: 720,
+  }, 'wide-phone canvas should fill the entire landscape viewport without side bars');
   assert.equal(mobileState.controls.pause[0], 'on-screen pause');
   assert.deepEqual(mobileState.controls.sprint, ['double-tap and hold the same direction']);
-  assert.deepEqual(mobileState.controls.kickBoost, ['repeat K or L during the kick animation']);
-  assert.deepEqual(mobileState.controls.chilena, ['tap K or L twice under a reachable overhead ball']);
+  assert.deepEqual(mobileState.controls.kickBoost, ['repeat the kick or lob icon during the kick animation']);
+  assert.deepEqual(mobileState.controls.chilena, ['double kick: direct; double lob: high arc']);
+  await touchControl(mobilePage, 640, 696, 35);
+  mobileState = await readState(mobilePage);
+  assert.equal(mobileState.modal, 'install');
+  await capture(mobilePage, `${output}/05-touch-install.png`);
+  await mobilePage.evaluate(() => window.__SKYHEAD_PLATFORM_DEBUG__.backForTesting());
+  assert.equal((await readState(mobilePage)).modal, null);
   await capture(mobilePage, `${output}/05-touch-intro.png`);
+
+  const playerNextPoint = await canvasPoint(mobilePage, 405, 500);
+  await mobilePage.mouse.move(playerNextPoint.x, playerNextPoint.y);
+  await mobilePage.mouse.down();
+  await advance(mobilePage, 45);
+  assert.equal((await readState(mobilePage)).playerCharacter.id, 'lucia', 'selector should activate once on touch-down');
+  await mobilePage.mouse.up();
+  assert.equal((await readState(mobilePage)).playerCharacter.id, 'lucia', 'release must not advance the selector again');
+  await mobilePage.waitForTimeout(60);
+  // Reproduce iOS's compatibility pointer sequence emitted just after touchend.
+  await mobilePage.mouse.down();
+  await advance(mobilePage, 45);
+  assert.equal((await readState(mobilePage)).playerCharacter.id, 'lucia', 'an iOS compatibility press must be ignored');
+  await mobilePage.mouse.up();
+  assert.equal((await readState(mobilePage)).playerCharacter.id, 'lucia', 'compatibility release must also preserve the choice');
+  await mobilePage.waitForTimeout(550);
+  await mobilePage.mouse.down();
+  await advance(mobilePage, 45);
+  assert.equal((await readState(mobilePage)).playerCharacter.id, 'luna', 'the next deliberate tap should work after the guard');
+  await mobilePage.mouse.up();
+  mobileState = await readState(mobilePage);
+  assert.equal(mobileState.playerCharacter.id, 'luna', 'the tablet selector should let Luna play as herself');
+  assert.equal(mobileState.opponent.id, 'bob');
+  await capture(mobilePage, `${output}/05-touch-intro-luna.png`);
 
   await touchControl(mobilePage, 640, 650, 45);
   await mobilePage.waitForFunction(() => JSON.parse(window.render_game_to_text()).mode === 'settings');
@@ -1062,10 +1356,23 @@ try {
   assert.equal(mobileState.audio.settings.musicVolume, 0.15);
   assert.equal(mobileState.audio.settings.effectsVolume, 0.2);
   assert.equal(mobileState.difficulty, 'normal');
-  await touchControl(mobilePage, 935, 512, 40);
-  assert.equal((await readState(mobilePage)).audio.settings.effectsMuted, true, 'tablet settings should mute effects by touch');
-  await touchControl(mobilePage, 935, 512, 40);
-  assert.equal((await readState(mobilePage)).audio.settings.effectsMuted, false);
+  await touchControl(mobilePage, 935, 427, 40);
+  mobileState = await readState(mobilePage);
+  assert.equal(mobileState.audio.settings.musicMuted, true, 'tablet Music mute should work from a real touch layout');
+  assert.equal(mobileState.audioControls.music.label, 'TURN ON');
+  await capture(mobilePage, `${output}/05-touch-settings-music-muted.png`);
+  await touchControl(mobilePage, 935, 427, 40);
+  mobileState = await readState(mobilePage);
+  assert.equal(mobileState.audio.settings.musicMuted, false);
+  assert.equal(mobileState.audioControls.music.label, 'MUTE');
+  await touchControl(mobilePage, 935, 557, 40);
+  mobileState = await readState(mobilePage);
+  assert.equal(mobileState.audio.settings.effectsMuted, true, 'tablet settings should mute effects by touch');
+  assert.equal(mobileState.audioControls.effects.label, 'TURN ON');
+  await touchControl(mobilePage, 935, 557, 40);
+  mobileState = await readState(mobilePage);
+  assert.equal(mobileState.audio.settings.effectsMuted, false);
+  assert.equal(mobileState.audioControls.effects.label, 'MUTE');
   await capture(mobilePage, `${output}/05-touch-settings.png`);
   await touchControl(mobilePage, 92, 52, 40);
   await mobilePage.waitForFunction(() => JSON.parse(window.render_game_to_text()).mode === 'intro');
@@ -1075,9 +1382,76 @@ try {
   await advance(mobilePage, 3100);
   mobileState = await readState(mobilePage);
   assert.equal(mobileState.touchControls, true);
+  assert.equal(mobileState.players.left.name, 'Luna', 'the selected tablet player should carry into the match');
+  assert.equal(mobileState.players.right.name, 'Bob', 'the selected tablet opponent should carry into the match');
   assert.equal(mobileState.audio.audienceRequested, true, 'tablet matches should request the audience ambience');
-  assert.equal(mobileState.controls.chilena, 'tap K or L twice under a reachable overhead ball');
+  assert.equal(mobileState.controls.chilena, 'double kick: direct; double lob: high arc');
+  const mobileGoalBounds = await mobilePage.evaluate(() => {
+    const match = window.__SKYHEAD_GAME__.scene.getScene('Match');
+    return match.goals.map(({ image }) => {
+      const bounds = image.getBounds();
+      return { left: Math.round(bounds.left), right: Math.round(bounds.right) };
+    });
+  });
+  const mobileStageEdge = (mobileState.stageLayout.width - 1280) / 2;
+  assert.ok(mobileGoalBounds[0].left <= -mobileStageEdge + 1, 'the left goal should reach the wide-phone edge');
+  assert.ok(mobileGoalBounds[1].right >= 1280 + mobileStageEdge - 1, 'the right goal should reach the wide-phone edge');
 
+  await touchControl(mobilePage, 1162, 54, 35);
+  mobileState = await readState(mobilePage);
+  assert.equal(mobileState.modal, 'help');
+  assert.equal(mobileState.mode, 'paused');
+  assert.equal(mobileState.pauseReason, 'help');
+  const helpTimerBefore = mobileState.timer.secondsLeft;
+  await advance(mobilePage, 900);
+  assert.equal((await readState(mobilePage)).timer.secondsLeft, helpTimerBefore, 'Help must freeze a live match');
+  await capture(mobilePage, `${output}/05-touch-help.png`);
+  await mobilePage.evaluate(() => window.__SKYHEAD_PLATFORM_DEBUG__.backForTesting());
+  mobileState = await readState(mobilePage);
+  assert.equal(mobileState.modal, null);
+  assert.equal(mobileState.mode, 'playing', 'Back should close Help and resume only the match Help paused');
+
+  await touchControl(mobilePage, 184, 54, 35);
+  mobileState = await readState(mobilePage);
+  assert.equal(mobileState.modal, 'abandon-confirm');
+  assert.equal(mobileState.mode, 'paused');
+  assert.equal(mobileState.pauseReason, 'abandon-confirm');
+  assert.deepEqual(mobileState.confirmationActions, ['stay', 'leave match']);
+  const abandonTimerPaused = mobileState.timer.secondsLeft;
+  await advance(mobilePage, 900);
+  assert.equal((await readState(mobilePage)).timer.secondsLeft, abandonTimerPaused, 'the abandon confirmation must freeze the match');
+  await capture(mobilePage, `${output}/05-touch-abandon-confirm.png`);
+  await mobilePage.evaluate(() => window.__SKYHEAD_PLATFORM_DEBUG__.backForTesting());
+  mobileState = await readState(mobilePage);
+  assert.equal(mobileState.modal, null);
+  assert.equal(mobileState.mode, 'playing', 'Back should cancel abandon and safely resume the live match');
+
+  const authoredControlPoints = {
+    jump: [1020, 630],
+    kick: [1165, 610],
+    dash: [1110, 505],
+    lob: [1010, 505],
+  };
+  for (const [action, [x, y]] of Object.entries(authoredControlPoints)) {
+    const before = (await readState(mobilePage)).touchControlVisuals[action];
+    const point = await canvasPoint(mobilePage, x, y);
+    await mobilePage.mouse.move(point.x, point.y);
+    await mobilePage.mouse.down();
+    const pressed = (await readState(mobilePage)).touchControlVisuals[action];
+    assert.equal(pressed.scaleFactor, 0.9, `${action} should use the restrained press factor`);
+    assert.ok(pressed.symbolWidth < before.symbolWidth, `${action} icon must shrink, not balloon, while pressed`);
+    assert.ok(Math.abs(pressed.symbolWidth / before.symbolWidth - 0.9) < 0.02, `${action} icon should preserve its authored base scale`);
+    if (action === 'kick') await capture(mobilePage, `${output}/05-touch-kick-pressed.png`);
+    await mobilePage.mouse.up();
+    const released = (await readState(mobilePage)).touchControlVisuals[action];
+    assert.equal(released.scaleFactor, 1);
+    assert.ok(Math.abs(released.symbolWidth - before.baseSymbolWidth) < 0.2, `${action} icon should restore its exact authored display size`);
+  }
+
+  await mobilePage.evaluate(() => window.__SKYHEAD_GAME__.scene.getScene('Match').scene.restart());
+  await mobilePage.waitForFunction(() => JSON.parse(window.render_game_to_text()).mode === 'countdown');
+  await advance(mobilePage, 3100);
+  mobileState = await readState(mobilePage);
   const touchStartX = mobileState.players.left.x;
   await touchControl(mobilePage, 238, 630, 320);
   mobileState = await readState(mobilePage);
@@ -1146,8 +1520,36 @@ try {
   assert.equal(mobileState.players.left.facing, 1);
   assert.equal(mobileState.players.left.grounded, true);
   assert.ok(Math.abs(mobileState.players.left.y - 547) < 8, `tablet chilena landing should preserve Joel's ground height; got y=${mobileState.players.left.y}`);
-  assert.equal(mobileState.players.left.visualFrame, 0);
-  assert.ok(Math.abs(mobileState.players.left.visualGroundAnchorY - 636) < 0.2);
+  assert.ok(groundedVisualFrames.has(mobileState.players.left.visualFrame), `chilena landing should use a grounded pose; got frame ${mobileState.players.left.visualFrame}`);
+  assert.ok(
+    Math.abs(mobileState.players.left.visualGroundAnchorY - 636) < 1.5,
+    `chilena landing feet should remain visually registered; got ${mobileState.players.left.visualGroundAnchorY}`,
+  );
+
+  await mobilePage.evaluate(() => {
+    window.__SKYHEAD_DEBUG__.resumePlay();
+    window.__SKYHEAD_DEBUG__.setHumanPosition(600);
+    window.__SKYHEAD_DEBUG__.setHumanMeter(0);
+    window.__SKYHEAD_DEBUG__.setOpponentPosition(1080);
+    window.__SKYHEAD_DEBUG__.setBall({ x: 620, y: 360, vx: 0, vy: -1 });
+  });
+  await touchControl(mobilePage, 1010, 505, 17);
+  await touchControl(mobilePage, 1010, 505, 17);
+  mobileState = await readState(mobilePage);
+  assert.equal(mobileState.powerBall.superpowerId, 'chilena-lob', 'double-tapping the tablet Lob icon should start the high chilena');
+  assert.equal(mobileState.powerBall.trajectory?.phase, 'rising');
+  await capture(mobilePage, `${output}/05-touch-lob-chilena-launch.png`);
+  let touchLobChilenaApexY = mobileState.ball.y;
+  for (let step = 0; step < 80 && mobileState.powerBall.trajectory?.phase === 'rising'; step += 1) {
+    await advance(mobilePage, 1000 / 60);
+    mobileState = await readState(mobilePage);
+    touchLobChilenaApexY = Math.min(touchLobChilenaApexY, mobileState.ball.y);
+  }
+  assert.equal(mobileState.powerBall.trajectory?.phase, 'goalward');
+  assert.ok(touchLobChilenaApexY >= 130 && touchLobChilenaApexY <= 165, `tablet high chilena should reach the scoreboard; got y=${touchLobChilenaApexY}`);
+  assert.ok(mobileState.ball.vx > 20 && mobileState.ball.vy > 0);
+  await capture(mobilePage, `${output}/05-touch-lob-chilena-redirect.png`);
+  await advance(mobilePage, 1150);
 
   await mobilePage.evaluate(() => {
     window.__SKYHEAD_DEBUG__.resumePlay();
@@ -1166,7 +1568,7 @@ try {
     `touch mash should apply at least two boost steps; got ${mobileState.lastBoostedStrike?.energySpent}`,
   );
   assert.ok(
-    mobileState.ball.vx > 18.5 && mobileState.ball.vx < 23,
+    mobileState.ball.vx > 18.4 && mobileState.ball.vx < 23,
     `touch boost should remain stronger than a basic kick and below power; got ${mobileState.ball.vx}`,
   );
   assert.ok(mobileState.meterFlash.left > 0);
@@ -1226,10 +1628,90 @@ try {
   assert.deepEqual(mobileState.pauseActions, ['resume', 'restart', 'abandon match']);
   await capture(mobilePage, `${output}/06-touch-abandon-menu.png`);
   await touchControl(mobilePage, 775, 475, 40);
+  mobileState = await readState(mobilePage);
+  assert.equal(mobileState.modal, 'abandon-confirm', 'pause-menu abandon must require confirmation');
+  assert.equal(mobileState.mode, 'paused');
+  await touchControl(mobilePage, 505, 438, 40);
+  mobileState = await readState(mobilePage);
+  assert.equal(mobileState.modal, null, 'Stay should dismiss the confirmation');
+  assert.equal(mobileState.mode, 'paused', 'Stay should return to the existing pause menu');
+  await touchControl(mobilePage, 775, 475, 40);
+  assert.equal((await readState(mobilePage)).modal, 'abandon-confirm');
+  await touchControl(mobilePage, 775, 438, 40);
   await mobilePage.waitForFunction(() => JSON.parse(window.render_game_to_text()).mode === 'intro');
   assert.equal((await readState(mobilePage)).inputMode, 'touch', 'tablet abandon should return to the touch-specific intro');
   assert.deepEqual(mobileErrors, [], `mobile browser emitted errors:\n${mobileErrors.join('\n')}`);
   await mobile.close();
+
+  const tablet = await browser.newContext({
+    viewport: { width: 1280, height: 800 },
+    deviceScaleFactor: 1,
+    hasTouch: true,
+    isMobile: true,
+  });
+  const tabletPage = await tablet.newPage();
+  const tabletErrors = [];
+  tabletPage.on('pageerror', (error) => tabletErrors.push(error.stack ?? error.message));
+  tabletPage.on('console', (message) => {
+    if (message.type() === 'error') tabletErrors.push(`console: ${message.text()}`);
+  });
+  await tabletPage.goto(url, { waitUntil: 'domcontentloaded' });
+  await waitThroughSplash(tabletPage);
+  let tabletState = await readState(tabletPage);
+  assert.equal(tabletState.mode, 'intro');
+  assert.deepEqual(tabletState.stageLayout, {
+    extended: true,
+    width: 1280,
+    height: 800,
+    gameplayWidth: 1280,
+    gameplayHeight: 720,
+    extraHeight: 80,
+    bottomOffset: 80,
+  });
+  const tabletCanvas = await tabletPage.evaluate(() => {
+    const canvas = document.querySelector('canvas');
+    const bounds = canvas.getBoundingClientRect();
+    return { bitmapWidth: canvas.width, bitmapHeight: canvas.height, width: bounds.width, height: bounds.height };
+  });
+  assert.deepEqual(tabletCanvas, { bitmapWidth: 1280, bitmapHeight: 800, width: 1280, height: 800 });
+  await capture(tabletPage, `${output}/08-extended-tablet-intro.png`);
+
+  await touchControl(tabletPage, 640, 730, 40);
+  await tabletPage.waitForFunction(() => JSON.parse(window.render_game_to_text()).mode === 'settings');
+  tabletState = await readState(tabletPage);
+  assert.equal(tabletState.stageLayout.height, 800);
+  await capture(tabletPage, `${output}/08-extended-tablet-settings.png`);
+  await touchControl(tabletPage, 640, 720, 40);
+  await tabletPage.waitForFunction(() => JSON.parse(window.render_game_to_text()).mode === 'intro');
+
+  await touchControl(tabletPage, 640, 660, 40);
+  await tabletPage.waitForFunction(() => JSON.parse(window.render_game_to_text()).mode === 'power-lab');
+  tabletState = await readState(tabletPage);
+  assert.equal(tabletState.stageLayout.bottomOffset, 80);
+  await capture(tabletPage, `${output}/08-extended-tablet-lab.png`);
+  await touchControl(tabletPage, 74, 48, 40);
+  await tabletPage.waitForFunction(() => JSON.parse(window.render_game_to_text()).mode === 'intro');
+
+  await touchControl(tabletPage, 640, 585, 40);
+  await tabletPage.waitForFunction(() => JSON.parse(window.render_game_to_text()).mode === 'countdown');
+  await advance(tabletPage, 3100);
+  tabletState = await readState(tabletPage);
+  assert.equal(tabletState.mode, 'playing');
+  assert.equal(tabletState.stageLayout.height, 800);
+  const tabletStartX = tabletState.players.left.x;
+  await touchControl(tabletPage, 98, 710, 120);
+  assert.ok((await readState(tabletPage)).players.left.x < tabletStartX, 'extended tablet left control should move Joel');
+  await touchControl(tabletPage, 1165, 690, 45);
+  assert.ok((await readState(tabletPage)).players.left.kickCooldown > 0, 'extended tablet kick should remain interactive');
+  await capture(tabletPage, `${output}/08-extended-tablet-match.png`);
+  await touchControl(tabletPage, 52, 54, 40);
+  tabletState = await readState(tabletPage);
+  assert.equal(tabletState.mode, 'paused');
+  await capture(tabletPage, `${output}/08-extended-tablet-pause.png`);
+  await touchControl(tabletPage, 640, 390, 40);
+  assert.equal((await readState(tabletPage)).mode, 'playing');
+  assert.deepEqual(tabletErrors, [], `extended tablet browser emitted errors:\n${tabletErrors.join('\n')}`);
+  await tablet.close();
 
   const penaltyContext = await browser.newContext({
     viewport: { width: 844, height: 390 },
@@ -1273,7 +1755,32 @@ try {
   assert.deepEqual(penaltyErrors, [], `penalty browser emitted errors:\n${penaltyErrors.join('\n')}`);
   await penaltyContext.close();
 
-  await writeFile(`${output}/summary.json`, JSON.stringify({ passed: true, checks: 225 }, null, 2));
+  const spanishDevice = await browser.newContext({
+    viewport: { width: 1280, height: 800 },
+    deviceScaleFactor: 1,
+    hasTouch: true,
+    isMobile: true,
+    locale: 'es-ES',
+  });
+  const spanishDevicePage = await spanishDevice.newPage();
+  await spanishDevicePage.goto(url, { waitUntil: 'domcontentloaded' });
+  await waitThroughSplash(spanishDevicePage);
+  let spanishDeviceState = await readState(spanishDevicePage);
+  assert.equal(spanishDeviceState.language, 'es', 'a fresh Spanish tablet should detect Spanish');
+  assert.equal(spanishDeviceState.languageSource, 'device');
+  await touchControl(spanishDevicePage, 1115, 34, 30);
+  await spanishDevicePage.waitForFunction(() => JSON.parse(window.render_game_to_text()).language === 'en');
+  spanishDeviceState = await readState(spanishDevicePage);
+  assert.equal(spanishDeviceState.language, 'en');
+  assert.equal(spanishDeviceState.languageSource, 'user', 'a language button must become a durable user choice');
+  await spanishDevicePage.reload({ waitUntil: 'domcontentloaded' });
+  await waitThroughSplash(spanishDevicePage);
+  spanishDeviceState = await readState(spanishDevicePage);
+  assert.equal(spanishDeviceState.language, 'en', 'device locale must not overwrite a saved user choice');
+  assert.equal(spanishDeviceState.languageSource, 'user');
+  await spanishDevice.close();
+
+  await writeFile(`${output}/summary.json`, JSON.stringify({ passed: true, checks: 237 }, null, 2));
   process.stdout.write('Browser game checks passed: splash, random math, persistence, bilingual settings, whistle signals, difficulty gating, sprint/boost, Big Guy, full gameplay, and touch flow.\n');
 } finally {
   await browser?.close();

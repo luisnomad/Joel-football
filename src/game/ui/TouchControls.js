@@ -1,4 +1,6 @@
 import { isTouchLayout } from '../input/isTouchLayout.js';
+import { createControlIcon } from './createControlIcon.js';
+import { getWideStageUiScale } from '../layout/tabletStage.js';
 
 const GLASS_TINT = 0xdaf7ff;
 const GLASS_SHADOW = 0x04101e;
@@ -9,27 +11,31 @@ export class TouchControls {
     this.input = input;
     this.gameplayObjects = [];
     this.systemObjects = [];
+    this.controlButtons = new Map();
     this.visible = isTouchLayout();
     if (!this.visible) return;
+    this.gameplayYOffset = scene.stageLayout?.bottomOffset ?? 0;
+    this.uiScale = getWideStageUiScale(scene.stageLayout);
+    const horizontalOffset = Math.max(0, (scene.stageLayout?.width ?? 1280) - 1280) / 2;
 
-    this.addSystemButton(52, 54, 'Ⅱ', () => scene.togglePause(), 0x52d7e8);
-    this.addSystemButton(118, 54, '↻', () => scene.scene.restart(), 0xffc857);
-    this.addSystemButton(184, 54, '⌂', () => scene.abandonMatch(), 0xff8f70);
-    this.addSystemButton(1228, 54, '⛶', () => {
-      if (scene.scale.isFullscreen) scene.scale.stopFullscreen();
-      else scene.scale.startFullscreen();
+    this.addSystemButton(52 + horizontalOffset, 54, 'pause', () => scene.togglePause(), 0x52d7e8);
+    this.addSystemButton(118 + horizontalOffset, 54, 'restart', () => scene.scene.restart(), 0xffc857);
+    this.addSystemButton(184 + horizontalOffset, 54, 'home', () => scene.abandonMatch(), 0xff8f70);
+    this.addSystemButton(1228 + horizontalOffset, 54, 'fullscreen', () => {
+      scene.game.registry.get('platformActions')?.toggleFullscreen();
     }, 0xc3a8ff);
 
-    this.addHoldButton(98, 630, 64, '◀', 'left');
-    this.addHoldButton(238, 630, 64, '▶', 'right');
-    this.addPulseButton(1020, 630, 60, '↑', 'jump', 0x2ac7d4);
-    this.addPulseButton(1165, 610, 68, 'K', 'kick', 0xff5b78);
-    this.addPulseButton(1110, 505, 50, 'D', 'dash', 0x8a66ff);
-    this.addPulseButton(1010, 505, 50, 'L', 'lob', 0x39d9a0);
-    this.addPulseButton(1210, 485, 50, 'P', 'power', 0xffa62b);
+    this.addHoldButton(98 + horizontalOffset, 630 + this.gameplayYOffset, 64, 'left', 'left');
+    this.addHoldButton(238 + horizontalOffset, 630 + this.gameplayYOffset, 64, 'right', 'right');
+    this.addPulseButton(1020 + horizontalOffset, 630 + this.gameplayYOffset, 60, 'jump', 'jump', 0x2ac7d4);
+    this.addPulseButton(1165 + horizontalOffset, 610 + this.gameplayYOffset, 68, 'kick', 'kick', 0xff5b78);
+    this.addPulseButton(1110 + horizontalOffset, 505 + this.gameplayYOffset, 50, 'dash', 'dash', 0x8a66ff);
+    this.addPulseButton(1010 + horizontalOffset, 505 + this.gameplayYOffset, 50, 'lob', 'lob', 0x39d9a0);
+    this.addPulseButton(1210 + horizontalOffset, 485 + this.gameplayYOffset, 50, 'power', 'power', 0xffa62b);
   }
 
-  createBase(x, y, radius, label, accent = 0xffffff, group = 'gameplay') {
+  createBase(x, y, radius, icon, accent = 0xffffff, group = 'gameplay') {
+    radius *= this.uiScale;
     const depth = group === 'system' ? 94 : 80;
     const shadow = this.scene.add.circle(x, y + Math.max(3, radius * 0.06), radius + 2, GLASS_SHADOW, 0.12).setDepth(depth);
     const accentGlow = this.scene.add.circle(x, y, radius + 2, accent, 0.025).setDepth(depth + 0.1);
@@ -55,39 +61,67 @@ export class TouchControls {
       0.5,
     ).setDepth(depth + 0.5);
 
-    const text = this.scene.add.text(x, y, label, {
-      fontFamily: 'Arial Rounded MT Bold, sans-serif',
-      fontSize: `${radius * 0.75}px`,
-      color: '#ffffff',
-      fontStyle: 'bold',
-    }).setOrigin(0.5).setDepth(depth + 1).setShadow(0, 2, '#071426', 4, true, true);
+    const isSystemControl = group === 'system';
+    const symbol = createControlIcon(this.scene, {
+      x,
+      y,
+      size: radius * (isSystemControl ? 0.72 : 0.7),
+      icon,
+      depth: depth + 1,
+      alpha: isSystemControl ? 0.78 : 0.68,
+    });
 
-    const visualObjects = [shadow, accentGlow, surface, innerRim, highlight, glint, text];
+    const visualObjects = [shadow, accentGlow, surface, innerRim, highlight, glint, symbol];
     visualObjects.forEach((item) => item.setScrollFactor(0));
+    const baseScales = visualObjects.map((item) => ({
+      item,
+      scaleX: item.scaleX,
+      scaleY: item.scaleY,
+    }));
+    const baseSymbolDisplay = { width: symbol.displayWidth, height: symbol.displayHeight };
+    let scaleFactor = 1;
     const objects = group === 'system' ? this.systemObjects : this.gameplayObjects;
     objects.push(...visualObjects);
     return {
       target: surface,
-      setScale: (scale) => visualObjects.forEach((item) => item.setScale(scale)),
+      setScale: (nextFactor) => {
+        scaleFactor = nextFactor;
+        baseScales.forEach(({ item, scaleX, scaleY }) => item.setScale(scaleX * nextFactor, scaleY * nextFactor));
+      },
+      diagnostics: () => ({
+        scaleFactor,
+        symbolScaleX: symbol.scaleX,
+        symbolScaleY: symbol.scaleY,
+        symbolWidth: symbol.displayWidth,
+        symbolHeight: symbol.displayHeight,
+        baseSymbolScaleX: baseScales.at(-1).scaleX,
+        baseSymbolScaleY: baseScales.at(-1).scaleY,
+        baseSymbolWidth: baseSymbolDisplay.width,
+        baseSymbolHeight: baseSymbolDisplay.height,
+      }),
     };
   }
 
-  addSystemButton(x, y, label, onPress, accent) {
-    const button = this.createBase(x, y, 28, label, accent, 'system');
+  addSystemButton(x, y, icon, onPress, accent) {
+    const button = this.createBase(x, y, 28, icon, accent, 'system');
+    this.controlButtons.set(`system:${icon}`, button);
     button.target.setInteractive({ useHandCursor: true });
     button.target.on('pointerdown', () => button.setScale(0.9));
     button.target.on('pointerup', () => {
       button.setScale(1);
+      this.scene.game.events.emit('platform:haptic', 'light');
       onPress();
     });
     button.target.on('pointerout', () => button.setScale(1));
   }
 
-  addHoldButton(x, y, radius, label, action, accent) {
-    const button = this.createBase(x, y, radius, label, accent);
+  addHoldButton(x, y, radius, icon, action, accent) {
+    const button = this.createBase(x, y, radius, icon, accent);
+    this.controlButtons.set(action, button);
     button.target.setInteractive({ useHandCursor: true });
     button.target.on('pointerdown', () => {
       button.setScale(0.92);
+      this.scene.game.events.emit('platform:haptic', 'light');
       this.input.setTouch(action, true);
     });
     const release = () => {
@@ -98,11 +132,13 @@ export class TouchControls {
     button.target.on('pointerout', release);
   }
 
-  addPulseButton(x, y, radius, label, action, accent) {
-    const button = this.createBase(x, y, radius, label, accent);
+  addPulseButton(x, y, radius, icon, action, accent) {
+    const button = this.createBase(x, y, radius, icon, accent);
+    this.controlButtons.set(action, button);
     button.target.setInteractive({ useHandCursor: true });
     button.target.on('pointerdown', () => {
       button.setScale(0.9);
+      this.scene.game.events.emit('platform:haptic', action === 'power' ? 'medium' : 'light');
       this.input.setTouch(action, true);
     });
     button.target.on('pointerup', () => button.setScale(1));
@@ -115,5 +151,11 @@ export class TouchControls {
 
   setGameplayVisible(visible) {
     this.gameplayObjects.forEach((item) => item.setVisible(visible && this.visible));
+  }
+
+  diagnostics() {
+    return Object.fromEntries(
+      [...this.controlButtons].map(([key, button]) => [key, button.diagnostics()]),
+    );
   }
 }

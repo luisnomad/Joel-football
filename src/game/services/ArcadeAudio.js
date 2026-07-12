@@ -113,7 +113,10 @@ class ArcadeAudio {
     const profile = playerProfileStore.setAudio(patch);
     this.settings = sanitizeAudioSettings(profile.audio);
     this.applyVolumes();
-    if (this.settings.musicMuted) this.music?.pause?.();
+    if (this.settings.musicMuted) {
+      this.musicRequested = false;
+      this.music?.pause?.();
+    }
     else if (this.unlocked) this.startMusic();
     if (this.settings.effectsMuted || this.sceneMode !== 'match') this.stopAudience();
     else if (this.unlocked) this.startAudience();
@@ -323,6 +326,14 @@ class ArcadeAudio {
       trackCount: MUSIC_TRACKS.length,
       musicRequested: this.musicRequested,
       audienceRequested: this.audienceRequested,
+      media: {
+        musicPaused: this.music?.paused ?? true,
+        musicVolume: this.music?.volume ?? 0,
+        audiencePaused: this.audience?.paused ?? true,
+        audienceVolume: this.audience?.volume ?? 0,
+        ballEffectVolume: this.ballEffect?.volume ?? 0,
+        whistleEffectVolume: this.whistleEffect?.volume ?? 0,
+      },
       goalCheerPlays: this.goalCheerPlays,
       ballEffectPlays: this.ballEffectPlays,
       whistlePlays: this.whistlePlays,

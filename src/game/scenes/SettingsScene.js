@@ -6,6 +6,7 @@ import { playerProfileStore } from '../services/PlayerProfile.js';
 import { clearActiveScene, setActiveScene } from '../stateBridge.js';
 import { createButton } from '../ui/createButton.js';
 import { createVolumeSlider } from '../ui/createVolumeSlider.js';
+import { createArenaStage } from '../ui/createArenaStage.js';
 
 export class SettingsScene extends Phaser.Scene {
   constructor() {
@@ -19,13 +20,21 @@ export class SettingsScene extends Phaser.Scene {
     setActiveScene(this);
     this.events.once(Phaser.Scenes.Events.SHUTDOWN, () => clearActiveScene(this));
 
-    this.add.image(GAME_WIDTH / 2, GAME_HEIGHT / 2, 'arena').setDisplaySize(GAME_WIDTH, GAME_HEIGHT);
+    this.stageLayout = createArenaStage(this).layout;
+    const horizontalOffset = Math.max(0, this.stageLayout.width - GAME_WIDTH) / 2;
     const wash = this.add.graphics();
     wash.fillGradientStyle(0x061225, 0x061225, 0x07101f, 0x07101f, 0.75, 0.75, 0.93, 0.93);
-    wash.fillRect(0, 0, GAME_WIDTH, GAME_HEIGHT);
-    this.add.rectangle(640, 375, 820, 610, 0x09172e, 0.94).setStrokeStyle(3, 0x7ce8ff, 0.28);
+    wash.fillRect(-horizontalOffset, 0, this.stageLayout.width, this.stageLayout.height);
+    this.settingsPanel = this.add.rectangle(
+      640,
+      375 + this.stageLayout.extraHeight / 2,
+      820,
+      610 + this.stageLayout.extraHeight,
+      0x09172e,
+      0.94,
+    ).setStrokeStyle(3, 0x7ce8ff, 0.28);
 
-    this.add.text(640, 72, t(this.language, 'settings.title'), this.textStyle(46, '#ffffff')).setOrigin(0.5);
+    this.titleText = this.add.text(640, 108, t(this.language, 'settings.title'), this.textStyle(46, '#ffffff')).setOrigin(0.5);
     createButton(this, {
       x: 92,
       y: 52,
@@ -36,15 +45,15 @@ export class SettingsScene extends Phaser.Scene {
       onPress: () => this.back(),
     });
 
-    this.add.text(640, 116, t(this.language, 'settings.language'), this.textStyle(16, '#a8c5df')).setOrigin(0.5);
+    this.add.text(640, 150, t(this.language, 'settings.language'), this.textStyle(16, '#a8c5df')).setOrigin(0.5);
     this.createLanguageButton(595, 'EN', 'en');
     this.createLanguageButton(685, 'ES', 'es');
 
-    this.add.text(640, 196, t(this.language, 'settings.difficulty'), this.textStyle(16, '#a8c5df')).setOrigin(0.5);
+    this.add.text(640, 232, t(this.language, 'settings.difficulty'), this.textStyle(16, '#a8c5df')).setOrigin(0.5);
     this.createDifficultyButton(535, 'easy');
     this.createDifficultyButton(640, 'normal');
     this.createDifficultyButton(745, 'hard');
-    this.add.text(640, 278, t(this.language, 'settings.difficultyHelp'), {
+    this.add.text(640, 310, t(this.language, 'settings.difficultyHelp'), {
       fontFamily: 'Trebuchet MS, sans-serif',
       fontSize: '14px',
       color: '#a9bdd8',
@@ -52,7 +61,7 @@ export class SettingsScene extends Phaser.Scene {
 
     this.createAudioRow({
       key: 'music',
-      y: 350,
+      y: 395,
       label: t(this.language, 'settings.music'),
       help: t(this.language, 'settings.musicHelp'),
       value: this.profile.audio.musicVolume,
@@ -61,7 +70,7 @@ export class SettingsScene extends Phaser.Scene {
     });
     this.createAudioRow({
       key: 'effects',
-      y: 480,
+      y: 525,
       label: t(this.language, 'settings.effects'),
       help: t(this.language, 'settings.effectsHelp'),
       value: this.profile.audio.effectsVolume,
@@ -69,16 +78,9 @@ export class SettingsScene extends Phaser.Scene {
       color: 0xffb85c,
     });
 
-    this.cacheText = this.add.text(640, 570, '', {
-      ...this.textStyle(15, '#9fc2dc'),
-      align: 'center',
-    }).setOrigin(0.5);
-    this.refreshCacheText();
-    this.time.addEvent({ delay: 350, loop: true, callback: () => this.refreshCacheText() });
-
     createButton(this, {
       x: 640,
-      y: 640,
+      y: 640 + this.stageLayout.bottomOffset,
       width: 260,
       height: 56,
       label: t(this.language, 'settings.done'),
@@ -102,7 +104,7 @@ export class SettingsScene extends Phaser.Scene {
     const active = this.language === language;
     createButton(this, {
       x,
-      y: 154,
+      y: 188,
       width: 78,
       height: 44,
       label,
@@ -120,7 +122,7 @@ export class SettingsScene extends Phaser.Scene {
     const active = this.profile.difficulty === difficulty;
     createButton(this, {
       x,
-      y: 238,
+      y: 270,
       width: 96,
       height: 46,
       label: t(this.language, `settings.${difficulty}`),
@@ -164,9 +166,13 @@ export class SettingsScene extends Phaser.Scene {
       height: 48,
       label: '',
       color: muted ? 0x168c78 : 0x374e6b,
+      activateOnPointerDown: true,
       onPress: () => {
-        const current = playerProfileStore.get().audio;
-        arcadeAudio.updateSettings({ [`${key}Muted`]: !current[`${key}Muted`] });
+        const muteKey = `${key}Muted`;
+        const currentlyMuted = arcadeAudio.diagnostics().settings[muteKey];
+        if (!currentlyMuted) arcadeAudio.click();
+        arcadeAudio.updateSettings({ [muteKey]: !currentlyMuted });
+        if (currentlyMuted) arcadeAudio.click();
         this.refreshMuteButton(key);
       },
     });
@@ -184,30 +190,50 @@ export class SettingsScene extends Phaser.Scene {
     button.background.setFillStyle(muted ? 0x168c78 : 0x374e6b, 1);
   }
 
-  refreshCacheText() {
-    const { cache } = arcadeAudio.diagnostics();
-    const key = cache.cachedCount >= cache.total ? 'settings.cacheReady' : 'settings.cacheProgress';
-    this.cacheText?.setText(t(this.language, key, { cached: cache.cachedCount, total: cache.total }));
-  }
-
   back() {
     arcadeAudio.click();
     this.scene.start('Intro');
   }
 
+  handlePlatformBack() {
+    this.back();
+    return true;
+  }
+
   serializeState() {
     const profile = playerProfileStore.get();
+    const panelBounds = this.settingsPanel.getBounds();
+    const titleBounds = this.titleText.getBounds();
     return {
       mode: 'settings',
       language: this.language,
       difficulty: profile.difficulty,
-      coordinateSystem: 'origin top-left; +x right; +y down; logical canvas 1280x720',
+      coordinateSystem: `origin top-left; +x right; +y down; logical canvas ${this.stageLayout.width}x${this.stageLayout.height}; gameplay region 1280x720`,
+      stageLayout: this.stageLayout,
+      settingsLayout: {
+        panelTop: Math.round(panelBounds.top * 10) / 10,
+        panelBottom: Math.round(panelBounds.bottom * 10) / 10,
+        titleTop: Math.round(titleBounds.top * 10) / 10,
+        titleBottom: Math.round(titleBounds.bottom * 10) / 10,
+        titleInsidePanel: titleBounds.top >= panelBounds.top + 8 && titleBounds.bottom <= panelBounds.bottom - 8,
+      },
+      technicalAudioCacheVisible: false,
       audio: arcadeAudio.diagnostics(),
+      audioControls: {
+        music: {
+          muted: profile.audio.musicMuted,
+          label: this.musicMuteButton?.text?.text ?? '',
+          enabled: this.musicMuteButton?.zone?.input?.enabled === true,
+        },
+        effects: {
+          muted: profile.audio.effectsMuted,
+          label: this.effectsMuteButton?.text?.text ?? '',
+          enabled: this.effectsMuteButton?.zone?.input?.enabled === true,
+        },
+      },
       actions: ['set English', 'set Spanish', 'set difficulty Easy', 'set difficulty Normal', 'set difficulty Hard', 'set music volume', 'mute music', 'set effects volume', 'mute effects', 'back'],
     };
   }
 
-  advanceForTesting() {
-    this.refreshCacheText();
-  }
+  advanceForTesting() {}
 }

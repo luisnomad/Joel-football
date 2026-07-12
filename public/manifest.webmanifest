@@ -1,0 +1,32 @@
+{
+  "name": "Joel Football",
+  "short_name": "Joel Football",
+  "description": "A fast arcade football game for the whole family.",
+  "start_url": "./",
+  "scope": "./",
+  "display": "fullscreen",
+  "display_override": ["fullscreen", "standalone"],
+  "orientation": "landscape",
+  "background_color": "#07101f",
+  "theme_color": "#10172a",
+  "icons": [
+    {
+      "src": "./assets/branding/joel-football-icon-192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "./assets/branding/joel-football-icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "./assets/branding/joel-football-icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "maskable"
+    }
+  ]
+}

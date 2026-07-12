@@ -68,6 +68,14 @@ export class InputController {
     this.sprintDirection = 0;
   }
 
+  neutralize() {
+    Object.keys(this.touch).forEach((action) => { this.touch[action] = false; });
+    Object.keys(this.keyboardPulse).forEach((action) => { this.keyboardPulse[action] = false; });
+    this.scene.input.keyboard.resetKeys?.();
+    Object.values(this.keys).forEach((key) => key.reset?.());
+    this.resetAdvancedInput();
+  }
+
   sample(self = {}) {
     const { JustDown } = Phaser.Input.Keyboard;
     const left = this.keys.leftA.isDown || this.keys.leftArrow.isDown || this.touch.left;

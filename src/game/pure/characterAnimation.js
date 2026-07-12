@@ -1,6 +1,9 @@
 export const ENHANCED_CHARACTER_FRAME_COUNT = 12;
 export const RUN_FRAME_DISTANCE = 30;
 export const CHARACTER_GROUND_ANCHOR_Y = 418;
+export const CHARACTER_DISPLAY_HEIGHT = 280;
+export const CHARACTER_DISPLAY_WIDTH = CHARACTER_DISPLAY_HEIGHT * (320 / 480);
+export const CHARACTER_GAMEPLAY_HEIGHT = 240;
 
 export const CHARACTER_FRAMES = Object.freeze({
   idle: 0,

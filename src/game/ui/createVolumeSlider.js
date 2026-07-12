@@ -1,4 +1,5 @@
 import Phaser from 'phaser';
+import { getWideStageUiScale } from '../layout/tabletStage.js';
 
 const normalize = (value) => Math.round(Phaser.Math.Clamp(Number(value) || 0, 0, 1) * 20) / 20;
 
@@ -10,13 +11,14 @@ export const createVolumeSlider = (scene, {
   color = 0x58e1ef,
   onChange = () => {},
 }) => {
+  const uiScale = getWideStageUiScale(scene.stageLayout);
   const left = x - width / 2;
-  const track = scene.add.rectangle(x, y, width, 14, 0x152b45, 1)
+  const track = scene.add.rectangle(x, y, width, 14 * uiScale, 0x152b45, 1)
     .setStrokeStyle(2, 0xffffff, 0.18);
-  const fill = scene.add.rectangle(left, y, 0, 14, color, 0.95).setOrigin(0, 0.5);
-  const knob = scene.add.circle(left, y, 19, 0xf6fdff, 1)
-    .setStrokeStyle(4, color, 0.75);
-  const zone = scene.add.zone(x, y, width + 52, 62).setInteractive({ useHandCursor: true });
+  const fill = scene.add.rectangle(left, y, 0, 14 * uiScale, color, 0.95).setOrigin(0, 0.5);
+  const knob = scene.add.circle(left, y, 19 * uiScale, 0xf6fdff, 1)
+    .setStrokeStyle(4 * uiScale, color, 0.75);
+  const zone = scene.add.zone(x, y, width + 52 * uiScale, 62 * uiScale).setInteractive({ useHandCursor: true });
   let current = normalize(value);
 
   const render = () => {

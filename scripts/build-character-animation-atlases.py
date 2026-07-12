@@ -36,6 +36,21 @@ PLAYERS = {
     },
 }
 
+CONTACT_SHEET_PLAYERS = {
+    "juan": {
+        "sheet": ROOT / "source-assets/animation/selected/juan/contact-sheet.png",
+        "source_out": ROOT / "public/assets/player-juan-sheet-v3.png",
+        "runtime_out": ROOT / "public/assets/player-juan-sheet-v3.webp",
+    },
+    "juanjo": {
+        "sheet": ROOT / "source-assets/animation/selected/juanjo/contact-sheet.png",
+        "source_out": ROOT / "public/assets/player-juanjo-sheet-v1.png",
+        "runtime_out": ROOT / "public/assets/player-juanjo-sheet-v1.webp",
+    },
+}
+
+CONTACT_POSE_MAP = (0, 1, 4, 6, 7, 8, 1, 2, 3, 9, 5, 11)
+
 GENERATED_FRAMES = {
     6: "run-a.png",
     7: "run-passing.png",
@@ -129,10 +144,12 @@ def normalize_content(
     *,
     frame: int,
     original_top: int | None = None,
+    grounded: bool | None = None,
 ) -> Image.Image:
     content = enforce_horizontal_margin(content)
     x = (CELL_WIDTH - content.width) // 2
-    y = GROUND_ANCHOR_Y - content.height if frame in GROUNDED_FRAMES else original_top
+    is_grounded = frame in GROUNDED_FRAMES if grounded is None else grounded
+    y = GROUND_ANCHOR_Y - content.height if is_grounded else original_top
     if y is None:
         raise ValueError(f"Frame {frame} is airborne but has no original top offset")
     if x < 0 or y < 0 or x + content.width > CELL_WIDTH or y + content.height > CELL_HEIGHT:
@@ -208,9 +225,59 @@ def build_player(player_name: str, player: dict[str, object]) -> None:
     atlas.save(runtime_out, format="WEBP", lossless=True, quality=90, method=6)
 
 
+def contact_sheet_source_cells(sheet_path: Path) -> list[Image.Image]:
+    """Split an uneven generated 4x3 contact sheet into clean character cells."""
+
+    sheet = Image.open(sheet_path).convert("RGBA")
+    cells: list[Image.Image] = []
+    for source_frame in range(12):
+        column = source_frame % 4
+        row = source_frame // 4
+        left = round(column * sheet.width / 4)
+        right = round((column + 1) * sheet.width / 4)
+        top = round(row * sheet.height / 3)
+        bottom = round((row + 1) * sheet.height / 3)
+        cell = keep_largest_alpha_component(sheet.crop((left, top, right, bottom)))
+        cells.append(cell.crop(alpha_bbox(cell)))
+    return cells
+
+
+def build_contact_sheet_player(player_name: str, player: dict[str, object]) -> None:
+    source_cells = contact_sheet_source_cells(Path(player["sheet"]))
+    idle = source_cells[0]
+    scale = 380 / idle.height
+    atlas = Image.new("RGBA", (CELL_WIDTH * 4, CELL_HEIGHT * 3), (0, 0, 0, 0))
+
+    for frame, source_frame in enumerate(CONTACT_POSE_MAP):
+        source = source_cells[source_frame]
+        width = max(1, round(source.width * scale))
+        height = max(1, round(source.height * scale))
+        content = source.resize((width, height), Image.Resampling.LANCZOS)
+        if content.height > 380:
+            content = resize_to_height(content, 380)
+        content = enforce_horizontal_margin(content)
+        # Resampling can leave a fully transparent outer row. Trim once more
+        # so the visible pixels, not the nominal bitmap edge, hit the baseline.
+        content = content.crop(alpha_bbox(content))
+        # Phaser moves the whole sprite for jumps and chilenas, so keeping the
+        # artwork on one internal foot line prevents pose-to-pose visual pops.
+        cell = normalize_content(content, frame=frame, grounded=True)
+        validate_cell(player_name, frame, cell)
+        atlas.alpha_composite(cell, ((frame % 4) * CELL_WIDTH, (frame // 4) * CELL_HEIGHT))
+
+    source_out = Path(player["source_out"])
+    runtime_out = Path(player["runtime_out"])
+    source_out.parent.mkdir(parents=True, exist_ok=True)
+    runtime_out.parent.mkdir(parents=True, exist_ok=True)
+    atlas.save(source_out, format="PNG", optimize=True)
+    atlas.save(runtime_out, format="WEBP", lossless=True, quality=90, method=6)
+
+
 def main() -> None:
     for player_name, player in PLAYERS.items():
         build_player(player_name, player)
+    for player_name, player in CONTACT_SHEET_PLAYERS.items():
+        build_contact_sheet_player(player_name, player)
 
 
 if __name__ == "__main__":

@@ -6,13 +6,13 @@ import {
   GAME_WIDTH,
   GROUND_Y,
   HUMAN_PLAYER_ID,
-  HUMAN_PLAYER_NAME,
   PLAYER_TUNING,
 } from '../constants.js';
 import { createHeuristicAgentProvider } from '../ai/HeuristicAgentProvider.js';
 import { Ball } from '../entities/Ball.js';
 import { Fighter } from '../entities/Fighter.js';
 import { Goal } from '../entities/Goal.js';
+import { getCharacter, getCharacterLabel, getCharacterName } from '../content/characters.js';
 import { InputController } from '../input/InputController.js';
 import { applyAiDifficulty, safeDecide } from '../pure/actions.js';
 import { nextCountdownWhistle } from '../pure/countdownWhistle.js';
@@ -28,6 +28,11 @@ import { isTouchLayout } from '../input/isTouchLayout.js';
 import { applySuperShot, getSuperpower, isInstantSuperpower } from '../content/superpowers.js';
 import { t } from '../i18n.js';
 import { playerProfileStore } from '../services/PlayerProfile.js';
+import { createArenaStage } from '../ui/createArenaStage.js';
+import { createIconButton } from '../ui/createIconButton.js';
+import { createInfoOverlay } from '../ui/createInfoOverlay.js';
+import { createConfirmationOverlay } from '../ui/createConfirmationOverlay.js';
+import { resolveChilenaShot, shouldRedirectLobChilena } from '../pure/chilena.js';
 
 const round = (value, places = 2) => {
   const factor = 10 ** places;
@@ -43,6 +48,7 @@ const createPowerBallState = (overrides = {}) => ({
   elapsed: 0,
   effectTriggered: false,
   color: null,
+  trajectory: null,
   ...overrides,
 });
 
@@ -55,6 +61,8 @@ export class MatchScene extends Phaser.Scene {
   create() {
     this.isTouchLayout = isTouchLayout();
     this.profile = playerProfileStore.get();
+    this.playerCharacter = getCharacter(this.profile.playerCharacterId);
+    this.opponent = getCharacter(this.profile.opponentId, 'bob');
     this.language = this.profile.language;
     arcadeAudio.setScene('match');
     setActiveScene(this);
@@ -66,7 +74,7 @@ export class MatchScene extends Phaser.Scene {
       delete window.__SKYHEAD_DEBUG__;
     });
 
-    this.add.image(GAME_WIDTH / 2, GAME_HEIGHT / 2, 'arena').setDisplaySize(GAME_WIDTH, GAME_HEIGHT).setDepth(0);
+    this.stageLayout = createArenaStage(this).layout;
     this.createPitchDetails();
     this.createWorldPhysics();
     this.matter.world.setBounds(0, -24, GAME_WIDTH, GAME_HEIGHT + 24, 28, true, true, true, false);
@@ -87,17 +95,19 @@ export class MatchScene extends Phaser.Scene {
       id: HUMAN_PLAYER_ID,
       side: 'left',
       x: 340,
-      texture: this.textures.exists('joel-sheet') ? 'joel-sheet' : 'joel',
-      name: HUMAN_PLAYER_NAME,
-      stats: { speed: 1.08, jump: 1.04, kick: 1, dash: 1, power: 1 },
+      texture: this.textures.exists(this.playerCharacter.sheetTexture) ? this.playerCharacter.sheetTexture : this.playerCharacter.portraitTexture,
+      textureFacing: this.playerCharacter.nativeFacing,
+      name: getCharacterName(this.playerCharacter, this.language),
+      stats: this.playerCharacter.stats,
     });
     this.rightPlayer = new Fighter(this, {
       id: 'vex',
       side: 'right',
       x: 940,
-      texture: this.textures.exists('vex-sheet') ? 'vex-sheet' : 'vex',
-      name: 'VEX-9',
-      stats: { speed: 1, jump: 1.08, kick: 1.04, dash: 1, power: 1.05 },
+      texture: this.textures.exists(this.opponent.sheetTexture) ? this.opponent.sheetTexture : this.opponent.portraitTexture,
+      textureFacing: this.opponent.nativeFacing,
+      name: getCharacterName(this.opponent, this.language),
+      stats: this.opponent.stats,
     });
     this.players = { left: this.leftPlayer, right: this.rightPlayer };
     this.ball = new Ball(this, GAME_WIDTH / 2, 336);
@@ -125,9 +135,24 @@ export class MatchScene extends Phaser.Scene {
     this.lastInstantPower = null;
     this.goalLatch = false;
     this.isPaused = false;
+    this.pauseReason = null;
+    this.helpOverlay = null;
+    this.helpResumeOnClose = false;
+    this.abandonConfirmation = null;
+    this.abandonResumeOnCancel = false;
+    this.abandonPreviousPauseReason = null;
     this.createHud();
     this.createOverlays();
     this.touchControls = new TouchControls(this, this.inputController);
+    this.helpButton = createIconButton(this, {
+      x: this.isTouchLayout ? 1162 : 1228,
+      y: 54,
+      radius: 28,
+      icon: 'help',
+      accent: 0x52d7e8,
+      depth: 94,
+      onPress: () => this.openHelp(),
+    });
     this.bindEvents();
     this.bindKeyboard();
     this.matter.world.on('collisionstart', this.onCollisionStart, this);
@@ -138,6 +163,7 @@ export class MatchScene extends Phaser.Scene {
       resumePlay: () => {
         this.phase = 'playing';
         this.isPaused = false;
+        this.pauseReason = null;
         this.goalLatch = false;
         this.goalTimer = 0;
         this.score = { ...this.score, winner: null };
@@ -232,7 +258,8 @@ export class MatchScene extends Phaser.Scene {
 
   createPitchDetails() {
     const graphics = this.add.graphics().setDepth(2);
-    graphics.fillStyle(0x0c2740, 0.15).fillRect(0, 0, GAME_WIDTH, GAME_HEIGHT);
+    const horizontalOffset = Math.max(0, this.stageLayout.width - GAME_WIDTH) / 2;
+    graphics.fillStyle(0x0c2740, 0.15).fillRect(-horizontalOffset, 0, this.stageLayout.width, this.stageLayout.height);
     graphics.lineStyle(5, 0xe9fff3, 0.74);
     graphics.strokeLineShape(new Phaser.Geom.Line(0, GROUND_Y, GAME_WIDTH, GROUND_Y));
   }
@@ -255,8 +282,8 @@ export class MatchScene extends Phaser.Scene {
     this.hud = this.add.graphics().setDepth(60);
     this.hud.fillStyle(0x071426, 0.88).fillRoundedRect(350, 20, 580, 104, 24);
     this.hud.lineStyle(3, 0xffffff, 0.17).strokeRoundedRect(350, 20, 580, 104, 24);
-    this.leftNameText = this.add.text(382, 42, HUMAN_PLAYER_NAME, this.hudTextStyle(21, '#6ef4ff')).setDepth(61);
-    this.rightNameText = this.add.text(898, 42, 'VEX-9', this.hudTextStyle(21, '#ffad72')).setOrigin(1, 0).setDepth(61);
+    this.leftNameText = this.add.text(382, 42, getCharacterLabel(this.playerCharacter, this.language), this.hudTextStyle(21, Phaser.Display.Color.IntegerToColor(this.playerCharacter.accent).rgba)).setDepth(61);
+    this.rightNameText = this.add.text(898, 42, getCharacterLabel(this.opponent, this.language), this.hudTextStyle(21, Phaser.Display.Color.IntegerToColor(this.opponent.accent).rgba)).setOrigin(1, 0).setDepth(61);
     this.scoreText = this.add.text(640, 33, '0  :  0', this.hudTextStyle(42, '#ffffff')).setOrigin(0.5, 0).setDepth(61);
     this.clockText = this.add.text(640, 85, '1:30', this.hudTextStyle(21, '#d8e7ff')).setOrigin(0.5).setDepth(61);
     this.suddenDeathText = this.add.text(640, 113, '', this.hudTextStyle(14, '#ffda55')).setOrigin(0.5).setDepth(61);
@@ -283,7 +310,7 @@ export class MatchScene extends Phaser.Scene {
   }
 
   createOverlays() {
-    const pauseShade = this.add.rectangle(0, 0, GAME_WIDTH, GAME_HEIGHT, 0x050914, 0.65).setOrigin(0).setInteractive();
+    const pauseShade = this.add.rectangle(0, 0, GAME_WIDTH, this.stageLayout.height, 0x050914, 0.65).setOrigin(0).setInteractive();
     const pausePanel = this.add.rectangle(640, 352, 620, 390, 0x0d1b34, 0.96).setStrokeStyle(3, 0x8fefff, 0.42);
     const pauseTitle = this.add.text(640, 230, t(this.language, 'match.paused'), this.hudTextStyle(54, '#ffffff')).setOrigin(0.5);
     const pauseCopy = this.add.text(640, 305, t(this.language, 'match.chooseOption'), {
@@ -302,9 +329,9 @@ export class MatchScene extends Phaser.Scene {
       button.setVisible(false);
     });
 
-    const resultShade = this.add.rectangle(0, 0, GAME_WIDTH, GAME_HEIGHT, 0x050914, 0.76).setOrigin(0).setInteractive();
+    const resultShade = this.add.rectangle(0, 0, GAME_WIDTH, this.stageLayout.height, 0x050914, 0.76).setOrigin(0).setInteractive();
     const resultPanel = this.add.rectangle(640, 340, 610, 390, 0x0d1b34, 0.98).setStrokeStyle(4, 0xffdc63, 0.55);
-    this.resultTitle = this.add.text(640, 225, t(this.language, 'match.joelWins'), this.hudTextStyle(54, '#ffffff')).setOrigin(0.5);
+    this.resultTitle = this.add.text(640, 225, t(this.language, 'match.characterWins', { name: getCharacterLabel(this.playerCharacter, this.language) }), this.hudTextStyle(54, '#ffffff')).setOrigin(0.5);
     this.resultScore = this.add.text(640, 300, '1  :  0', this.hudTextStyle(48, '#ffda55')).setOrigin(0.5);
     this.resultCopy = this.add.text(640, 354, t(this.language, 'match.winCopy'), this.hudTextStyle(19, '#bbcee6')).setOrigin(0.5);
     this.resultOverlay = this.add.container(0, 0, [resultShade, resultPanel, this.resultTitle, this.resultScore, this.resultCopy]).setDepth(110).setVisible(false);
@@ -418,7 +445,15 @@ export class MatchScene extends Phaser.Scene {
     this.onEscapeKey = (event) => {
       if (event?.key !== 'Escape' || event.repeat) return;
       event.preventDefault();
-      if (this.phase === 'result') this.abandonMatch();
+      if (this.helpOverlay) {
+        this.closeHelp();
+        return;
+      }
+      if (this.abandonConfirmation) {
+        this.closeAbandonConfirmation();
+        return;
+      }
+      if (this.phase === 'result') this.leaveMatch();
       else this.togglePause();
     };
     this.onMenuKey = () => {
@@ -445,14 +480,107 @@ export class MatchScene extends Phaser.Scene {
   }
 
   togglePause() {
+    if (this.helpOverlay) {
+      this.closeHelp();
+      return;
+    }
+    if (this.abandonConfirmation) {
+      this.closeAbandonConfirmation();
+      return;
+    }
+    this.setPaused(!this.isPaused);
+  }
+
+  setPaused(paused, { playSound = true, reason = 'manual' } = {}) {
     if (this.phase === 'result') return;
-    this.isPaused = !this.isPaused;
+    this.isPaused = Boolean(paused);
+    this.pauseReason = this.isPaused ? reason : null;
     this.pauseOverlay.setVisible(this.isPaused);
     this.touchControls.setGameplayVisible(!this.isPaused);
     this.setPauseMenuButtonsVisible(this.isPaused);
     if (this.isPaused) this.matter.world.pause();
     else this.matter.world.resume();
+    if (playSound) arcadeAudio.click();
+  }
+
+  handlePlatformActiveChange(isActive) {
+    this.inputController?.neutralize();
+    this.accumulator = 0;
+    if (!isActive && this.helpOverlay && this.phase !== 'result') {
+      this.helpResumeOnClose = false;
+      this.isPaused = true;
+      this.pauseReason = 'lifecycle';
+      this.matter.world.pause();
+      return;
+    }
+    if (!isActive && this.abandonConfirmation && this.phase !== 'result') {
+      this.abandonResumeOnCancel = false;
+      this.abandonPreviousPauseReason = 'lifecycle';
+      this.isPaused = true;
+      this.pauseReason = 'lifecycle';
+      this.matter.world.pause();
+      return;
+    }
+    if (!isActive && this.phase !== 'result' && !this.isPaused) {
+      this.setPaused(true, { playSound: false, reason: 'lifecycle' });
+    }
+  }
+
+  handlePlatformBack() {
+    this.inputController?.neutralize();
+    if (this.helpOverlay) {
+      this.closeHelp();
+      return true;
+    }
+    if (this.abandonConfirmation) {
+      this.closeAbandonConfirmation();
+      return true;
+    }
+    if (this.phase === 'result') this.leaveMatch();
+    else this.togglePause();
+    return true;
+  }
+
+  openHelp() {
+    if (this.helpOverlay || this.abandonConfirmation) return;
+    this.inputController?.neutralize();
+    this.helpResumeOnClose = this.phase !== 'result' && !this.isPaused;
+    if (this.helpResumeOnClose) {
+      this.isPaused = true;
+      this.pauseReason = 'help';
+      this.matter.world.pause();
+    }
+    this.pauseOverlay.setVisible(false);
+    this.setPauseMenuButtonsVisible(false);
+    this.touchControls.setVisible(false);
+    this.helpButton.setVisible(false);
+    this.helpOverlay = createInfoOverlay(this, {
+      kind: 'help',
+      language: this.language,
+      inputMode: this.isTouchLayout ? 'touch' : 'keyboard',
+      onClose: () => this.closeHelp(),
+    });
     arcadeAudio.click();
+  }
+
+  closeHelp() {
+    if (!this.helpOverlay) return false;
+    this.helpOverlay.destroy();
+    this.helpOverlay = null;
+    this.helpButton.setVisible(true);
+    this.touchControls.setVisible(true);
+    if (this.helpResumeOnClose) {
+      this.isPaused = false;
+      this.pauseReason = null;
+      this.matter.world.resume();
+    }
+    this.helpResumeOnClose = false;
+    const showPauseMenu = this.isPaused && this.phase !== 'result';
+    this.pauseOverlay.setVisible(showPauseMenu);
+    this.setPauseMenuButtonsVisible(showPauseMenu);
+    this.touchControls.setGameplayVisible(!this.isPaused && this.phase !== 'result');
+    arcadeAudio.click();
+    return true;
   }
 
   setPauseMenuButtonsVisible(visible) {
@@ -460,7 +588,62 @@ export class MatchScene extends Phaser.Scene {
   }
 
   abandonMatch() {
+    if (this.phase === 'result') {
+      this.leaveMatch();
+      return;
+    }
+    if (this.abandonConfirmation) return;
+    this.inputController?.neutralize();
+    this.abandonResumeOnCancel = !this.isPaused;
+    this.abandonPreviousPauseReason = this.pauseReason;
+    if (this.abandonResumeOnCancel) {
+      this.isPaused = true;
+      this.pauseReason = 'abandon-confirm';
+      this.matter.world.pause();
+    }
+    this.pauseOverlay.setVisible(false);
+    this.setPauseMenuButtonsVisible(false);
+    this.touchControls.setVisible(false);
+    this.helpButton.setVisible(false);
+    this.abandonConfirmation = createConfirmationOverlay(this, {
+      title: t(this.language, 'match.abandonConfirmTitle'),
+      message: t(this.language, 'match.abandonConfirmCopy'),
+      cancelLabel: t(this.language, 'match.abandonStay'),
+      confirmLabel: t(this.language, 'match.abandonLeave'),
+      onCancel: () => this.closeAbandonConfirmation(),
+      onConfirm: () => this.leaveMatch(),
+    });
+    arcadeAudio.click();
+  }
+
+  closeAbandonConfirmation() {
+    if (!this.abandonConfirmation) return false;
+    this.abandonConfirmation.destroy();
+    this.abandonConfirmation = null;
+    this.helpButton.setVisible(true);
+    this.touchControls.setVisible(true);
+    if (this.abandonResumeOnCancel) {
+      this.isPaused = false;
+      this.pauseReason = null;
+      this.matter.world.resume();
+    } else {
+      this.pauseReason = this.abandonPreviousPauseReason;
+    }
+    this.abandonResumeOnCancel = false;
+    this.abandonPreviousPauseReason = null;
+    const showPauseMenu = this.isPaused && this.phase !== 'result';
+    this.pauseOverlay.setVisible(showPauseMenu);
+    this.setPauseMenuButtonsVisible(showPauseMenu);
+    this.touchControls.setGameplayVisible(!this.isPaused && this.phase !== 'result');
+    arcadeAudio.click();
+    return true;
+  }
+
+  leaveMatch() {
+    this.abandonConfirmation?.destroy();
+    this.abandonConfirmation = null;
     this.isPaused = false;
+    this.pauseReason = null;
     arcadeAudio.click();
     this.scene.start('Intro');
   }
@@ -616,16 +799,19 @@ export class MatchScene extends Phaser.Scene {
       owner: fighter.side,
       ttl: PLAYER_TUNING.powerDuration,
       counterFlash: 0.32,
-      superpowerId: 'chilena',
       color: strike.color,
+      superpowerId: strike.shotType,
+      trajectory: strike.trajectory,
     });
     this.trail.length = 0;
     this.lastChilenaStrike = {
       side: fighter.side,
+      variant: strike.chilenaVariant,
       meterAfter: strike.meterAfter,
       fireColor: strike.color,
     };
-    this.announcementText.setText(t(this.language, 'match.chilena')).setColor('#ffb14d').setFontSize(70);
+    const announcementKey = strike.chilenaVariant === 'lob' ? 'match.lobChilena' : 'match.chilena';
+    this.announcementText.setText(t(this.language, announcementKey)).setColor('#ffb14d').setFontSize(70);
     this.bannerTimer = 0.8;
     this.spawnImpact(this.ball.body.x, this.ball.body.y, strike.color, 28);
     this.spawnImpact(fighter.sprite.x, fighter.sprite.y - 30, strike.color, 18);
@@ -676,6 +862,31 @@ export class MatchScene extends Phaser.Scene {
       this.powerBall = createPowerBallState();
       this.trail.length = 0;
       return;
+    }
+    const trajectory = this.powerBall.trajectory;
+    if (trajectory?.type === 'lob-chilena' && trajectory.phase === 'rising' && shouldRedirectLobChilena({
+      ballY: this.ball.body.y,
+      velocityY: this.ball.body.body.velocity.y,
+      apexY: trajectory.apexY,
+    })) {
+      const redirected = resolveChilenaShot({
+        attackDirection: this.powerBall.owner === 'left' ? 1 : -1,
+        ballX: this.ball.body.x,
+        ballY: this.ball.body.y,
+        targetX: trajectory.targetX,
+        targetY: trajectory.targetY,
+      });
+      this.ball.body.setVelocity(redirected.vx, redirected.vy);
+      this.ball.body.setAngularVelocity(redirected.spin);
+      this.powerBall.trajectory = {
+        ...trajectory,
+        phase: 'goalward',
+        redirectedX: this.ball.body.x,
+        redirectedY: this.ball.body.y,
+      };
+      this.powerBall.effectTriggered = true;
+      this.spawnImpact(this.ball.body.x, this.ball.body.y, this.powerBall.color, 22);
+      this.cameras.main.shake(110, 0.005);
     }
     this.trail.unshift({ x: this.ball.body.x, y: this.ball.body.y });
     this.trail.length = Math.min(this.trail.length, 14);
@@ -748,6 +959,7 @@ export class MatchScene extends Phaser.Scene {
     this.ball.freeze();
     this.announcementText.setText(t(this.language, 'match.goal')).setColor(scoringSide === 'left' ? '#7bf7ff' : '#ffbd79').setFontSize(82);
     this.spawnImpact(this.ball.body.x, this.ball.body.y, scoringSide === 'left' ? 0x63efff : 0xff7a43, 36);
+    this.game.events.emit('platform:haptic', scoringSide === 'left' ? 'success' : 'heavy');
     arcadeAudio.goal();
     this.cameras.main.flash(180, 255, 255, 255, false, undefined, this);
     this.cameras.main.shake(280, 0.012);
@@ -780,13 +992,17 @@ export class MatchScene extends Phaser.Scene {
     this.rightPlayer.finishChilena();
     arcadeAudio.whistle(3, { label: 'final' });
     this.isPaused = false;
+    this.pauseReason = null;
     this.ball.freeze();
     this.cameras.main.resetFX();
     this.matter.world.pause();
     this.touchControls.setVisible(false);
     this.setPauseMenuButtonsVisible(false);
     const humanWon = this.score.winner === 'left';
-    this.resultTitle.setText(humanWon ? t(this.language, 'match.joelWins') : t(this.language, 'match.vexWins')).setColor(humanWon ? '#7bf7ff' : '#ffad72');
+    const winnerCharacter = humanWon ? this.playerCharacter : this.opponent;
+    this.resultTitle
+      .setText(t(this.language, 'match.characterWins', { name: getCharacterLabel(winnerCharacter, this.language) }))
+      .setColor(Phaser.Display.Color.IntegerToColor(winnerCharacter.accent).rgba);
     this.resultScore.setText(`${this.score.left}  :  ${this.score.right}`);
     this.resultCopy.setText(humanWon ? t(this.language, 'match.winCopy') : t(this.language, 'match.loseCopy'));
     this.resultOverlay.setVisible(true);
@@ -888,8 +1104,8 @@ export class MatchScene extends Phaser.Scene {
       this.meterGraphics.fillStyle(0xffef9b, Math.min(0.5, this.meterFlash.right * 1.4)).fillRoundedRect(708, 92, 190, 15, 7);
       this.meterGraphics.lineStyle(3, 0xffdc62, 0.9).strokeRoundedRect(708, 92, 190, 15, 7);
     }
-    this.leftNameText.setText(`${HUMAN_PLAYER_NAME}  ${Math.floor(this.leftPlayer.meter)}%`);
-    this.rightNameText.setText(`${Math.floor(this.rightPlayer.meter)}%  VEX-9`);
+    this.leftNameText.setText(`${getCharacterLabel(this.playerCharacter, this.language)}  ${Math.floor(this.leftPlayer.meter)}%`);
+    this.rightNameText.setText(`${Math.floor(this.rightPlayer.meter)}%  ${getCharacterLabel(this.opponent, this.language)}`);
     this.profile = playerProfileStore.get();
     const equipped = getSuperpower(this.profile.equippedPowerId);
     if (equipped) {
@@ -913,7 +1129,10 @@ export class MatchScene extends Phaser.Scene {
     const right = this.rightPlayer?.snapshot?.() ?? null;
     return {
       mode: this.isPaused ? 'paused' : this.phase,
-      coordinateSystem: 'origin top-left; +x right; +y down; logical canvas 1280x720; ground y=636; goal lines x=126 and x=1154',
+      pauseReason: this.pauseReason,
+      modal: this.helpOverlay?.kind ?? this.abandonConfirmation?.kind ?? null,
+      coordinateSystem: `origin top-left; +x right; +y down; logical canvas ${this.stageLayout.width}x${this.stageLayout.height}; gameplay region 1280x720; ground y=636; goal lines x=126 and x=1154`,
+      stageLayout: this.stageLayout,
       timer: {
         secondsLeft: round(this.score?.secondsLeft ?? 0),
         label: this.score ? formatClock(this.score.secondsLeft, this.score.suddenDeath) : '',
@@ -935,10 +1154,21 @@ export class MatchScene extends Phaser.Scene {
         ttl: round(this.powerBall?.ttl ?? 0),
         superpowerId: this.powerBall?.superpowerId ?? null,
         effectTriggered: this.powerBall?.effectTriggered ?? false,
+        trajectory: this.powerBall?.trajectory ? {
+          ...this.powerBall.trajectory,
+          redirectedX: Number.isFinite(this.powerBall.trajectory.redirectedX)
+            ? round(this.powerBall.trajectory.redirectedX)
+            : null,
+          redirectedY: Number.isFinite(this.powerBall.trajectory.redirectedY)
+            ? round(this.powerBall.trajectory.redirectedY)
+            : null,
+        } : null,
         counterRule: 'kick or jumping head contact at impact',
       },
       language: this.language,
       difficulty: this.profile?.difficulty ?? 'normal',
+      playerCharacter: { id: this.playerCharacter.id, name: getCharacterName(this.playerCharacter, this.language) },
+      opponent: { id: this.opponent.id, name: getCharacterName(this.opponent, this.language) },
       audio: arcadeAudio.diagnostics(),
       inventory: {
         equippedPowerId: this.profile?.equippedPowerId ?? null,
@@ -955,18 +1185,19 @@ export class MatchScene extends Phaser.Scene {
       lastChilenaStrike: this.lastChilenaStrike,
       lastInstantPower: this.lastInstantPower,
       touchControls: this.touchControls?.visible ?? false,
+      touchControlVisuals: this.touchControls?.diagnostics?.() ?? {},
       inputMode: this.isTouchLayout ? 'touch' : 'keyboard',
       currentIntent: this.currentIntents,
       controls: this.isTouchLayout ? {
         move: 'on-screen left/right',
         sprint: 'double-tap and hold the same direction',
         jump: 'on-screen up',
-        kick: 'on-screen K',
-        lob: 'on-screen L',
-        kickBoost: 'repeat K or L during the kick animation',
-        chilena: 'tap K or L twice under a reachable overhead ball',
-        dash: 'on-screen D',
-        power: 'on-screen P at 100%',
+        kick: 'on-screen kick icon',
+        lob: 'on-screen lob icon',
+        kickBoost: 'repeat the kick or lob icon during the kick animation',
+        chilena: 'double kick: direct; double lob: high arc',
+        dash: 'on-screen dash icon',
+        power: 'on-screen power icon at 100%',
         pause: 'on-screen pause',
         restart: 'on-screen restart',
         menu: 'on-screen menu',
@@ -978,13 +1209,14 @@ export class MatchScene extends Phaser.Scene {
         kick: 'X/K',
         lob: 'Z/I or Up + Kick',
         kickBoost: 'repeat kick or lob during the kick animation',
-        chilena: 'press any kick twice under a reachable overhead ball',
+        chilena: 'double kick: direct; double lob: high arc',
         dash: 'C/L',
         power: 'V/J at 100%',
         pause: 'P/Escape',
         fullscreen: 'F',
       },
       pauseActions: ['resume', 'restart', 'abandon match'],
+      confirmationActions: this.abandonConfirmation ? ['stay', 'leave match'] : [],
     };
   }
 

@@ -23,11 +23,23 @@ export class BootScene extends Phaser.Scene {
     this.load.image('joel-football-splash', assetUrl('splash/joel-football-option-a.webp'));
     this.load.image('joel', assetUrl('player-nova.png'));
     this.load.image('vex', assetUrl('player-vex.png'));
+    this.load.image('lucia', assetUrl('player-lucia-portrait.png'));
+    this.load.image('luna', assetUrl('player-luna-portrait.png'));
+    this.load.image('juan', assetUrl('player-juan-portrait.png'));
+    this.load.image('juanjo', assetUrl('player-juanjo-portrait.png'));
     this.load.spritesheet('joel-sheet', assetUrl('player-nova-sheet-v2.webp'), { frameWidth: 320, frameHeight: 480 });
     this.load.spritesheet('vex-sheet', assetUrl('player-vex-sheet-v2.webp'), { frameWidth: 320, frameHeight: 480 });
+    this.load.spritesheet('lucia-sheet', assetUrl('player-lucia-sheet-v2.webp'), { frameWidth: 320, frameHeight: 480 });
+    this.load.spritesheet('luna-sheet', assetUrl('player-luna-sheet-v2.webp'), { frameWidth: 320, frameHeight: 480 });
+    this.load.spritesheet('juan-sheet', assetUrl('player-juan-sheet-v3.webp'), { frameWidth: 320, frameHeight: 480 });
+    this.load.spritesheet('juanjo-sheet', assetUrl('player-juanjo-sheet-v1.webp'), { frameWidth: 320, frameHeight: 480 });
     this.load.image('ball', assetUrl('ball.png'));
     this.load.image('flare', assetUrl('power-flare.png'));
     this.load.svg('goal-side', assetUrl('goal-side.svg'), { width: 180, height: 320 });
+    this.load.svg('control-run', assetUrl('icons/run.svg'), { width: 128, height: 128 });
+    this.load.svg('control-high-kick', assetUrl('icons/high-kick.svg'), { width: 128, height: 128 });
+    this.load.svg('control-kick', assetUrl('icons/kick.svg'), { width: 128, height: 128 });
+    this.load.svg('control-jump', assetUrl('icons/jump.svg'), { width: 128, height: 128 });
   }
 
   create() {
@@ -39,6 +51,10 @@ export class BootScene extends Phaser.Scene {
     if (!this.textures.exists('arena')) this.createArenaFallback();
     if (!this.textures.exists('joel')) this.createFighterFallback('joel', 0x22cfe5, 0xffd7b5);
     if (!this.textures.exists('vex')) this.createFighterFallback('vex', 0xff6b66, 0xc98765);
+    if (!this.textures.exists('lucia')) this.createFighterFallback('lucia', 0x16bfb5, 0xf2b079);
+    if (!this.textures.exists('luna')) this.createFighterFallback('luna', 0x9559e8, 0xf0b27e);
+    if (!this.textures.exists('juan')) this.createFighterFallback('juan', 0x23344e, 0xc98765);
+    if (!this.textures.exists('juanjo')) this.createFighterFallback('juanjo', 0x4b3038, 0xc98765);
     if (!this.textures.exists('ball')) this.createBallFallback();
     if (!this.textures.exists('flare')) this.createFlareFallback();
     if (!this.textures.exists('goal-side')) this.createGoalFallback();

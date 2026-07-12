@@ -63,11 +63,11 @@ asset.
   animation. Up to three extra presses borrow at most 24 meter only when the
   ball is actually hit. A drive gains up to 27% speed; a lob gains up to 27%
   lift and 16% speed. Neither exceeds the standard full-meter power shot.
-- Chilena: press either kick button twice under a reachable overhead ball. The
-  resulting shot is aimed from the ball toward the center of the opponent's
-  goal; aerial chilenas therefore drive downward instead of sailing over the
-  crossbar. Normal player collision remains active, so the defender can block
-  the shot with their body.
+- Chilena: press the normal Kick twice under a reachable overhead ball for the
+  direct goal-centered bicycle kick. Press Lob twice for a high chilena: the
+  ball first rises to an apex almost touching the underside of the score display, then redirects from
+  that apex toward the center of the opponent's goal. Normal player collision
+  remains active, so the defender can block or counter either variant.
 - Touch controls expose every gameplay action plus pause, restart, menu, and
   fullscreen on pointer-capable coarse/touch devices.
 

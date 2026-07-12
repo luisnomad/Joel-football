@@ -1,11 +1,23 @@
 import Phaser from 'phaser';
-import { GAME_HEIGHT, GAME_WIDTH, HUMAN_PLAYER_NAME } from '../constants.js';
+import { GAME_WIDTH } from '../constants.js';
 import { arcadeAudio } from '../services/ArcadeAudio.js';
 import { clearActiveScene, setActiveScene } from '../stateBridge.js';
 import { createButton } from '../ui/createButton.js';
 import { isTouchLayout } from '../input/isTouchLayout.js';
 import { t } from '../i18n.js';
 import { playerProfileStore } from '../services/PlayerProfile.js';
+import { createArenaStage } from '../ui/createArenaStage.js';
+import { createIconButton } from '../ui/createIconButton.js';
+import { createInfoOverlay } from '../ui/createInfoOverlay.js';
+import { createWebAppInfo } from '../../appMetadata.js';
+import {
+  CHARACTERS,
+  cycleCharacter,
+  getCharacter,
+  getCharacterLabel,
+  getCharacterName,
+} from '../content/characters.js';
+import { getWideStageUiScale } from '../layout/tabletStage.js';
 
 export class IntroScene extends Phaser.Scene {
   constructor() {
@@ -16,33 +28,89 @@ export class IntroScene extends Phaser.Scene {
     this.isTouchLayout = isTouchLayout();
     this.profile = playerProfileStore.get();
     this.language = this.profile.language;
+    this.infoOverlay = null;
     arcadeAudio.setScene('menu');
     setActiveScene(this);
-    this.events.once(Phaser.Scenes.Events.SHUTDOWN, () => clearActiveScene(this));
+    this.events.once(Phaser.Scenes.Events.SHUTDOWN, () => {
+      clearActiveScene(this);
+      window.removeEventListener('keydown', this.onEscapeKey);
+    });
 
-    this.add.image(GAME_WIDTH / 2, GAME_HEIGHT / 2, 'arena').setDisplaySize(GAME_WIDTH, GAME_HEIGHT);
+    this.stageLayout = createArenaStage(this).layout;
+    const horizontalOffset = Math.max(0, this.stageLayout.width - GAME_WIDTH) / 2;
+    const wideUiScale = getWideStageUiScale(this.stageLayout);
+    this.wideUiScale = wideUiScale;
+    const selectorDebounceMs = this.isTouchLayout ? 500 : 50;
     const wash = this.add.graphics();
     wash.fillGradientStyle(0x081229, 0x081229, 0x07101f, 0x07101f, 0.2, 0.2, 0.88, 0.88);
-    wash.fillRect(0, 0, GAME_WIDTH, GAME_HEIGHT);
+    wash.fillRect(-horizontalOffset, 0, this.stageLayout.width, this.stageLayout.height);
 
-    this.add.image(245, 492, 'joel').setDisplaySize(255, 255).setAngle(-4);
-    this.add.image(1035, 492, 'vex').setDisplaySize(255, 255).setAngle(4);
-    this.add.text(245, 620, HUMAN_PLAYER_NAME, {
+    this.playerCharacter = getCharacter(this.profile.playerCharacterId);
+    this.playerPortrait = this.add.image(245, 492, this.playerCharacter.portraitTexture).setDisplaySize(255 * wideUiScale, 255 * wideUiScale).setAngle(-4)
+      .setFlipX(this.playerCharacter.nativeFacing !== 1);
+    this.opponent = getCharacter(this.profile.opponentId, 'bob');
+    this.opponentPortrait = this.add.image(1035, 492, this.opponent.portraitTexture).setDisplaySize(255 * wideUiScale, 255 * wideUiScale).setAngle(4)
+      .setFlipX(this.opponent.nativeFacing !== -1);
+    this.playerNameText = this.add.text(245, 620, getCharacterLabel(this.playerCharacter, this.language), {
       fontFamily: 'Arial Rounded MT Bold, sans-serif',
-      fontSize: '24px',
+      fontSize: `${24 * wideUiScale}px`,
       fontStyle: 'bold',
-      color: '#6ef4ff',
+      color: Phaser.Display.Color.IntegerToColor(this.playerCharacter.accent).rgba,
       stroke: '#071426',
       strokeThickness: 6,
     }).setOrigin(0.5);
-    this.add.text(1035, 620, 'VEX-9', {
+    createButton(this, {
+      x: 85,
+      y: 500,
+      width: 54,
+      height: 64,
+      label: '‹',
+      color: 0x1a6c79,
+      activateOnPointerDown: true,
+      pointerDownDebounceMs: selectorDebounceMs,
+      onPress: () => this.rotatePlayer(-1),
+    });
+    createButton(this, {
+      x: 405,
+      y: 500,
+      width: 54,
+      height: 64,
+      label: '›',
+      color: 0x1a6c79,
+      activateOnPointerDown: true,
+      pointerDownDebounceMs: selectorDebounceMs,
+      onPress: () => this.rotatePlayer(1),
+    });
+    this.opponentNameText = this.add.text(1035, 620, getCharacterLabel(this.opponent, this.language), {
       fontFamily: 'Arial Rounded MT Bold, sans-serif',
-      fontSize: '24px',
+      fontSize: `${24 * wideUiScale}px`,
       fontStyle: 'bold',
-      color: '#ffad72',
+      color: Phaser.Display.Color.IntegerToColor(this.opponent.accent).rgba,
       stroke: '#071426',
       strokeThickness: 6,
     }).setOrigin(0.5);
+    createButton(this, {
+      x: 875,
+      y: 500,
+      width: 54,
+      height: 64,
+      label: '‹',
+      color: 0x1a6c79,
+      activateOnPointerDown: true,
+      pointerDownDebounceMs: selectorDebounceMs,
+      onPress: () => this.rotateOpponent(-1),
+    });
+    createButton(this, {
+      x: 1195,
+      y: 500,
+      width: 54,
+      height: 64,
+      label: '›',
+      color: 0x1a6c79,
+      activateOnPointerDown: true,
+      pointerDownDebounceMs: selectorDebounceMs,
+      onPress: () => this.rotateOpponent(1),
+    });
     const ball = this.add.image(640, 465, 'ball').setDisplaySize(78, 78);
     this.tweens.add({ targets: ball, y: 430, angle: 180, duration: 850, yoyo: true, repeat: -1, ease: 'Sine.InOut' });
 
@@ -65,47 +133,25 @@ export class IntroScene extends Phaser.Scene {
       letterSpacing: 8,
     }).setOrigin(0.5);
 
-    const panel = this.add.rectangle(640, 312, 590, 226, 0x0b1730, 0.82).setStrokeStyle(2, 0x7ce8ff, 0.32);
+    const panel = this.add.rectangle(640, 292, 590, 116, 0x0b1730, 0.82).setStrokeStyle(2, 0x7ce8ff, 0.32);
     panel.setOrigin(0.5);
-    this.add.text(640, 235, t(this.language, 'intro.rule'), {
+    this.add.text(640, 270, t(this.language, 'intro.rule'), {
       fontFamily: 'Arial Rounded MT Bold, sans-serif',
       fontSize: '22px',
       fontStyle: 'bold',
       color: '#bff8ff',
     }).setOrigin(0.5);
-    const controlsCopy = this.isTouchLayout
-      ? t(this.language, 'intro.touchControls')
-      : t(this.language, 'intro.desktopControls');
-    this.add.text(640, 297, controlsCopy, {
-      fontFamily: 'Trebuchet MS, sans-serif',
-      fontSize: '17px',
-      color: '#ffffff',
-      align: 'center',
-      lineSpacing: 8,
-    }).setOrigin(0.5);
-    this.add.text(640, 354, t(this.language, 'intro.advancedControls'), {
+    this.add.text(640, 316, t(this.language, 'intro.helpPrompt'), {
       fontFamily: 'Arial Rounded MT Bold, Trebuchet MS, sans-serif',
-      fontSize: this.language === 'es' ? '13px' : '14px',
+      fontSize: this.language === 'es' ? '14px' : '15px',
       fontStyle: 'bold',
       color: '#ffcf62',
       align: 'center',
-      wordWrap: { width: 550 },
-    }).setOrigin(0.5);
-    const systemCopy = this.isTouchLayout
-      ? t(this.language, 'intro.touchSystem')
-      : t(this.language, 'intro.desktopSystem');
-    this.add.text(640, 397, systemCopy, {
-      fontFamily: 'Trebuchet MS, sans-serif',
-      fontSize: this.isTouchLayout ? '15px' : '16px',
-      color: '#a9bdd8',
-      align: 'center',
-      lineSpacing: 3,
-      wordWrap: { width: 550 },
     }).setOrigin(0.5);
 
     createButton(this, {
       x: 640,
-      y: 505,
+      y: 505 + this.stageLayout.bottomOffset,
       width: 320,
       height: 68,
       label: t(this.language, 'intro.play'),
@@ -114,22 +160,36 @@ export class IntroScene extends Phaser.Scene {
     });
     createButton(this, {
       x: 640,
-      y: 580,
+      y: 580 + this.stageLayout.bottomOffset,
       width: 320,
       height: 58,
       label: t(this.language, 'intro.powerLab'),
       color: 0x1596a8,
       onPress: () => this.startPowerLab(),
     });
+    this.installState = this.game.registry.get('platformActions')?.getInstallState?.()
+      ?? { available: false, installed: false, method: 'unavailable' };
+    const showInstallButton = this.isTouchLayout && this.installState.available;
     createButton(this, {
       x: 640,
-      y: 650,
+      y: 650 + this.stageLayout.bottomOffset,
       width: 220,
       height: 42,
       label: t(this.language, 'intro.settings'),
       color: 0x1a395c,
       onPress: () => this.startSettings(),
     });
+    if (showInstallButton) {
+      createButton(this, {
+        x: 640,
+        y: 696 + this.stageLayout.bottomOffset,
+        width: 220,
+        height: 34,
+        label: t(this.language, 'intro.install'),
+        color: 0x168e78,
+        onPress: () => this.installApp(),
+      });
+    }
 
     this.add.text(1072, 34, t(this.language, 'intro.language'), {
       fontFamily: 'Arial Rounded MT Bold, sans-serif',
@@ -140,8 +200,70 @@ export class IntroScene extends Phaser.Scene {
     this.createLanguageButton(1115, 'EN', 'en');
     this.createLanguageButton(1190, 'ES', 'es');
 
+    this.aboutButton = createIconButton(this, {
+      x: 44,
+      y: 42,
+      radius: 28,
+      icon: 'info',
+      accent: 0xffdc72,
+      onPress: () => this.openInfo('about'),
+    });
+    this.helpButton = createIconButton(this, {
+      x: 108,
+      y: 42,
+      radius: 28,
+      icon: 'help',
+      accent: 0x52d7e8,
+      onPress: () => this.openInfo('help'),
+    });
+
     this.input.keyboard.on('keydown-ENTER', () => this.startMatch());
     this.input.keyboard.on('keydown-SPACE', () => this.startMatch());
+    this.onEscapeKey = (event) => {
+      if (event.key !== 'Escape' || event.repeat || !this.infoOverlay) return;
+      event.preventDefault();
+      this.closeInfo();
+    };
+    window.addEventListener('keydown', this.onEscapeKey);
+  }
+
+  async openInfo(kind) {
+    if (this.infoOverlay) return;
+    arcadeAudio.unlock();
+    arcadeAudio.click();
+    let appInfo = createWebAppInfo();
+    if (kind === 'about') {
+      appInfo = await this.game.registry.get('platformActions')?.getAppInfo?.() ?? appInfo;
+      if (!this.sys.isActive()) return;
+    }
+    this.infoOverlay = createInfoOverlay(this, {
+      kind,
+      language: this.language,
+      inputMode: this.isTouchLayout ? 'touch' : 'keyboard',
+      appInfo,
+      onClose: () => this.closeInfo(),
+    });
+  }
+
+  async installApp() {
+    arcadeAudio.unlock();
+    arcadeAudio.click();
+    const result = await this.game.registry.get('platformActions')?.installWebApp?.();
+    if (!this.sys.isActive()) return;
+    this.installState = result ?? this.installState;
+    if (this.installState?.method === 'instructions') this.openInfo('install');
+  }
+
+  closeInfo() {
+    if (!this.infoOverlay) return false;
+    this.infoOverlay.destroy();
+    this.infoOverlay = null;
+    arcadeAudio.click();
+    return true;
+  }
+
+  handlePlatformBack() {
+    return this.closeInfo();
   }
 
   startMatch() {
@@ -160,6 +282,24 @@ export class IntroScene extends Phaser.Scene {
     arcadeAudio.unlock();
     arcadeAudio.click();
     this.scene.start('Settings');
+  }
+
+  rotateOpponent(direction) {
+    this.opponent = cycleCharacter({ id: this.opponent.id, direction, excludedId: this.playerCharacter.id });
+    this.profile = playerProfileStore.setOpponent(this.opponent.id);
+    this.opponentPortrait.setTexture(this.opponent.portraitTexture).setDisplaySize(255 * this.wideUiScale, 255 * this.wideUiScale);
+    this.opponentPortrait.setFlipX(this.opponent.nativeFacing !== -1);
+    this.opponentNameText.setText(getCharacterLabel(this.opponent, this.language)).setColor(Phaser.Display.Color.IntegerToColor(this.opponent.accent).rgba);
+    arcadeAudio.click();
+  }
+
+  rotatePlayer(direction) {
+    this.playerCharacter = cycleCharacter({ id: this.playerCharacter.id, direction, excludedId: this.opponent.id });
+    this.profile = playerProfileStore.setPlayerCharacter(this.playerCharacter.id);
+    this.playerPortrait.setTexture(this.playerCharacter.portraitTexture).setDisplaySize(255 * this.wideUiScale, 255 * this.wideUiScale);
+    this.playerPortrait.setFlipX(this.playerCharacter.nativeFacing !== 1);
+    this.playerNameText.setText(getCharacterLabel(this.playerCharacter, this.language)).setColor(Phaser.Display.Color.IntegerToColor(this.playerCharacter.accent).rgba);
+    arcadeAudio.click();
   }
 
   createLanguageButton(x, label, language) {
@@ -184,22 +324,42 @@ export class IntroScene extends Phaser.Scene {
     return {
       mode: 'intro',
       language: this.language,
+      languageSource: this.profile.languageSource,
       difficulty: this.profile.difficulty,
       inputMode: this.isTouchLayout ? 'touch' : 'keyboard',
-      coordinateSystem: 'origin top-left; +x right; +y down; logical canvas 1280x720',
+      coordinateSystem: `origin top-left; +x right; +y down; logical canvas ${this.stageLayout.width}x${this.stageLayout.height}; gameplay region 1280x720`,
+      stageLayout: this.stageLayout,
       title: 'Joel Football',
+      playerCharacter: {
+        id: this.playerCharacter.id,
+        name: getCharacterName(this.playerCharacter, this.language),
+        facing: 'right',
+        mirrored: this.playerPortrait.flipX,
+        displaySize: { width: Math.round(this.playerPortrait.displayWidth), height: Math.round(this.playerPortrait.displayHeight) },
+      },
+      opponent: {
+        id: this.opponent.id,
+        name: getCharacterName(this.opponent, this.language),
+        facing: 'left',
+        mirrored: this.opponentPortrait.flipX,
+        displaySize: { width: Math.round(this.opponentPortrait.displayWidth), height: Math.round(this.opponentPortrait.displayHeight) },
+        available: CHARACTERS.map((character) => ({ id: character.id, name: getCharacterName(character, this.language) })),
+      },
+      install: this.installState,
+      modal: this.infoOverlay?.kind ?? null,
+      modalAppInfo: this.infoOverlay?.appInfo ?? null,
       audio: arcadeAudio.diagnostics(),
-      actions: ['play match', 'open power lab', 'open settings', 'set English', 'set Spanish'],
+      actions: ['play match', 'previous player', 'next player', 'previous opponent', 'next opponent', 'open power lab', 'open settings', ...(this.installState?.available ? ['install app'] : []), 'open about', 'open help', 'set English', 'set Spanish'],
       controls: this.isTouchLayout ? {
         move: ['on-screen left', 'on-screen right'],
         sprint: ['double-tap and hold the same direction'],
         jump: ['on-screen up'],
-        kick: ['on-screen K'],
-        lob: ['on-screen L'],
-        kickBoost: ['repeat K or L during the kick animation'],
-        chilena: ['tap K or L twice under a reachable overhead ball'],
-        dash: ['on-screen D'],
-        power: ['on-screen P'],
+        kick: ['on-screen kick icon'],
+        lob: ['on-screen lob icon'],
+        kickBoost: ['repeat the kick or lob icon during the kick animation'],
+        chilena: ['double kick: direct; double lob: high arc'],
+        dash: ['on-screen dash icon'],
+        power: ['on-screen power icon'],
         pause: ['on-screen pause'],
         restart: ['on-screen restart'],
         menu: ['on-screen menu'],
@@ -211,7 +371,7 @@ export class IntroScene extends Phaser.Scene {
         kick: ['X', 'K'],
         lob: ['Z', 'I', 'Up + Kick'],
         kickBoost: ['repeat kick or lob during the kick animation'],
-        chilena: ['press any kick twice under a reachable overhead ball'],
+        chilena: ['double kick: direct; double lob: high arc'],
         dash: ['C', 'L'],
         power: ['V', 'J'],
         pause: ['P', 'Escape'],

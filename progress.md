@@ -258,6 +258,109 @@ Original prompt: Create a polished, playable 2D browser game with the dynamics o
   `SKYHEAD_WEBSITE_DIR` can override the sibling website path.
 - The generated game folder is intentionally committed in the website repo;
   Astro copies it unchanged from `public/` into the Netlify publish directory.
+
+## Capacitor-first Android client (2026-07-11)
+
+- Added Capacitor 8 with the Android, App, Screen Orientation, and Haptics
+  packages. `npm run build` remains the canonical Vite build and
+  `capacitor.config.json` packages `dist/` under
+  `com.luisnomad.joelfootball`.
+- Generated the native `android/` project, locked phone activity orientation
+  to sensor landscape, enabled cutout-safe edge-to-edge layout, and configured
+  Capacitor System Bars to inject WebView-safe CSS inset variables.
+- Added a strict platform boundary under `src/platform/` with web and Capacitor
+  implementations for lifecycle, Back, orientation, fullscreen/immersive mode,
+  haptics, and minimizing the Android app. Phaser scenes do not import
+  Capacitor.
+- Backgrounding now neutralizes keyboard/touch/sprint input and leaves an
+  active match on an explicit lifecycle pause screen. Resume never advances the
+  match until the player chooses to continue. Android Back pauses/resumes a
+  match, dismisses Lab/settings layers, and only minimizes from the main menu.
+- Added Android sync/run/APK/AAB scripts plus optional private release-keystore
+  configuration. Android keystores and signing properties are ignored.
+- Added focused platform unit tests and browser regressions for lifecycle pause,
+  held-input release, explicit resume, and non-exiting Back behavior. Current
+  unit verification is 62/62 and the Vite production build passes.
+- Ran the required web-game Playwright client into
+  `output/capacitor-platform-check/`; the latest text state reached live solo
+  gameplay and the inspected screenshot rendered correctly.
+
+### Capacitor TODO
+
+- Run the full browser suite after the lifecycle changes.
+- Sync and build Android with Java 21 (the machine default Java 26 is newer than
+  Gradle 8.14 supports), then verify the generated debug APK signature.
+- Test on physical low/mid-range and modern Android devices for stable FPS,
+  audio interruptions/Bluetooth latency, cutouts, lock/resume, offline launch,
+  WebView texture memory, and persistence across an installed update.
+- Before Play release, create and protect the production upload keystore, fill
+  `android/keystore.properties`, confirm the final application ID, increment
+  versionCode/versionName, and build the signed release AAB.
+
+### Android emulator verification
+
+- The first Pixel 9 Pro/API 37 launch exposed an orientation race: Phaser had
+  measured the initial portrait WebView and remained at a 320×180 CSS canvas
+  after Android switched to landscape. Added a two-frame scale refresh after
+  platform initialization, foreground resume, resize, and orientation change.
+- Rebuilt/reinstalled with networking disabled. The live cutout-safe WebView is
+  952×426 CSS pixels with a 52 px left camera inset; Phaser now fills the safe
+  16:9 area at 758.5×426.7 instead of remaining at 320×180. Inspected
+  `output/android-offline-launch.png` after the fix.
+- Started a complete solo match offline, backgrounded with an intentionally held
+  touch direction, and relaunched. The game returned paused with
+  `pauseReason: lifecycle` and the held input cleared. A real Android Back event
+  resumed the match while the activity remained visible.
+- Wrote a WebView local-storage sentinel, installed the APK again with
+  `adb install -r`, relaunched offline, and confirmed the sentinel survived.
+- `assembleDebug` succeeds with Java 21. `apksigner` verifies the installable APK
+  with v2 signing and one Android Debug signer; packaged assets include the
+  local entry point, JS, sprites, and audio.
+- The complete browser suite passes after the platform work (one unrelated
+  animation timing assertion was flaky on the first run and passed unchanged on
+  rerun). Unit verification remains 62/62.
+
+### Visual Studio Code tablet launcher
+
+- Added `npm run android:tablet` and the VS Code task **Android: Launch Tablet**.
+  The Node launcher discovers the local Android SDK and installed system images,
+  selects Java 21 on macOS, creates/reuses `Joel_Football_Tablet`, builds and
+  syncs the debug APK, waits for boot, installs with `adb install -r`, unlocks,
+  and starts the Capacitor activity.
+- Only the phone AVD `Pixel_9_Pro` existed beforehand. Successfully created the
+  Pixel Tablet AVD from the already-installed Android 37 ARM Play Store image
+  and ran Joel Football on `emulator-5554` at 2560×1600, 800 dp, landscape,
+  fullscreen. The first Android immersive-mode education card is expected and
+  disappears after tapping **Got it** once.
+
+## Non-16:9 tablet extended stage
+
+- Added a pure tablet gate: only landscape touch devices with at least a 600 dp
+  short side and an aspect ratio materially shorter than 16:9 use the extended
+  stage. Phones, desktop browsers, portrait devices, and exact 16:9 tablets
+  retain the original Phaser FIT layout.
+- Selected Phaser EXPAND for that tablet gate. The 1280×720 gameplay region and
+  all Matter coordinates stay unchanged while the canvas grows vertically; a
+  16:10 tablet becomes 1280×800 with an 80 px bottom UI band.
+- Built a reusable canvas texture from the arena artwork's existing 84 px floor
+  strip and tile it through the added band. It preserves the brick, teal panel,
+  and central gold-lane pattern rather than showing a flat black bar.
+- Intro Play/Lab/Settings actions, Settings Done, and the Power Lab action bar
+  are bottom-anchored by the exact added height. Match movement and action
+  controls shift down by the same amount, leaving the pitch and players clear.
+  Match pause/result shades and Lab challenge shades cover the full extended
+  canvas.
+- Added three pure layout tests and a dedicated 1280×800 touch-browser flow. It
+  verifies the 1280×800 canvas, unchanged gameplay region, relocated settings
+  and Lab actions, movement, kick, pause/resume, and zero browser errors.
+- Inspected 16:9 gameplay plus extended-tablet intro, settings, Power Lab,
+  gameplay, and pause screenshots. The floor repeat and input mapping are
+  visually/functionally correct. Current verification: 65/65 unit tests,
+  production build, required web-game client, and the full browser suite pass.
+- Rebuilt, installed, and launched through `npm run android:tablet`; inspected
+  native 2560×1600 Pixel Tablet intro and live-match captures. Capacitor selects
+  the same 1280×800 stage, removes both black bars, repeats the floor cleanly,
+  and keeps the relocated controls fully visible and responsive.
 - Verified 31/31 unit tests, the game production build, all 42 game browser
   scenarios, and the complete Astro website production build.
 - Served the Astro production output and exercised the real nested route at
@@ -629,3 +732,379 @@ Original prompt: Create a polished, playable 2D browser game with the dynamics o
   Spanish activation banners. Verification: 60/60 unit tests, production
   build, full desktop/tablet browser suite, and the required web-game client
   pass without console or page errors.
+
+## Mirrored tablet floor extension
+
+- Replaced the repeated tablet floor tile with vertically mirrored bands. The
+  first extension reflects the arena's existing floor across its bottom edge;
+  additional bands alternate normal and mirrored orientation for taller tablet
+  ratios.
+- Verified the reflection seam in the 1280×800 touch profile and the native
+  2560×1600 Pixel Tablet WebView, on both the intro and live match screens.
+- Verification: 65/65 unit tests, production build, full browser gameplay and
+  tablet suite, required web-game client, Capacitor sync, debug APK build,
+  emulator install, and native screenshot inspection.
+
+## Physical Samsung tablet smoke test (2026-07-11)
+
+- Installed the debug APK with update/persistence semantics and cold-launched it
+  over USB on a Samsung SM-X210 running Android 15. The app owns the focused
+  fullscreen window at 1920×1200 landscape with no display cutout.
+- Captured live solo gameplay after real touch input. The 16:10 extended stage,
+  mirrored floor, shifted controls, arena, HUD, animation, and match clock all
+  rendered correctly; no crash or ANR occurred.
+- Initial HWUI sampling after 6,273 frames reported 12 modern frame-deadline
+  misses (0.19%), 8 ms median CPU frame time, 5 ms 95th-percentile GPU time,
+  and about 187 MB total PSS / 78 MB graphics memory.
+- Hardware finding: this tablet reports no supported vibration motor, so haptic
+  requests are ignored safely.
+- Follow-up: startup logs contain three non-fatal Capacitor SystemBars safe-area
+  CSS injection errors because the target element is temporarily null. The
+  screen still fills correctly on this cutout-free tablet, but the injection
+  timing should be hardened before relying on it for cutout devices.
+
+## Proposed production-readiness UX slice
+
+- Add final launcher identity: a text-free Joel-and-ball adaptive app icon,
+  Android monochrome/themed variant, Play Store artwork, and matching splash.
+- Unify package and native version metadata (currently `1.0.0` in package.json
+  versus Android `1.0`) and expose version name plus build number through the
+  platform-service boundary.
+- Add a localized About overlay from an info button at the home screen's top
+  left. Credit Luis Nomad / NotJustPrompts.ai, dedicate the game to Joel, and
+  show the authoritative installed version/build.
+- Migrate the player profile to record both language and its origin. A genuinely
+  fresh profile detects and immediately saves the primary device language;
+  existing profiles remain unchanged, and any EN/ES press marks the value as a
+  durable user choice.
+- Remove the dense controls copy from the intro and add one reusable localized
+  Help overlay reachable from home and live gameplay. Opening it during a live
+  match pauses safely; closing resumes only if Help caused the pause; Android
+  Back dismisses Help before affecting the match/activity.
+- Replace touch letters K/L/D/P with a consistent authored icon set: boot and
+  ball for kick, curved ball trajectory for lob, runner/speed lines for dash,
+  and charged ball/lightning burst for power. Use the exact same icons in Help,
+  retain non-visual action names in diagnostics/accessibility, and preserve
+  current hit areas and colors.
+- Release hardening remains: fix the SystemBars safe-area injection race, test
+  audio focus/Bluetooth/lock-resume, verify physical low/mid and modern devices,
+  create the protected upload key, build the signed release AAB, and complete
+  Play listing/privacy/child-audience declarations.
+
+## Production-readiness UX implementation (2026-07-11)
+
+- Unified semantic versioning: `package.json` now supplies Android
+  `versionName`, web About metadata, and the native fallback. Capacitor App info
+  supplies the installed version/build through `PlatformServices`; the physical
+  tablet rendered `Versión 1.0.0 (1)`.
+- Migrated profiles to schema 7 with `languageSource`. Fresh profiles detect
+  and immediately save the primary device language; old profiles are preserved,
+  and EN/ES presses become durable user overrides. Pure and browser coverage
+  verifies detection, migration, persistence, and override after reload.
+- Replaced the intro's dense controls block with a compact kickoff prompt plus
+  top-left About and Help controls. About contains localized credit for Luis
+  Nomad / NotJustPrompts.ai, the dedication to Joel, and version/build.
+- Added one reusable localized Help overlay for menu and match. A live-match
+  Help owns its pause, freezes the clock, resumes only its own pause, converts
+  to lifecycle pause if backgrounded, and closes first on Escape/Android Back.
+- Integrated the user's hand-picked `jump.svg`, `kick.svg`, `high-kick.svg`, and
+  `run.svg` as the live jump/kick/lob/dash symbols and the exact same Help
+  legend. Move, power, and system symbols remain crisp code-native vectors.
+- Generated a text-free Joel-and-ball launcher master from the established Joel
+  art and installed all legacy/adaptive density assets, a monochrome Android 13
+  icon, navy adaptive background, and matching portrait/landscape native splash
+  images. Master: `public/assets/branding/joel-football-app-icon-master.png`.
+- Disabled Capacitor's early SystemBars CSS injection and rely on WebView's
+  modern `env(safe-area-inset-*)` support. The previous null-root error is gone;
+  Android WebView 149 and the Pixel 9 Pro cutout emulator keep game content out
+  of the camera inset. Phaser touch capture is also disabled in favor of the
+  existing CSS gesture lock, eliminating Android's non-cancelable touchcancel
+  console error without affecting controls.
+- Added a portable Gradle runner so `npm run android:apk` and the release bundle
+  command select Java 21 automatically on macOS instead of failing under the
+  machine's Java 26 default.
+- Verification: 68/68 unit tests, production Vite build, required web-game
+  client, complete 237-check desktop/phone/tablet browser suite, Java 21 Android
+  build, debug APK install/update, physical SM-X210 About/Help/gameplay captures,
+  and Pixel 9 Pro cutout capture. No app crash, ANR, safe-area injection error,
+  page error, or touch-cancel error remains.
+
+### Production release items still requiring owner credentials/content
+
+- Create and protect the Play upload keystore, fill
+  `android/keystore.properties`, then run `npm run android:bundle`.
+- Complete final Play listing copy/screenshots, privacy policy, Data Safety, and
+  child-audience declarations.
+- Complete the remaining physical audio-focus/Bluetooth/call/lock tests and a
+  modern physical-device performance run; emulator coverage does not replace
+  those hardware checks.
+
+## Soft control icon tuning (2026-07-11)
+
+- Preserved the replacement `run.svg` artwork and normalized its fill to white
+  for consistent Phaser/WebView rendering.
+- Reduced gameplay glyphs from 84% to 56% of each control radius and set them
+  to 62% opacity. Touch-target circles, positions, and interaction areas remain
+  unchanged.
+- Reduced system glyphs to 72% of their control radius at 78% opacity, while
+  Help-overlay examples remain slightly stronger at 90% for legibility.
+- Verified 68/68 unit tests, the production build, the required web-game
+  client, the complete browser gameplay/touch suite, a fresh Android build, and
+  an update install on the connected Samsung SM-X210. Physical-device capture:
+  `output/android-real-tablet-icons-soft.png`.
+
+## Opponent renamed to Bob (2026-07-11)
+
+- Replaced the opponent's visible VEX-9 name with Bob on the home screen, live
+  HUD, fighter state, and localized English/Spanish result messages.
+- Retained the internal `vex` catalog and asset identifiers so artwork and
+  future saved roster data remain compatible.
+- Verified 68/68 unit tests, the production build, required web-game client,
+  complete browser gameplay/touch suite, and inspected both menu and tablet
+  match captures for correct rendering.
+
+## Tablet tap highlight and icon retune (2026-07-11)
+
+- Identified the full-canvas blue touch wash as Android WebView's native tap
+  highlight on Phaser's single canvas, not a game debug overlay. Explicitly set
+  the WebKit tap-highlight color to transparent through the game DOM hierarchy
+  and on the canvas itself.
+- Increased gameplay glyphs from 56% to 70% of control radius and from 62% to
+  68% opacity. Touch targets and system controls remain unchanged.
+- Added a browser assertion for the canvas tap-highlight style. Verified 68/68
+  unit tests, production web build, full browser gameplay/touch flow, required
+  web-game client, and visually inspected the updated 1280×800 match capture.
+- Per owner instruction, did not build, sync, install, or launch Android; these
+  changes remain web-source-only until the queued changes are ready to deploy.
+
+## Abandon-match confirmation (2026-07-11)
+
+- Added a localized Leave Match confirmation for both the live-match Home icon
+  and the pause-menu Abandon action. English and Spanish provide explicit Stay
+  and Leave choices plus a progress-loss warning.
+- Opening from live play freezes the match and Cancel/Back resumes it. Opening
+  from an existing pause returns to that pause on Cancel. Only explicit Leave
+  exits; result-screen navigation remains direct because the match is finished.
+- The dialog neutralizes held input, hides underlying controls, appears in text
+  diagnostics as `abandon-confirm`, and preserves lifecycle pause if the app is
+  backgrounded while it is open.
+- Verified 68/68 unit tests, production web build, full desktop/touch/tablet
+  browser suite, required web-game client, and inspected the touch confirmation
+  screenshot. No Android build, sync, install, or launch was performed.
+
+## Split direct and high chilenas (2026-07-11)
+
+- Double normal Kick retains the existing direct, goal-centered chilena.
+  Double Lob now triggers a distinct high chilena while the same overhead-ball
+  reachability and two-press requirements remain in force.
+- The high variant launches almost vertically, reaches a tracked apex around
+  logical y=190 just below the score/power HUD, then redirects from that exact
+  point toward the opponent goal center. Its powered-ball state remains
+  blockable and counterable during both trajectory phases.
+- Added `rising` and `goalward` trajectory diagnostics, variant-specific strike
+  state and HIGH CHILENA / CHILENA ALTA announcements, plus revised bilingual
+  Help copy and game specification.
+- Verified 69/69 unit tests, production web build, complete desktop/touch/tablet
+  suite with separate direct/high-chilena assertions, required web-game client,
+  and inspected launch/redirect captures on desktop and touch layouts. No
+  Android build, sync, install, or launch was performed.
+
+## Queued Android deployment (2026-07-11)
+
+- With owner authorization, rebuilt and installed the queued Bob rename, tap
+  highlight removal, icon retune, abandon confirmation, and split chilena
+  behavior on the connected Samsung SM-X210 using update semantics; saved
+  Spanish language and local profile data remained intact.
+- The first cold launch after unlocking exposed an orientation race: Android
+  briefly created the native WebView in portrait, so the one-time tablet gate
+  selected 16:9 FIT and produced thin horizontal bars after landscape lock.
+  Native startup now evaluates the eventual landscape dimensions before Phaser
+  configuration; normal portrait web pages still retain the standard layout.
+- Re-verified 70/70 unit tests, production build, full browser gameplay/touch
+  suite, required web-game client, Android build, v2 APK signature, update
+  install, and physical launch. The live tablet now fills 1920×1200 with the
+  mirrored extended floor, larger translucent icons, Bob, and the Spanish
+  abandon dialog. A real tap showed no blue WebView highlight; filtered app logs
+  contained no crash, Chromium, Capacitor, or page errors.
+- Final deployed debug APK SHA-256:
+  `55e156f6cfa25608719d9bf412dd02f86eec011fae23242a4d96a803e2fb51f7`.
+
+## Reliable audio mute controls (queued, 2026-07-11)
+
+- Fixed Music and Sound Effects Mute / Turn On controls at the shared web-game
+  layer. They now activate on pointer-down, avoiding WebView/browser release
+  cancellation and keeping unmute playback inside the user-activation gesture.
+- Each transition immediately synchronizes the persisted profile, ArcadeAudio
+  state, requested playback, actual media paused/volume values, button label,
+  and button color. A short audio click confirms both muting and re-enabling.
+- Added diagnostics for each control and underlying media elements. Browser
+  coverage now verifies Music and Effects independently in both directions,
+  including pointer-down timing, touch layout, labels, persistence, volume zero
+  while muted, and restored volume after Turn On.
+- Verified 70/70 unit tests, production web build, complete browser gameplay and
+  touch suite, required web-game client, and inspected desktop/touch muted-state
+  captures. Per owner instruction, no Android build, sync, install, or launch
+  was performed; this fix remains queued for the next authorized deployment.
+
+## Stable pressed control icon sizing (queued, 2026-07-11)
+
+- Fixed authored Jump/Kick/Lob/Dash SVG icons ballooning when a gameplay button
+  was pressed. Phaser's SVG textures have non-unit base scales after
+  `setDisplaySize`; the old animation replaced those with absolute 0.9/1.0
+  values, producing texture-resolution-dependent size jumps.
+- Each control now records every object's original X/Y scale and applies press
+  feedback as a relative multiplier. Authored icons shrink by 10% on press and
+  restore their exact configured display dimensions on release; touch targets
+  and control positions are unchanged.
+- Added live per-control scale diagnostics and browser regression coverage for
+  all four authored action icons, with a clean scenario reset before gameplay
+  mechanics tests. Verified 70/70 unit tests, production build, full browser and
+  touch suite, required web-game client, and inspected the pressed Kick capture.
+- Per owner instruction, no Android build, sync, install, or launch was
+  performed; this fix remains queued with the audio-control fix.
+
+## Settings panel reflow (queued, 2026-07-11)
+
+- Moved the Settings heading fully inside the panel and reflowed Language,
+  Difficulty, Music, and Sound Effects beneath it with consistent spacing.
+  The layout remains balanced on both standard 16:9 and extended tablet stages.
+- Removed the player-facing audio-cache progress line, its polling timer, and
+  its English/Spanish copy. The underlying offline audio cache and diagnostics
+  remain intact; only the technical status display was removed.
+- Added browser regression checks for title containment and hidden technical
+  cache status, and updated all interaction coordinates to the new layout.
+  Verified 70/70 unit tests, the production web build, full desktop/touch/tablet
+  browser flow, required web-game client, and visually inspected standard,
+  touch, and extended-tablet settings captures.
+- Per owner instruction, no Android build, sync, install, or launch was
+  performed; this fix remains queued with the pending audio and icon fixes.
+
+## Reliable ground-level goal detection (queued, 2026-07-11)
+
+- Reproduced intermittent missed goals at pitch level: Matter may rest the ball
+  exactly on, or a fraction of a pixel inside, the ground boundary while the
+  scoring rule previously required the full ball to be strictly above it.
+- Added a 1.5-pixel goal-mouth tolerance matching normal physics-solver slop.
+  Rolling balls now score consistently at either goal while shots above the
+  crossbar and balls that fall behind the goal after an earlier miss remain
+  non-goals.
+- Added symmetric unit coverage and changed the physical browser goal scenario
+  to a real ground-level roll. Verified 71/71 unit tests, production web build,
+  full desktop/touch/tablet browser flow, required web-game client, and visually
+  inspected the captured goal state.
+- No Android build, sync, install, or launch was performed; this fix remains
+  queued for the next owner-authorized deployment.
+
+## Luna roster and character polish (queued, 2026-07-12)
+
+- Added Luna as the fourth selectable footballer, with her reference-defining
+  dark ringlet curls and joyful closed-eye smile carried through both the menu
+  portrait and a complete 12-pose gameplay sheet. Her purple/yellow kit keeps
+  her visually distinct at gameplay scale.
+- Generated the character artwork with OpenAI image generation, using a green
+  chroma background for clean local transparency without desaturating the
+  purple uniform. The runtime packages the optimized WebP gameplay atlas while
+  retaining a high-resolution PNG source alongside it.
+- Extended the shared roster metadata, boot loading, selectors, native-facing
+  logic, labels, stats, and fallback behavior. The four-character roster now
+  supports all 12 ordered, non-duplicate matchups, including Luna playing as
+  herself against Joel, Bob, or Lucia.
+- Made pointer-down debouncing opt-in per button: rapid selector taps remain
+  reliable on Android-style touch input without changing the immediate Music
+  and Sound Effects mute behavior. Added an end-to-end assertion that the menu
+  selection carries into the actual match.
+- Added a lightweight upper-head collision cap so balls contact the visible
+  hair/head region instead of passing through it, while preserving the existing
+  body center, foot baseline, movement, and jump feel.
+- Verified 73/73 unit tests, the production web build, the complete desktop and
+  simulated-tablet gameplay suite, and the required web-game Playwright client.
+  Visually inspected Luna in standard and extended-tablet selectors, her live
+  chilena pose, sprite hair clearance, and the physical head-contact regression.
+- Per owner instruction, no Android build, sync, install, or launch was
+  performed; Luna and the accumulated polish remain queued for the next
+  explicitly authorized tablet deployment.
+
+## iPhone Home Screen fullscreen layout (web, 2026-07-12)
+
+- Added a wide-landscape-phone stage for touch devices below 600 CSS pixels on
+  the short side. Instead of fitting a 16:9 canvas with black side bars, Phaser
+  now expands the logical width and fills the entire landscape viewport.
+- Extended the stadium horizontally beneath iPhone cutout areas, centered the
+  original 1280×720 gameplay region, removed shell safe-area letterboxing on
+  wide landscape phones, and kept all interactive controls shifted inward from
+  the physical edges.
+- Enlarged wide-phone menu portraits, labels, buttons, icon buttons, volume
+  knobs, and gameplay touch controls by up to 12% without changing desktop,
+  16:9 phone, tablet, or Android-native sizing.
+- Extended both goal artworks and crossbar colliders into the added side bands,
+  keeping their inner posts and scoring lines unchanged while placing the nets
+  against the visible phone edges.
+- Added iOS standalone/fullscreen metadata plus a game-scoped web manifest with
+  landscape orientation and the authored app icon.
+- Added unit coverage for wide-phone detection and UI scaling, browser coverage
+  requiring an edge-to-edge 844×390 canvas, goal-edge registration, and the
+  complete existing touch journey through selectors, settings, gameplay,
+  chilenas, powers, pause, and abandon confirmation.
+- Verified 75/75 unit tests, production web build, complete desktop/touch/tablet
+  browser suite, required web-game client, and visually inspected wide-phone
+  menu, Settings, confirmation, and live-match screenshots. Android was not
+  rebuilt, synced, installed, or launched.
+
+## Single-fire iPhone character selectors (web, 2026-07-12)
+
+- The first wide-layout release-only attempt did not stop the real-device iOS
+  event sequence. Replaced it with an input-layer guard on every touch selector:
+  the intended pointer-down changes the character immediately, then the button
+  ignores compatibility pointer events for 500 ms after release. Desktop mouse
+  selectors keep their original 50 ms cadence.
+- Added a wide-phone regression that reproduces an intended press/release plus
+  iOS-style compatibility press/release, verifies only one character change,
+  waits through the guard, then confirms the next deliberate tap still works.
+- Verified 75/75 unit tests, production build, the complete desktop/touch/tablet
+  browser suite, and the required web-game client. Android was not rebuilt or
+  deployed.
+
+## Uncle Juan and installable mobile web app (web, 2026-07-12)
+
+- Added Uncle Juan / Tío Juan as the fifth selectable footballer, with a
+  reference-based menu portrait, a complete optimized 12-pose gameplay atlas,
+  native-facing metadata, individual stats, and bilingual names throughout the
+  selector, HUD, results, and debug state.
+- Normalized portrait dimensions after texture swaps so mixed 512 px and 1024 px
+  source art keeps an identical menu footprint. Grounded Juan's kick frame on
+  the shared 418 px atlas baseline and verified every pose keeps safe padding.
+- Added a mobile-only Install App button. Chromium uses the native PWA prompt
+  when it is available; iPhone/iPad displays concise Share → Add to Home Screen
+  instructions, because Safari does not expose a programmatic install prompt.
+  The button stays hidden in an already installed app and in Capacitor.
+- Added a scoped service worker with network-first navigation and cached game
+  assets, dedicated 180/192/512 px Home Screen icons derived from the Android
+  icon, and separate regular/maskable manifest entries.
+- Verified 76/76 unit tests, the production web build, the complete
+  desktop/wide-phone/tablet browser suite, and the required web-game Playwright
+  client. Visually inspected Juan in the selector and the mobile install modal.
+  Android was not rebuilt, synced, installed, or launched.
+
+## Uncle Juanjo and cartoon Uncle Juan refresh (web, 2026-07-12)
+
+- Added Uncle Juanjo / Tío Juanjo as the sixth selectable footballer. His final
+  design combines two identity references: today's face plus his signature
+  squared black hairline, dark rectangular glasses, broad toothy grin, and
+  smiling eyes. His charcoal/burgundy kit and pink accent distinguish him from
+  the rest of the roster.
+- Replaced Uncle Juan's semi-realistic artwork with a simplified chibi design
+  matching Joel, Lucia, and Luna, while preserving his navy/teal kit and adding
+  the requested affectionate little belly.
+- Generated final portraits and 12-pose source sheets with the built-in image
+  generator on chroma green, removed the chroma locally, and extended the
+  reproducible atlas builder to pack uneven 4x3 contact sheets into the game's
+  exact 320x480 frame contract. Detached speed/stun effects are removed, all
+  visible frames retain at least 8 px horizontal padding, and every new pose
+  registers on the shared 418 px internal foot line.
+- Expanded roster metadata to six characters and all 30 non-duplicate matchups,
+  including bilingual labels, native-facing behavior, selector persistence,
+  distinct stats, fallbacks, and diagnostic state.
+- Verified 76/76 unit tests, production web build, full desktop/wide-phone/
+  tablet browser journey, and the required web-game Playwright client. Visually
+  inspected both refreshed menu portraits, Juanjo's live match rendering, and
+  both complete animation atlases. Android was not rebuilt or deployed.

@@ -7,6 +7,7 @@ import { arcadeAudio } from '../services/ArcadeAudio.js';
 import { playerProfileStore } from '../services/PlayerProfile.js';
 import { clearActiveScene, setActiveScene } from '../stateBridge.js';
 import { createButton } from '../ui/createButton.js';
+import { createArenaStage } from '../ui/createArenaStage.js';
 
 const cardPositions = SUPERPOWERS.map((_, index) => ({
   x: 144 + (index % 5) * 248,
@@ -41,10 +42,11 @@ export class PowerLabScene extends Phaser.Scene {
       delete window.__SKYHEAD_LAB_DEBUG__;
     });
 
-    this.add.image(GAME_WIDTH / 2, GAME_HEIGHT / 2, 'arena').setDisplaySize(GAME_WIDTH, GAME_HEIGHT);
+    this.stageLayout = createArenaStage(this).layout;
+    const horizontalOffset = Math.max(0, this.stageLayout.width - GAME_WIDTH) / 2;
     const wash = this.add.graphics();
     wash.fillGradientStyle(0x061225, 0x061225, 0x07101f, 0x07101f, 0.82, 0.82, 0.94, 0.94);
-    wash.fillRect(0, 0, GAME_WIDTH, GAME_HEIGHT);
+    wash.fillRect(-horizontalOffset, 0, this.stageLayout.width, this.stageLayout.height);
     this.add.rectangle(640, 78, GAME_WIDTH, 156, 0x061225, 0.42);
 
     this.add.text(640, 38, t(this.language, 'lab.title'), this.textStyle(42, '#ffffff')).setOrigin(0.5);
@@ -64,7 +66,7 @@ export class PowerLabScene extends Phaser.Scene {
     this.add.text(640, 127, `🎲  ${t(this.language, 'lab.randomMath')}`, this.textStyle(15, '#bfeeff')).setOrigin(0.5);
 
     SUPERPOWERS.forEach((power, index) => this.createPowerCard(power, cardPositions[index]));
-    this.createActionBar();
+    this.createActionBar(this.stageLayout.bottomOffset);
     this.refreshAll();
 
     this.input.keyboard.on('keydown-ESC', () => {
@@ -121,23 +123,23 @@ export class PowerLabScene extends Phaser.Scene {
     this.cards.set(power.id, { panel, iconDisc, icon, name, description, count, equipped, zone });
   }
 
-  createActionBar() {
-    this.add.rectangle(640, 641, 1120, 124, 0x071426, 0.94).setStrokeStyle(2, 0x8befff, 0.22);
-    this.selectedIconDisc = this.add.circle(125, 641, 40, 0xffffff, 0.18);
-    this.selectedIcon = this.add.text(125, 641, 'F', this.textStyle(32)).setOrigin(0.5);
-    this.selectedName = this.add.text(185, 603, '', this.textStyle(23, '#ffffff'));
-    this.selectedDescription = this.add.text(185, 636, '', {
+  createActionBar(yOffset = 0) {
+    this.add.rectangle(640, 641 + yOffset, 1120, 124, 0x071426, 0.94).setStrokeStyle(2, 0x8befff, 0.22);
+    this.selectedIconDisc = this.add.circle(125, 641 + yOffset, 40, 0xffffff, 0.18);
+    this.selectedIcon = this.add.text(125, 641 + yOffset, 'F', this.textStyle(32)).setOrigin(0.5);
+    this.selectedName = this.add.text(185, 603 + yOffset, '', this.textStyle(23, '#ffffff'));
+    this.selectedDescription = this.add.text(185, 636 + yOffset, '', {
       fontFamily: 'Trebuchet MS, sans-serif',
       fontSize: '15px',
       color: '#b9cce3',
       wordWrap: { width: 360 },
     });
-    this.selectedCount = this.add.text(185, 675, '', this.textStyle(16, '#ffdc70'));
-    this.actionMessage = this.add.text(640, 684, '', this.textStyle(14, '#ffb7a8')).setOrigin(0.5);
+    this.selectedCount = this.add.text(185, 675 + yOffset, '', this.textStyle(16, '#ffdc70'));
+    this.actionMessage = this.add.text(640, 684 + yOffset, '', this.textStyle(14, '#ffb7a8')).setOrigin(0.5);
 
     this.solveButton = createButton(this, {
       x: 805,
-      y: 638,
+      y: 638 + yOffset,
       width: 300,
       height: 58,
       label: t(this.language, 'lab.solve'),
@@ -146,7 +148,7 @@ export class PowerLabScene extends Phaser.Scene {
     });
     this.equipButton = createButton(this, {
       x: 1090,
-      y: 638,
+      y: 638 + yOffset,
       width: 210,
       height: 58,
       label: t(this.language, 'lab.equip'),
@@ -223,7 +225,7 @@ export class PowerLabScene extends Phaser.Scene {
     const choices = generateAnswerChoices(problem.answer);
     this.challenge = { problem, choices, status: 'answering' };
 
-    const shade = this.add.rectangle(0, 0, GAME_WIDTH, GAME_HEIGHT, 0x020711, 0.8).setOrigin(0).setDepth(200).setInteractive();
+    const shade = this.add.rectangle(0, 0, GAME_WIDTH, this.stageLayout.height, 0x020711, 0.8).setOrigin(0).setDepth(200).setInteractive();
     const panel = this.add.rectangle(640, 360, 760, 560, 0x0b1930, 0.99).setDepth(201).setStrokeStyle(4, 0x7ce8ff, 0.45);
     const title = this.add.text(640, 125, t(this.language, 'lab.challenge'), this.textStyle(34)).setOrigin(0.5).setDepth(202);
     const power = getSuperpower(this.selectedPowerId);
@@ -315,11 +317,18 @@ export class PowerLabScene extends Phaser.Scene {
     this.refreshAll();
   }
 
+  handlePlatformBack() {
+    if (this.challenge) this.closeChallenge();
+    else this.scene.start('Intro');
+    return true;
+  }
+
   serializeState() {
     const profile = playerProfileStore.get();
     return {
       mode: 'power-lab',
-      coordinateSystem: 'origin top-left; +x right; +y down; logical canvas 1280x720',
+      coordinateSystem: `origin top-left; +x right; +y down; logical canvas ${this.stageLayout.width}x${this.stageLayout.height}; gameplay region 1280x720`,
+      stageLayout: this.stageLayout,
       language: this.language,
       audio: arcadeAudio.diagnostics(),
       operationMode: 'random',

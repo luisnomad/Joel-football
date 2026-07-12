@@ -1,4 +1,5 @@
 import { SUPERPOWERS, getSuperpower } from '../content/superpowers.js';
+import { DEFAULT_OPPONENT_ID, DEFAULT_PLAYER_CHARACTER_ID, sanitizeLineup } from '../content/characters.js';
 
 const emptyPowers = () => Object.fromEntries(SUPERPOWERS.map(({ id }) => [id, 0]));
 const RETIRED_SHOT_POWERS = Object.freeze(['lightning', 'tornado', 'rocket', 'boomerang', 'warp']);
@@ -11,6 +12,8 @@ export const DEFAULT_AUDIO_SETTINGS = Object.freeze({
 });
 
 export const DIFFICULTIES = Object.freeze(['easy', 'normal', 'hard']);
+export const PROFILE_VERSION = 9;
+export const LANGUAGE_SOURCES = Object.freeze(['device', 'user']);
 
 export const sanitizeDifficulty = (value) => DIFFICULTIES.includes(value) ? value : 'normal';
 
@@ -27,10 +30,13 @@ export const sanitizeAudioSettings = (candidate) => ({
   effectsMuted: candidate?.effectsMuted === true,
 });
 
-export const createDefaultProfile = () => ({
-  version: 6,
-  language: 'en',
+export const createDefaultProfile = ({ language = 'en', languageSource = 'device' } = {}) => ({
+  version: PROFILE_VERSION,
+  language: language === 'es' ? 'es' : 'en',
+  languageSource: LANGUAGE_SOURCES.includes(languageSource) ? languageSource : 'device',
   difficulty: 'normal',
+  playerCharacterId: DEFAULT_PLAYER_CHARACTER_ID,
+  opponentId: DEFAULT_OPPONENT_ID,
   equippedPowerId: null,
   mathLockUntil: 0,
   powers: emptyPowers(),
@@ -57,10 +63,15 @@ export const sanitizeProfile = (candidate) => {
     ? 'fireball'
     : legacyEquippedPowerId;
   const equippedPowerId = getSuperpower(migratedEquippedPowerId) ? migratedEquippedPowerId : null;
+  const lineup = sanitizeLineup(candidate);
   return {
-    version: 6,
+    version: PROFILE_VERSION,
     language: candidate.language === 'es' ? 'es' : 'en',
+    languageSource: LANGUAGE_SOURCES.includes(candidate.languageSource)
+      ? candidate.languageSource
+      : 'user',
     difficulty: sanitizeDifficulty(candidate.difficulty),
+    ...lineup,
     equippedPowerId,
     mathLockUntil: Math.max(0, Math.floor(Number(candidate.mathLockUntil) || 0)),
     powers,
@@ -71,11 +82,22 @@ export const sanitizeProfile = (candidate) => {
 export const setProfileLanguage = (profile, language) => ({
   ...sanitizeProfile(profile),
   language: language === 'es' ? 'es' : 'en',
+  languageSource: 'user',
 });
 
 export const setProfileDifficulty = (profile, difficulty) => ({
   ...sanitizeProfile(profile),
   difficulty: sanitizeDifficulty(difficulty),
+});
+
+export const setProfileOpponent = (profile, opponentId) => ({
+  ...sanitizeProfile(profile),
+  ...sanitizeLineup({ ...sanitizeProfile(profile), opponentId }),
+});
+
+export const setProfilePlayerCharacter = (profile, playerCharacterId) => ({
+  ...sanitizeProfile(profile),
+  ...sanitizeLineup({ ...sanitizeProfile(profile), playerCharacterId }),
 });
 
 export const setProfileAudio = (profile, patch) => {

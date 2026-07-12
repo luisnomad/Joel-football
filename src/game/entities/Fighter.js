@@ -15,6 +15,9 @@ import { addKickBoostTaps, kickBoostMultipliers, resolveKickBoost } from '../pur
 import { SPRINT_FORCE_MULTIPLIER, SPRINT_SPEED_MULTIPLIER } from '../pure/sprint.js';
 import {
   CHARACTER_GROUND_ANCHOR_Y,
+  CHARACTER_DISPLAY_HEIGHT,
+  CHARACTER_DISPLAY_WIDTH,
+  CHARACTER_GAMEPLAY_HEIGHT,
   CHARACTER_FRAMES,
   ENHANCED_CHARACTER_FRAME_COUNT,
   RUN_FRAME_DISTANCE,
@@ -29,12 +32,13 @@ import {
   canStartChilena,
   chilenaRotationAt,
   resolveChilenaShot,
+  resolveLobChilenaLaunch,
 } from '../pure/chilena.js';
 
 const scaled = (base, stat) => base * (0.9 + stat * 0.1);
 
 export class Fighter {
-  constructor(scene, { id, side, x, texture, name, stats = DEFAULT_STATS }) {
+  constructor(scene, { id, side, x, texture, textureFacing, name, stats = DEFAULT_STATS }) {
     this.scene = scene;
     this.id = id;
     this.side = side;
@@ -42,6 +46,7 @@ export class Fighter {
     this.stats = { ...DEFAULT_STATS, ...stats };
     this.facing = side === 'left' ? 1 : -1;
     this.baseFacing = this.facing;
+    this.textureFacing = textureFacing === -1 ? -1 : 1;
     this.meter = 0;
     this.kickTimer = 0;
     this.kickCooldown = 0;
@@ -84,6 +89,12 @@ export class Fighter {
       restitution: 0.1,
       friction: 0.15,
     });
+    const headCap = Bodies.circle(0, -76, 40, {
+      label: `${id}:head`,
+      restitution: 0.1,
+      friction: 0.15,
+      density: 0.000001,
+    });
     const torso = Bodies.rectangle(0, 27, 50, 64, {
       label: `${id}:body`,
       chamfer: { radius: 14 },
@@ -98,7 +109,7 @@ export class Fighter {
     });
     const compound = Body.create({
       label: `${id}:player`,
-      parts: [head, torso, foot],
+      parts: [head, headCap, torso, foot],
       friction: 0.2,
       frictionAir: 0.018,
       restitution: 0.02,
@@ -108,13 +119,21 @@ export class Fighter {
     this.sprite = scene.add.sprite(x, GROUND_Y - 89, texture, 0);
     this.hasPoseSheet = this.sprite.texture.frameTotal >= 6;
     this.hasEnhancedPoseSheet = this.sprite.texture.frameTotal >= ENHANCED_CHARACTER_FRAME_COUNT;
-    this.sprite.setDisplaySize(this.hasPoseSheet ? 185 : 205, this.hasPoseSheet ? 240 : 205);
+    this.sprite.setDisplaySize(
+      this.hasPoseSheet ? CHARACTER_DISPLAY_WIDTH : 205,
+      this.hasPoseSheet ? CHARACTER_DISPLAY_HEIGHT : 205,
+    );
     this.baseSpriteScale = { x: this.sprite.scaleX, y: this.sprite.scaleY };
+    this.visualGroundOriginY = this.hasEnhancedPoseSheet
+      ? CHARACTER_GROUND_ANCHOR_Y - 89 / this.baseSpriteScale.y
+      : this.sprite.height / 2;
     this.bigGuyScale = 1;
     this.sprite.setDepth(18);
     scene.matter.add.gameObject(this.sprite, compound);
     this.sprite.setOrigin(0.5, 0.5);
     this.sprite.setPosition(x, GROUND_Y - 89);
+    this.sprite.setDisplayOrigin(this.sprite.width / 2, this.visualGroundOriginY);
+    this.sprite.setFlipX(this.facing !== this.textureFacing);
     this.sprite.setFixedRotation();
     this.sprite.setCollisionCategory(CATEGORIES.PLAYER);
     this.sprite.setCollidesWith([CATEGORIES.WORLD, CATEGORIES.PLAYER, CATEGORIES.BALL, CATEGORIES.GOAL]);
@@ -181,7 +200,7 @@ export class Fighter {
     this.currentPose = 'idle';
     this.setFacing(this.baseFacing);
     if (this.hasPoseSheet) this.sprite.setFrame(0);
-    this.sprite.setOrigin(0.5, 0.5);
+    this.sprite.setDisplayOrigin(this.sprite.width / 2, this.visualGroundOriginY);
     this.sprite.clearTint();
     if (this.statusGlow) this.statusGlow.outerStrength = 0;
     if (this.chilenaGlow) this.chilenaGlow.outerStrength = 0;
@@ -366,7 +385,7 @@ export class Fighter {
     // Ground registration belongs to the atlas. Do not animate the display
     // origin: even a one-pixel bob makes planted shoes visibly cross the pitch.
     this.visualOffsetY = 0;
-    this.sprite.setDisplayOrigin(this.sprite.width / 2, this.sprite.height / 2);
+    this.sprite.setDisplayOrigin(this.sprite.width / 2, this.visualGroundOriginY);
   }
 
   startKick(shotType = 'drive') {
@@ -397,7 +416,7 @@ export class Fighter {
     if (this.kickTimer <= 0 || this.ballHitSerial === this.kickSerial) return null;
     const dx = ball.body.x - this.sprite.x;
     const dy = ball.body.y - this.sprite.y;
-    if (dy < -this.sprite.displayHeight * 0.18) return null;
+    if (dy < -CHARACTER_GAMEPLAY_HEIGHT * 0.18) return null;
     const inFront = dx * this.facing > -8 * this.bigGuyScale && dx * this.facing < 112 * this.bigGuyScale;
     if (!inFront || Math.abs(dy) > 104 * this.bigGuyScale) return null;
     this.ballHitSerial = this.kickSerial;
@@ -440,7 +459,7 @@ export class Fighter {
       fighter: {
         x: this.sprite.x,
         y: this.sprite.y,
-        height: this.sprite.displayHeight,
+        height: CHARACTER_GAMEPLAY_HEIGHT,
         grounded: this.grounded,
         stunned: this.stunned,
         active: this.chilenaActive,
@@ -452,13 +471,20 @@ export class Fighter {
 
     const targetX = this.baseFacing > 0 ? GOAL_LINE_RIGHT + 24 : GOAL_LINE_LEFT - 24;
     const targetY = (CROSSBAR_Y + GROUND_Y) / 2;
-    const shot = resolveChilenaShot({
-      attackDirection: this.baseFacing,
-      ballX: ball.body.x,
-      ballY: ball.body.y,
-      targetX,
-      targetY,
-    });
+    const lobChilena = this.shotType === 'lob';
+    const shot = lobChilena
+      ? resolveLobChilenaLaunch({
+        attackDirection: this.baseFacing,
+        targetX,
+        targetY,
+      })
+      : resolveChilenaShot({
+        attackDirection: this.baseFacing,
+        ballX: ball.body.x,
+        ballY: ball.body.y,
+        targetX,
+        targetY,
+      });
     this.chilenaActive = true;
     this.chilenaElapsed = 0;
     this.chilenaSuccesses += 1;
@@ -483,11 +509,13 @@ export class Fighter {
     this.scene.events.emit('fighter-chilena', this, shot);
     return {
       owner: this.side,
-      shotType: 'chilena',
+      shotType: lobChilena ? 'chilena-lob' : 'chilena',
+      chilenaVariant: lobChilena ? 'lob' : 'drive',
       chilena: true,
       powered: true,
       color: shot.color,
       meterAfter: shot.meterAfter,
+      trajectory: shot.trajectory ?? null,
     };
   }
 
@@ -521,7 +549,7 @@ export class Fighter {
       .setVisible(true)
       .setPosition(this.sprite.x, this.sprite.y)
       .setDisplaySize(this.sprite.displayWidth, this.sprite.displayHeight)
-      .setFlipX(this.facing !== this.baseFacing)
+      .setFlipX(this.facing !== this.textureFacing)
       .setFrame(this.hasPoseSheet ? 3 : 0)
       .setAngle(angle);
   }
@@ -679,7 +707,7 @@ export class Fighter {
   setFacing(direction) {
     if (direction === 0) return;
     this.facing = direction > 0 ? 1 : -1;
-    this.sprite.setFlipX(this.facing !== this.baseFacing);
+    this.sprite.setFlipX(this.facing !== this.textureFacing);
   }
 
   renderAura() {
@@ -782,6 +810,8 @@ export class Fighter {
       vx: Math.round(velocity.x * 100) / 100,
       vy: Math.round(velocity.y * 100) / 100,
       facing: this.facing,
+      nativeFacing: this.textureFacing,
+      visualFlipped: this.sprite.flipX,
       grounded: this.grounded,
       stunned: this.stunned,
       frozen: this.freezeTimer > 0,
@@ -802,6 +832,8 @@ export class Fighter {
       chilenaSuccesses: this.chilenaSuccesses,
       pose: this.currentPose,
       visualFrame,
+      displayWidth: Math.round(this.sprite.displayWidth * 10) / 10,
+      displayHeight: Math.round(this.sprite.displayHeight * 10) / 10,
       enhancedAnimation: this.hasEnhancedPoseSheet,
       animationStage: this.currentAnimationStage,
       runPhase: this.currentRunPhase,

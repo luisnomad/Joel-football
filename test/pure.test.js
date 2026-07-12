@@ -10,9 +10,12 @@ import { resolveFacing } from '../src/game/pure/facing.js';
 import { nextCountdownWhistle } from '../src/game/pure/countdownWhistle.js';
 import {
   CHILENA_FIRE_COLOR,
+  CHILENA_LOB_APEX_Y,
   canStartChilena,
   chilenaRotationAt,
   resolveChilenaShot,
+  resolveLobChilenaLaunch,
+  shouldRedirectLobChilena,
 } from '../src/game/pure/chilena.js';
 import { PLAYER_TUNING } from '../src/game/constants.js';
 import {
@@ -29,6 +32,9 @@ import {
 } from '../src/game/pure/kickBoost.js';
 import {
   CHARACTER_GROUND_ANCHOR_Y,
+  CHARACTER_DISPLAY_HEIGHT,
+  CHARACTER_DISPLAY_WIDTH,
+  CHARACTER_GAMEPLAY_HEIGHT,
   CHARACTER_FRAMES,
   GROUNDED_VISUAL_FRAMES,
   RUN_FRAME_DISTANCE,
@@ -41,6 +47,9 @@ import {
 describe('enhanced character animation', () => {
   it('defines one shared grounded foot anchor for every planted pose', () => {
     expect(CHARACTER_GROUND_ANCHOR_Y).toBe(418);
+    expect(CHARACTER_DISPLAY_HEIGHT).toBe(280);
+    expect(CHARACTER_DISPLAY_WIDTH / CHARACTER_DISPLAY_HEIGHT).toBeCloseTo(320 / 480);
+    expect(CHARACTER_GAMEPLAY_HEIGHT).toBe(240);
     expect(GROUNDED_VISUAL_FRAMES).toEqual([0, 1, 4, 5, 6, 7, 8, 9, 10, 11]);
     expect(GROUNDED_VISUAL_FRAMES.every(isGroundedVisualFrame)).toBe(true);
     expect(isGroundedVisualFrame(2)).toBe(false);
@@ -199,8 +208,13 @@ describe('rules', () => {
   it('scores only when the whole ball crosses the goal line inside the mouth', () => {
     expect(detectGoalCrossing({ previous: { x: 1160, y: 520 }, current: { x: 1195, y: 520 } })).toBe('left');
     expect(detectGoalCrossing({ previous: { x: 120, y: 520 }, current: { x: 80, y: 520 } })).toBe('right');
-    expect(detectGoalCrossing({ previous: { x: 1160, y: 450 }, current: { x: 1195, y: 450 } })).toBeNull();
+    expect(detectGoalCrossing({ previous: { x: 1160, y: 410 }, current: { x: 1195, y: 410 } })).toBeNull();
     expect(detectGoalCrossing({ previous: { x: 1160, y: 620 }, current: { x: 1195, y: 620 } })).toBeNull();
+  });
+
+  it('scores a ball rolling across either goal line at pitch level', () => {
+    expect(detectGoalCrossing({ previous: { x: 1160, y: 614 }, current: { x: 1195, y: 614 } })).toBe('left');
+    expect(detectGoalCrossing({ previous: { x: 120, y: 614.8 }, current: { x: 80, y: 614.8 } })).toBe('right');
   });
 
   it('does not turn an earlier over-goal crossing into a goal after the ball falls behind the line', () => {
@@ -313,6 +327,28 @@ describe('chilena contract', () => {
     const highBall = resolveChilenaShot({ attackDirection: 1, ballX: 620, ballY: 340, targetX: 1178, targetY: 534 });
     expect(lowBall.vy).toBeLessThan(0);
     expect(highBall.vy).toBeGreaterThan(0);
+  });
+
+  it('launches a lob chilena vertically, then redirects at its high apex', () => {
+    const launch = resolveLobChilenaLaunch({
+      attackDirection: 1,
+      targetX: 1178,
+      targetY: 534,
+    });
+    expect(launch.vx).toBeGreaterThan(0);
+    expect(launch.vx).toBeLessThan(3);
+    expect(launch.vy).toBeLessThan(-12);
+    expect(CHILENA_LOB_APEX_Y).toBe(150);
+    expect(launch.trajectory).toEqual({
+      type: 'lob-chilena',
+      phase: 'rising',
+      apexY: CHILENA_LOB_APEX_Y,
+      targetX: 1178,
+      targetY: 534,
+    });
+    expect(shouldRedirectLobChilena({ ballY: 190, velocityY: -4 })).toBe(false);
+    expect(shouldRedirectLobChilena({ ballY: CHILENA_LOB_APEX_Y, velocityY: -2 })).toBe(true);
+    expect(shouldRedirectLobChilena({ ballY: 165, velocityY: 0.1 })).toBe(true);
   });
 
   it('rotates clockwise through one full turn during the kick pose', () => {

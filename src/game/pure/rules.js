@@ -15,12 +15,17 @@ const crossingHeightAt = (previous, current, lineX) => {
   return previous.y + (current.y - previous.y) * progress;
 };
 
+// Matter can leave a resting circle a fraction of a pixel inside a static
+// surface. Treat that solver slop as contact with the goal-mouth boundary so
+// identical ground-level shots do not alternate between scoring and missing.
+const GOAL_MOUTH_TOLERANCE = 1.5;
+
 export const detectGoalCrossing = ({ previous, current } = {}) => {
   if (!previous || !current) return null;
   const crossbarBottom = CROSSBAR_Y + CROSSBAR_HEIGHT / 2;
   const fitsGoalMouth = (centerY) => (
-    centerY - BALL_RADIUS > crossbarBottom
-    && centerY + BALL_RADIUS < GROUND_Y
+    centerY - BALL_RADIUS >= crossbarBottom - GOAL_MOUTH_TOLERANCE
+    && centerY + BALL_RADIUS <= GROUND_Y + GOAL_MOUTH_TOLERANCE
   );
 
   const rightThreshold = GOAL_LINE_RIGHT + BALL_RADIUS;

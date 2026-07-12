@@ -11,8 +11,9 @@ npm run dev
 ```
 
 Open the displayed local URL. Joel, on the left, is human-controlled; the
-right-side rival uses the included heuristic provider. The intro language
-switch changes the complete interface between English and Spanish.
+right-side rival uses the included heuristic provider. A fresh profile detects
+the device language once; the intro switch changes the complete interface
+between English and Spanish and permanently respects the player's override.
 
 ## Power Lab
 
@@ -43,9 +44,16 @@ power strike; missed kicks do not consume charges.
 - Restart: R
 - Fullscreen: F
 
-Touch controls appear on touch/coarse-pointer devices. The top-row buttons
-provide pause, restart, main menu, and fullscreen, so tablet play does not
-depend on a keyboard. The pause overlay also exposes resume, restart, and menu.
+Touch controls appear on touch/coarse-pointer devices. Kid-friendly action
+icons replace the old K/L/D/P labels and match the localized Help overlay.
+The top-row buttons provide pause, restart, main menu, Help, and fullscreen, so
+tablet play does not depend on a keyboard. The pause overlay also exposes
+resume, restart, and menu.
+
+The home screen's info button opens localized credits, the dedication to Joel,
+and the authoritative installed version/build. Help is available from home and
+live play; opening it during a match pauses safely, and Android Back closes it
+before affecting the match or activity.
 
 Settings offers persistent Easy, Normal, and Hard AI difficulty. Easy prevents
 the rival from sprinting or boosting basic kicks; Normal and Hard allow both.
@@ -67,6 +75,23 @@ The browser test writes inspected state screenshots to `output/e2e/` and
 exercises bilingual switching, randomized math, earning and accumulating
 charges, equipping, refresh persistence, the five-minute penalty, enhanced
 power use, full gameplay, and the complete touch system flow.
+
+## Android client
+
+The same Vite source is packaged as a Capacitor Android client. `npm run build`
+remains canonical and Capacitor always syncs `dist/`; native APIs are isolated
+behind `PlatformServices` instead of being imported by Phaser scenes.
+
+```bash
+npm run android:apk
+npm run android:tablet
+```
+
+This produces an installable, debug-signed test APK. The Android scripts select
+Java 21 automatically on macOS. Visual Studio Code also exposes the tablet command
+as the **Android: Launch Tablet** task. See [docs/ANDROID.md](docs/ANDROID.md) for device
+deployment, lifecycle/Back behavior, offline guarantees, release signing, and
+the physical-device acceptance checklist.
 
 ## Publish through luisnomad.com
 
@@ -116,6 +141,7 @@ the default sibling repository path on another machine. The former
   modifiers.
 - `src/game/i18n.js`: centralized English/Spanish interface copy.
 - `src/game/input/`, `ui/`, `services/`: narrow platform adapters.
+- `src/platform/`: web and Capacitor lifecycle/orientation/haptics/Back adapters.
 - `public/assets/`: original generated art plus prompt/processing manifest.
 - `docs/GAME_SPEC.md`: acceptance criteria captured before implementation.
 

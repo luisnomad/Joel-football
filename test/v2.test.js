@@ -8,6 +8,7 @@ import {
 } from '../src/game/pure/mathChallenge.js';
 import {
   DEFAULT_AUDIO_SETTINGS,
+  PROFILE_VERSION,
   consumeEquippedPower,
   createDefaultProfile,
   earnPower,
@@ -19,13 +20,16 @@ import {
   setProfileAudio,
   setProfileDifficulty,
   setProfileLanguage,
+  setProfileOpponent,
+  setProfilePlayerCharacter,
 } from '../src/game/pure/profile.js';
 import { normalizeLanguage, t } from '../src/game/i18n.js';
 import { SUPERPOWERS, applySuperShot, getSuperpower } from '../src/game/content/superpowers.js';
-import { createPlayerProfileStore } from '../src/game/services/PlayerProfile.js';
+import { createPlayerProfileStore, detectDeviceLanguage } from '../src/game/services/PlayerProfile.js';
 import { fitTextSize } from '../src/game/ui/textFit.js';
 import { createAudioAssetCache } from '../src/game/services/AudioAssetCache.js';
 import { AUDIO_ASSET_URLS, MUSIC_TRACKS, WHISTLE_EFFECT_URL } from '../src/game/services/ArcadeAudio.js';
+import { CHARACTERS, cycleCharacter, getCharacter, sanitizeLineup } from '../src/game/content/characters.js';
 import {
   BIG_GUY_DURATION,
   activateBigGuy,
@@ -142,6 +146,7 @@ describe('persistent power inventory rules', () => {
     expect(sanitized.mathLockUntil).toBe(0);
     expect(normalizeLanguage('es')).toBe('es');
     expect(setProfileLanguage(sanitized, 'es').language).toBe('es');
+    expect(setProfileLanguage(sanitized, 'es').languageSource).toBe('user');
   });
 
   it('migrates saved Rainbow charges and equipment into Big Guy', () => {
@@ -151,7 +156,8 @@ describe('persistent power inventory rules', () => {
       equippedPowerId: 'rainbow',
       powers: { rainbow: 4 },
     });
-    expect(migrated.version).toBe(6);
+    expect(migrated.version).toBe(PROFILE_VERSION);
+    expect(migrated.languageSource).toBe('user');
     expect(migrated.powers.big).toBe(4);
     expect(migrated.equippedPowerId).toBe('big');
     expect(migrated.powers).not.toHaveProperty('rainbow');
@@ -163,7 +169,7 @@ describe('persistent power inventory rules', () => {
       equippedPowerId: 'warp',
       powers: { fireball: 2, lightning: 1, tornado: 2, rocket: 3, boomerang: 4, warp: 5 },
     });
-    expect(migrated.version).toBe(6);
+    expect(migrated.version).toBe(PROFILE_VERSION);
     expect(migrated.equippedPowerId).toBe('fireball');
     expect(migrated.powers.fireball).toBe(17);
     expect(migrated.powers).not.toHaveProperty('warp');
@@ -179,10 +185,47 @@ describe('persistent power inventory rules', () => {
   });
 });
 
+describe('opponent selection', () => {
+  it('offers every family character while skipping the character on the other side', () => {
+    expect(CHARACTERS.map(({ id }) => id)).toEqual(['joel', 'bob', 'lucia', 'luna', 'juan', 'juanjo']);
+    expect(cycleCharacter({ id: 'joel', direction: 1, excludedId: 'bob' }).id).toBe('lucia');
+    expect(cycleCharacter({ id: 'joel', direction: -1, excludedId: 'bob' }).id).toBe('juanjo');
+    expect(cycleCharacter({ id: 'lucia', direction: 1, excludedId: 'bob' }).id).toBe('luna');
+    expect(getCharacter('unknown').id).toBe('joel');
+    expect(CHARACTERS.map(({ id, nativeFacing }) => [id, nativeFacing])).toEqual([
+      ['joel', 1],
+      ['bob', -1],
+      ['lucia', -1],
+      ['luna', -1],
+      ['juan', 1],
+      ['juanjo', 1],
+    ]);
+    const validLineups = CHARACTERS.flatMap((player) => (
+      CHARACTERS.filter((opponent) => opponent.id !== player.id)
+        .map((opponent) => sanitizeLineup({ playerCharacterId: player.id, opponentId: opponent.id }))
+    ));
+    expect(validLineups).toHaveLength(30);
+    expect(validLineups.every((lineup) => lineup.playerCharacterId !== lineup.opponentId)).toBe(true);
+  });
+
+  it('defaults and sanitizes a distinct persisted lineup', () => {
+    expect(createDefaultProfile().playerCharacterId).toBe('joel');
+    expect(createDefaultProfile().opponentId).toBe('bob');
+    expect(setProfileOpponent(createDefaultProfile(), 'lucia').opponentId).toBe('lucia');
+    expect(setProfilePlayerCharacter(createDefaultProfile(), 'lucia').playerCharacterId).toBe('lucia');
+    expect(sanitizeProfile({ opponentId: 'unknown' }).opponentId).toBe('bob');
+    expect(sanitizeLineup({ playerCharacterId: 'lucia', opponentId: 'lucia' })).toEqual({
+      playerCharacterId: 'lucia',
+      opponentId: 'joel',
+    });
+  });
+});
+
 describe('persistent audio settings', () => {
   it('starts at tablet-safe music and effects levels', () => {
     const profile = createDefaultProfile();
-    expect(profile.version).toBe(6);
+    expect(profile.version).toBe(PROFILE_VERSION);
+    expect(profile.languageSource).toBe('device');
     expect(profile.audio).toEqual(DEFAULT_AUDIO_SETTINGS);
     expect(profile.audio.musicVolume).toBe(0.15);
     expect(profile.audio.effectsVolume).toBe(0.2);
@@ -264,11 +307,42 @@ describe('local player profile storage', () => {
     };
   };
 
-  it('survives a fresh store instance with charges, equipment, language, difficulty, and penalty intact', () => {
+  it('detects and immediately saves the primary tablet language only for a fresh profile', () => {
+    const storage = makeStorage();
+    const store = createPlayerProfileStore(storage, { languages: ['es-ES', 'en-US'], language: 'es-ES' });
+    expect(store.get()).toMatchObject({ language: 'es', languageSource: 'device' });
+    expect(JSON.parse(storage.getItem('skyhead-showdown.player-profile.v2'))).toMatchObject({
+      language: 'es',
+      languageSource: 'device',
+      version: PROFILE_VERSION,
+    });
+
+    store.setLanguage('en');
+    expect(store.get()).toMatchObject({ language: 'en', languageSource: 'user' });
+    const reopened = createPlayerProfileStore(storage, { languages: ['es-ES'] });
+    expect(reopened.get()).toMatchObject({ language: 'en', languageSource: 'user' });
+  });
+
+  it('preserves the language in older profiles instead of re-detecting it', () => {
+    const storage = makeStorage();
+    storage.setItem('skyhead-showdown.player-profile.v2', JSON.stringify({ version: 6, language: 'en' }));
+    const migrated = createPlayerProfileStore(storage, { languages: ['es-ES'] }).get();
+    expect(migrated).toMatchObject({ language: 'en', languageSource: 'user', version: PROFILE_VERSION });
+  });
+
+  it('supports Spanish locale families and safely falls back to English', () => {
+    expect(detectDeviceLanguage({ language: 'es-MX' })).toBe('es');
+    expect(detectDeviceLanguage({ languages: ['ca-ES', 'es-ES'] })).toBe('en');
+    expect(detectDeviceLanguage({ language: 'fr-FR' })).toBe('en');
+  });
+
+  it('survives a fresh store instance with charges, equipment, language, opponent, difficulty, and penalty intact', () => {
     const storage = makeStorage();
     const firstSession = createPlayerProfileStore(storage);
     firstSession.setLanguage('es');
     firstSession.setDifficulty('hard');
+    firstSession.setPlayerCharacter('lucia');
+    firstSession.setOpponent('joel');
     firstSession.earn('hyper');
     firstSession.earn('hyper');
     firstSession.equip('hyper');
@@ -279,6 +353,8 @@ describe('local player profile storage', () => {
     const restored = refreshedSession.get();
     expect(restored.language).toBe('es');
     expect(restored.difficulty).toBe('hard');
+    expect(restored.playerCharacterId).toBe('lucia');
+    expect(restored.opponentId).toBe('joel');
     expect(restored.powers.hyper).toBe(2);
     expect(restored.equippedPowerId).toBe('hyper');
     expect(restored.audio).toMatchObject({ musicVolume: 0.35, effectsMuted: true });

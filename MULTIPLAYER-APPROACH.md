@@ -290,7 +290,7 @@ The launch roster is exactly:
 | ID / name | Assets | Stats `{speed,jump,kick,dash,power}` | Collider/colors |
 |---|---|---|---|
 | `joel` / JOEL | Existing `player-nova.png` and six-frame sheet | `{1.08, 1.04, 1.00, 1.00, 1.00}` | Existing compound collider; `0x6ef4ff` / `0xe95d45` |
-| `vex` / VEX-9 | Existing `player-vex.png` and six-frame sheet | `{1.00, 1.08, 1.04, 1.00, 1.05}` | Existing compound collider; `0xffad72` / `0x705cff` |
+| `vex` / Bob | Existing `player-vex.png` and six-frame sheet | `{1.00, 1.08, 1.04, 1.00, 1.05}` | Existing compound collider; `0xffad72` / `0x705cff` |
 | `luna` / LUNA | New `player-luna.png` and `player-luna-sheet.png` | `{1.04, 1.12, 0.96, 1.06, 0.96}` | Common collider; `0xc58cff` / `0x5de0e6` |
 | `bruno` / BRUNO | New `player-bruno.png` and `player-bruno-sheet.png` | `{0.96, 0.98, 1.12, 0.96, 1.04}` | Common collider; `0xffd15c` / `0x57c978` |
 
@@ -1479,7 +1479,7 @@ On a debug failure, write the ring to a local file only when explicitly enabled.
 
 ### Functional
 
-- Joel, Vex-9, Luna, and Bruno ship with complete assets/localization/catalog data and can all be selected without MatchScene character branching.
+- Joel, Bob, Luna, and Bruno ship with complete assets/localization/catalog data and can all be selected without MatchScene character branching.
 - Human and AI can use any valid catalog character in solo mode.
 - Host can create a private LAN room and see QR plus address, port, room, PIN, and copyable URL.
 - Guest can join by QR or manual fields on the same network.
