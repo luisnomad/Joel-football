@@ -26,12 +26,16 @@ export const createButton = (scene, {
     color: '#ffffff',
     align: 'center',
   }).setOrigin(0.5);
-  text.setFontSize(fitTextSize({
-    measuredWidth: text.width,
-    maxWidth: scaledWidth - 28 * uiScale,
-    baseSize: baseFontSize,
-    minSize: Math.min(14, baseFontSize),
-  }));
+  const setLabel = (nextLabel) => {
+    text.setText(nextLabel).setFontSize(baseFontSize);
+    text.setFontSize(fitTextSize({
+      measuredWidth: text.width,
+      maxWidth: scaledWidth - 28 * uiScale,
+      baseSize: baseFontSize,
+      minSize: Math.min(14, baseFontSize),
+    }));
+  };
+  setLabel(label);
   const zone = scene.add.zone(x, y, scaledWidth, scaledHeight).setInteractive({ useHandCursor: true });
   const setScale = (scale) => [background, text].forEach((item) => item.setScale(scale));
   let pointerDownLocked = false;
@@ -70,6 +74,11 @@ export const createButton = (scene, {
     background,
     text,
     zone,
+    setLabel,
+    setPosition: (nextX, nextY) => {
+      shadow.setPosition(nextX, nextY + 7 * uiScale);
+      [background, text, zone].forEach((item) => item.setPosition(nextX, nextY));
+    },
     setVisible: (visible) => {
       [shadow, background, text, zone].forEach((item) => item.setVisible(visible));
       zone.input.enabled = visible;

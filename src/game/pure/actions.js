@@ -8,14 +8,14 @@ export const normalizeIntent = (value = EMPTY_INTENT) => ({
   kick: value.kick === true,
   lob: value.lob === true,
   dash: value.dash === true,
+  dashDirection: Math.sign(clamp(Number.isFinite(value.dashDirection) ? value.dashDirection : 0, -1, 1)),
   power: value.power === true,
-  sprint: value.sprint === true,
   kickBoost: Math.floor(clamp(Number.isFinite(value.kickBoost) ? value.kickBoost : 0, 0, 3)),
 });
 
 export const applyAiDifficulty = (intent, difficulty = 'normal') => {
   const safe = normalizeIntent(intent);
-  return difficulty === 'easy' ? { ...safe, sprint: false, kickBoost: 0 } : safe;
+  return difficulty === 'easy' ? { ...safe, dash: false, dashDirection: 0, kickBoost: 0 } : safe;
 };
 
 export const safeDecide = (provider, snapshot) => {

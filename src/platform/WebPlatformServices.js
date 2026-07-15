@@ -2,17 +2,28 @@ import { PLATFORM_EVENTS, PlatformServices } from './PlatformServices.js';
 import { createWebAppInfo } from '../appMetadata.js';
 
 export class WebPlatformServices extends PlatformServices {
-  constructor({ documentRef = globalThis.document, screenRef = globalThis.screen, navigatorRef = globalThis.navigator } = {}) {
+  constructor({
+    documentRef = globalThis.document,
+    screenRef = globalThis.screen,
+    navigatorRef = globalThis.navigator,
+    locationRef = globalThis.location,
+    secureContext = globalThis.isSecureContext,
+    development = import.meta.env.DEV,
+  } = {}) {
     super({ platform: 'web', native: false });
     this.documentRef = documentRef;
     this.screenRef = screenRef;
     this.navigatorRef = navigatorRef;
+    this.locationRef = locationRef;
+    this.secureContext = secureContext;
+    this.development = development;
     this.deferredInstallPrompt = null;
     this.installCompleted = false;
     this.onVisibilityChange = () => {
       this.emit(PLATFORM_EVENTS.activeChange, { isActive: !this.documentRef?.hidden });
     };
     this.onBeforeInstallPrompt = (event) => {
+      if (this.development) return;
       event.preventDefault?.();
       this.deferredInstallPrompt = event;
     };
@@ -24,16 +35,20 @@ export class WebPlatformServices extends PlatformServices {
 
   async initialize() {
     this.documentRef?.addEventListener?.('visibilitychange', this.onVisibilityChange);
-    globalThis.addEventListener?.('beforeinstallprompt', this.onBeforeInstallPrompt);
-    globalThis.addEventListener?.('appinstalled', this.onAppInstalled);
-    this.registerServiceWorker();
+    if (!this.development) {
+      globalThis.addEventListener?.('beforeinstallprompt', this.onBeforeInstallPrompt);
+      globalThis.addEventListener?.('appinstalled', this.onAppInstalled);
+    }
+    await this.registerServiceWorker();
     this.onVisibilityChange();
   }
 
   async destroy() {
     this.documentRef?.removeEventListener?.('visibilitychange', this.onVisibilityChange);
-    globalThis.removeEventListener?.('beforeinstallprompt', this.onBeforeInstallPrompt);
-    globalThis.removeEventListener?.('appinstalled', this.onAppInstalled);
+    if (!this.development) {
+      globalThis.removeEventListener?.('beforeinstallprompt', this.onBeforeInstallPrompt);
+      globalThis.removeEventListener?.('appinstalled', this.onAppInstalled);
+    }
     await super.destroy();
   }
 
@@ -94,9 +109,23 @@ export class WebPlatformServices extends PlatformServices {
     return { ...this.getInstallState(), outcome: choice?.outcome ?? 'dismissed' };
   }
 
-  registerServiceWorker() {
-    if (!this.navigatorRef?.serviceWorker || !globalThis.isSecureContext) return;
+  async registerServiceWorker() {
+    const serviceWorker = this.navigatorRef?.serviceWorker;
+    if (!serviceWorker || !this.secureContext) return;
+
+    if (this.development) {
+      const registrations = await serviceWorker.getRegistrations?.().catch?.(() => []) ?? [];
+      const scope = this.locationRef?.href ? new URL(import.meta.env.BASE_URL, this.locationRef.href).href : null;
+      const appRegistrations = registrations.filter((registration) => !scope || !registration.scope || registration.scope === scope);
+      const removed = await Promise.all(appRegistrations.map((registration) => registration.unregister().catch(() => false)));
+      if (serviceWorker.controller && removed.some(Boolean)) this.locationRef?.reload?.();
+      return;
+    }
+
     const serviceWorkerUrl = `${import.meta.env.BASE_URL}sw.js`;
-    this.navigatorRef.serviceWorker.register(serviceWorkerUrl, { scope: import.meta.env.BASE_URL }).catch(() => {});
+    await serviceWorker.register(`${serviceWorkerUrl}?v=3`, {
+      scope: import.meta.env.BASE_URL,
+      updateViaCache: 'none',
+    }).catch(() => {});
   }
 }

@@ -1,6 +1,6 @@
 import Phaser from 'phaser';
 import { normalizeIntent } from '../pure/actions.js';
-import { createDirectionTapState, registerDirectionTap } from '../pure/sprint.js';
+import { createDirectionTapState, registerDirectionTap, resolveDirectionalDash } from '../pure/directionalDash.js';
 
 const consumePulse = (state, name) => {
   const value = state[name];
@@ -23,16 +23,14 @@ export class InputController {
       kickK: 'K',
       lobZ: 'Z',
       lobI: 'I',
-      dashC: 'C',
-      dashL: 'L',
       powerV: 'V',
       powerJ: 'J',
     });
-    this.touch = { left: false, right: false, jump: false, kick: false, lob: false, dash: false, power: false };
+    this.touch = { left: false, right: false, jump: false, kick: false, lob: false, power: false };
     this.keyboardPulse = { power: false };
     this.directionTapState = createDirectionTapState();
-    this.pendingSprintDirection = 0;
-    this.sprintDirection = 0;
+    this.pendingDashDirection = 0;
+    this.lastDashResolution = { direction: 0, purpose: 'none' };
     this.onPowerDown = () => { this.keyboardPulse.power = true; };
     this.onLeftDown = () => this.recordDirectionPress(-1);
     this.onRightDown = () => this.recordDirectionPress(1);
@@ -57,15 +55,15 @@ export class InputController {
       direction,
       at: this.scene.time.now,
     });
-    if (this.directionTapState.sprintDirection) {
-      this.pendingSprintDirection = this.directionTapState.sprintDirection;
+    if (this.directionTapState.dashDirection) {
+      this.pendingDashDirection = this.directionTapState.dashDirection;
     }
   }
 
   resetAdvancedInput() {
     this.directionTapState = createDirectionTapState();
-    this.pendingSprintDirection = 0;
-    this.sprintDirection = 0;
+    this.pendingDashDirection = 0;
+    this.lastDashResolution = { direction: 0, purpose: 'none' };
   }
 
   neutralize() {
@@ -76,7 +74,7 @@ export class InputController {
     this.resetAdvancedInput();
   }
 
-  sample(self = {}) {
+  sample(self = {}, context = {}) {
     const { JustDown } = Phaser.Input.Keyboard;
     const left = this.keys.leftA.isDown || this.keys.leftArrow.isDown || this.touch.left;
     const right = this.keys.rightD.isDown || this.keys.rightArrow.isDown || this.touch.right;
@@ -92,26 +90,34 @@ export class InputController {
     const requestedShot = kickPressed || lobPressed;
     const kickBoost = requestedShot && self.kickTimer > 0 && !self.powerArmed ? 1 : 0;
     const move = Number(right) - Number(left);
-    if (this.pendingSprintDirection) {
+    let dashDirection = 0;
+    if (this.pendingDashDirection) {
       const canStart = self.grounded !== false
         && !self.stunned
-        && !self.dashTimer
-        && move === this.pendingSprintDirection;
-      this.sprintDirection = canStart ? this.pendingSprintDirection : 0;
-      this.pendingSprintDirection = 0;
-      if (!canStart) this.directionTapState = createDirectionTapState();
-    }
-    if (self.stunned || self.dashTimer > 0 || move !== this.sprintDirection) {
-      this.sprintDirection = 0;
+        && !(self.dashTimer > 0)
+        && !(self.dashCooldown > 0)
+        && move === this.pendingDashDirection;
+      if (canStart) {
+        this.lastDashResolution = resolveDirectionalDash({
+          tapDirection: this.pendingDashDirection,
+          attackDirection: context.attackDirection ?? 1,
+          playerX: self.x,
+          opponentX: context.opponent?.x,
+          ballX: context.ball?.x,
+        });
+        dashDirection = this.lastDashResolution.direction;
+      }
+      this.pendingDashDirection = 0;
+      this.directionTapState = createDirectionTapState();
     }
     return normalizeIntent({
       move,
       jump: jumpPressed && !kickPressed,
       kick: !kickBoost && kickPressed && !modifierLob,
       lob: !kickBoost && (lobPressed || modifierLob),
-      dash: JustDown(this.keys.dashC) || JustDown(this.keys.dashL) || consumePulse(this.touch, 'dash'),
+      dash: dashDirection !== 0,
+      dashDirection,
       power: consumePulse(this.keyboardPulse, 'power') || consumePulse(this.touch, 'power'),
-      sprint: this.sprintDirection !== 0,
       kickBoost,
     });
   }

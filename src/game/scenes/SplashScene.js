@@ -29,8 +29,6 @@ export class SplashScene extends Phaser.Scene {
       clearTimeout(this.assetReadyTimer);
     });
 
-    this.add.image(GAME_WIDTH / 2, GAME_HEIGHT / 2, 'joel-football-splash')
-      .setDisplaySize(GAME_WIDTH, GAME_HEIGHT);
     this.scheduleAutomaticTransition();
   }
 

@@ -111,8 +111,15 @@ export class IntroScene extends Phaser.Scene {
       pointerDownDebounceMs: selectorDebounceMs,
       onPress: () => this.rotateOpponent(1),
     });
-    const ball = this.add.image(640, 465, 'ball').setDisplaySize(78, 78);
-    this.tweens.add({ targets: ball, y: 430, angle: 180, duration: 850, yoyo: true, repeat: -1, ease: 'Sine.InOut' });
+    createButton(this, {
+      x: 640,
+      y: 300,
+      width: 270,
+      height: 50,
+      label: t(this.language, 'intro.customize'),
+      color: 0xb34788,
+      onPress: () => this.startCustomize(),
+    });
 
     this.add.text(GAME_WIDTH / 2, 86, 'JOEL', {
       fontFamily: 'Arial Black, Arial Rounded MT Bold, sans-serif',
@@ -133,36 +140,29 @@ export class IntroScene extends Phaser.Scene {
       letterSpacing: 8,
     }).setOrigin(0.5);
 
-    const panel = this.add.rectangle(640, 292, 590, 116, 0x0b1730, 0.82).setStrokeStyle(2, 0x7ce8ff, 0.32);
-    panel.setOrigin(0.5);
-    this.add.text(640, 270, t(this.language, 'intro.rule'), {
-      fontFamily: 'Arial Rounded MT Bold, sans-serif',
-      fontSize: '22px',
-      fontStyle: 'bold',
-      color: '#bff8ff',
-    }).setOrigin(0.5);
-    this.add.text(640, 316, t(this.language, 'intro.helpPrompt'), {
-      fontFamily: 'Arial Rounded MT Bold, Trebuchet MS, sans-serif',
-      fontSize: this.language === 'es' ? '14px' : '15px',
-      fontStyle: 'bold',
-      color: '#ffcf62',
-      align: 'center',
-    }).setOrigin(0.5);
-
     createButton(this, {
       x: 640,
-      y: 505 + this.stageLayout.bottomOffset,
+      y: 370 + this.stageLayout.bottomOffset,
       width: 320,
-      height: 68,
+      height: 62,
       label: t(this.language, 'intro.play'),
       color: 0x705cff,
       onPress: () => this.startMatch(),
     });
     createButton(this, {
-      x: 640,
-      y: 580 + this.stageLayout.bottomOffset,
-      width: 320,
-      height: 58,
+      x: 535,
+      y: 438 + this.stageLayout.bottomOffset,
+      width: 190,
+      height: 52,
+      label: t(this.language, 'intro.kickfall'),
+      color: 0xc3476f,
+      onPress: () => this.startKickfall(),
+    });
+    createButton(this, {
+      x: 740,
+      y: 438 + this.stageLayout.bottomOffset,
+      width: 220,
+      height: 52,
       label: t(this.language, 'intro.powerLab'),
       color: 0x1596a8,
       onPress: () => this.startPowerLab(),
@@ -172,7 +172,7 @@ export class IntroScene extends Phaser.Scene {
     const showInstallButton = this.isTouchLayout && this.installState.available;
     createButton(this, {
       x: 640,
-      y: 650 + this.stageLayout.bottomOffset,
+      y: 500 + this.stageLayout.bottomOffset,
       width: 220,
       height: 42,
       label: t(this.language, 'intro.settings'),
@@ -182,7 +182,7 @@ export class IntroScene extends Phaser.Scene {
     if (showInstallButton) {
       createButton(this, {
         x: 640,
-        y: 696 + this.stageLayout.bottomOffset,
+        y: 550 + this.stageLayout.bottomOffset,
         width: 220,
         height: 34,
         label: t(this.language, 'intro.install'),
@@ -269,7 +269,7 @@ export class IntroScene extends Phaser.Scene {
   startMatch() {
     arcadeAudio.unlock();
     arcadeAudio.click();
-    this.scene.start('Match');
+    this.scene.start('MatchLoading');
   }
 
   startPowerLab() {
@@ -278,10 +278,22 @@ export class IntroScene extends Phaser.Scene {
     this.scene.start('PowerLab');
   }
 
+  startKickfall() {
+    arcadeAudio.unlock();
+    arcadeAudio.click();
+    this.scene.start('MiniGameLoading');
+  }
+
   startSettings() {
     arcadeAudio.unlock();
     arcadeAudio.click();
     this.scene.start('Settings');
+  }
+
+  startCustomize() {
+    arcadeAudio.unlock();
+    arcadeAudio.click();
+    this.scene.start('Customize');
   }
 
   rotateOpponent(direction) {
@@ -326,6 +338,10 @@ export class IntroScene extends Phaser.Scene {
       language: this.language,
       languageSource: this.profile.languageSource,
       difficulty: this.profile.difficulty,
+      customization: {
+        arenaThemeId: this.profile.arenaThemeId,
+        ballTypeId: this.profile.ballTypeId,
+      },
       inputMode: this.isTouchLayout ? 'touch' : 'keyboard',
       coordinateSystem: `origin top-left; +x right; +y down; logical canvas ${this.stageLayout.width}x${this.stageLayout.height}; gameplay region 1280x720`,
       stageLayout: this.stageLayout,
@@ -349,16 +365,15 @@ export class IntroScene extends Phaser.Scene {
       modal: this.infoOverlay?.kind ?? null,
       modalAppInfo: this.infoOverlay?.appInfo ?? null,
       audio: arcadeAudio.diagnostics(),
-      actions: ['play match', 'previous player', 'next player', 'previous opponent', 'next opponent', 'open power lab', 'open settings', ...(this.installState?.available ? ['install app'] : []), 'open about', 'open help', 'set English', 'set Spanish'],
+      actions: ['play match', 'play kickfall', 'customize field and ball', 'previous player', 'next player', 'previous opponent', 'next opponent', 'open power lab', 'open settings', ...(this.installState?.available ? ['install app'] : []), 'open about', 'open help', 'set English', 'set Spanish'],
       controls: this.isTouchLayout ? {
         move: ['on-screen left', 'on-screen right'],
-        sprint: ['double-tap and hold the same direction'],
+        dash: ['double-tap either direction arrow'],
         jump: ['on-screen up'],
         kick: ['on-screen kick icon'],
         lob: ['on-screen lob icon'],
         kickBoost: ['repeat the kick or lob icon during the kick animation'],
         chilena: ['double kick: direct; double lob: high arc'],
-        dash: ['on-screen dash icon'],
         power: ['on-screen power icon'],
         pause: ['on-screen pause'],
         restart: ['on-screen restart'],
@@ -366,13 +381,12 @@ export class IntroScene extends Phaser.Scene {
         fullscreen: ['on-screen fullscreen'],
       } : {
         move: ['A/D', 'Left/Right'],
-        sprint: ['double-tap and hold the same direction'],
+        dash: ['double-tap A/D or Left/Right'],
         jump: ['W', 'Up', 'Space'],
         kick: ['X', 'K'],
         lob: ['Z', 'I', 'Up + Kick'],
         kickBoost: ['repeat kick or lob during the kick animation'],
         chilena: ['double kick: direct; double lob: high arc'],
-        dash: ['C', 'L'],
         power: ['V', 'J'],
         pause: ['P', 'Escape'],
         fullscreen: ['F'],

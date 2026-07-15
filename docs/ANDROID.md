@@ -80,7 +80,7 @@ producing an unsigned release artifact.
   cannot replace. Older profiles preserve their existing language.
 - Launcher assets include legacy and adaptive icons, an Android 13 monochrome
   treatment, and matching density-specific native splash images. The editable
-  master is `public/assets/branding/joel-football-app-icon-master.png`.
+  master is `source-assets/branding/joel-football-app-icon-master.png`.
 - All game art, scripts, and audio are packaged in the APK. Browser profile
   data remains in the Capacitor WebView's local storage across normal app
   updates and is already schema-sanitized by `PlayerProfileStore`.

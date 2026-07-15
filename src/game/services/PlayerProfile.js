@@ -7,10 +7,14 @@ import {
   lockMathPractice,
   sanitizeProfile,
   setProfileAudio,
+  setProfileArenaTheme,
+  setProfileBallType,
   setProfileDifficulty,
   setProfileLanguage,
   setProfileOpponent,
   setProfilePlayerCharacter,
+  setKickfallLastPlayed,
+  unlockKickfallLevel,
 } from '../pure/profile.js';
 
 export const PROFILE_STORAGE_KEY = 'skyhead-showdown.player-profile.v2';
@@ -82,7 +86,11 @@ export const createPlayerProfileStore = (storage = defaultStorage(), navigatorRe
     setDifficulty: (difficulty) => commit(setProfileDifficulty(current, difficulty)),
     setOpponent: (opponentId) => commit(setProfileOpponent(current, opponentId)),
     setPlayerCharacter: (characterId) => commit(setProfilePlayerCharacter(current, characterId)),
+    setArenaTheme: (arenaThemeId) => commit(setProfileArenaTheme(current, arenaThemeId)),
+    setBallType: (ballTypeId) => commit(setProfileBallType(current, ballTypeId)),
     setAudio: (patch) => commit(setProfileAudio(current, patch)),
+    setKickfallLastPlayed: (level) => commit(setKickfallLastPlayed(current, level)),
+    unlockKickfallLevel: (level) => commit(unlockKickfallLevel(current, level)),
     earn: (powerId, amount = 1) => commit(earnPower(current, powerId, amount)),
     equip: (powerId) => commit(equipPower(current, powerId)),
     consumeEquipped: () => {

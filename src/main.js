@@ -5,9 +5,12 @@ import { advanceActiveScene, renderActiveState } from './game/stateBridge.js';
 import { BootScene } from './game/scenes/BootScene.js';
 import { IntroScene } from './game/scenes/IntroScene.js';
 import { MatchScene } from './game/scenes/MatchScene.js';
+import { MatchLoadingScene } from './game/scenes/MatchLoadingScene.js';
 import { PowerLabScene } from './game/scenes/PowerLabScene.js';
 import { SettingsScene } from './game/scenes/SettingsScene.js';
 import { SplashScene } from './game/scenes/SplashScene.js';
+import { CustomizeScene } from './game/scenes/CustomizeScene.js';
+import { MiniGameLoadingScene } from './game/scenes/MiniGameLoadingScene.js';
 import { arcadeAudio } from './game/services/ArcadeAudio.js';
 import { detectExtendedTabletStage, detectWidePhoneStage } from './game/layout/tabletStage.js';
 import { PLATFORM_EVENTS } from './platform/PlatformServices.js';
@@ -50,7 +53,7 @@ const config = {
       debug: false,
     },
   },
-  scene: [BootScene, SplashScene, IntroScene, SettingsScene, PowerLabScene, MatchScene],
+  scene: [BootScene, SplashScene, IntroScene, CustomizeScene, SettingsScene, PowerLabScene, MiniGameLoadingScene, MatchLoadingScene, MatchScene],
 };
 
 const game = new Phaser.Game(config);

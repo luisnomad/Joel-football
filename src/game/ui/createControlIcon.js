@@ -17,7 +17,6 @@ const AUTHORED_TEXTURES = Object.freeze({
   jump: 'control-jump',
   kick: 'control-kick',
   lob: 'control-high-kick',
-  dash: 'control-run',
 });
 
 export const createControlIcon = (scene, {
@@ -46,6 +45,9 @@ export const createControlIcon = (scene, {
   if (icon === 'left' || icon === 'right') {
     const direction = icon === 'right' ? 1 : -1;
     graphics.fillTriangle(direction * s * 0.42, 0, direction * -s * 0.22, -s * 0.34, direction * -s * 0.22, s * 0.34);
+  } else if (icon === 'up' || icon === 'down') {
+    const direction = icon === 'down' ? 1 : -1;
+    graphics.fillTriangle(0, direction * s * 0.42, -s * 0.34, direction * -s * 0.22, s * 0.34, direction * -s * 0.22);
   } else if (icon === 'jump') {
     graphics.fillCircle(0, -s * 0.3, s * 0.1);
     graphics.lineBetween(0, -s * 0.18, 0, s * 0.12);
@@ -75,8 +77,6 @@ export const createControlIcon = (scene, {
       previous = next;
     }
     graphics.fillStyle(color, 1).fillTriangle(s * 0.46, -s * 0.18, s * 0.24, -s * 0.18, s * 0.39, s * 0.01);
-  } else if (icon === 'dash') {
-    graphics.fillTriangle(s * 0.42, 0, -s * 0.2, -s * 0.34, -s * 0.2, s * 0.34);
   } else if (icon === 'power') {
     graphics.lineStyle(Math.max(2, s * 0.055), color, 0.55).strokeCircle(0, 0, s * 0.43);
     graphics.fillStyle(color, 1).fillPoints([

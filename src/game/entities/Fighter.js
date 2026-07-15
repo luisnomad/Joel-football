@@ -8,11 +8,11 @@ import {
   GROUND_Y,
   PLAYER_TUNING,
 } from '../constants.js';
+import { circleIntersectsCapsule, resolveAdaptiveLob } from '../pure/gameplayPhysics.js';
 import { resolveFacing } from '../pure/facing.js';
 import { activateBigGuy, createBigGuyState, stepBigGuy } from '../pure/bigGuy.js';
 import { armPower, chargeMeter } from '../pure/power.js';
 import { addKickBoostTaps, kickBoostMultipliers, resolveKickBoost } from '../pure/kickBoost.js';
-import { SPRINT_FORCE_MULTIPLIER, SPRINT_SPEED_MULTIPLIER } from '../pure/sprint.js';
 import {
   CHARACTER_GROUND_ANCHOR_Y,
   CHARACTER_DISPLAY_HEIGHT,
@@ -52,6 +52,7 @@ export class Fighter {
     this.kickCooldown = 0;
     this.dashTimer = 0;
     this.dashCooldown = 0;
+    this.dashDirection = 0;
     this.stunTimer = 0;
     this.stunProtection = 0;
     this.powerArmed = 0;
@@ -68,9 +69,6 @@ export class Fighter {
     this.chilenaActive = false;
     this.chilenaElapsed = 0;
     this.chilenaSuccesses = 0;
-    this.sprinting = false;
-    this.sprintDirection = 0;
-    this.sprintRequiresRelease = false;
     this.superShield = 0;
     this.hyperTimer = 0;
     this.freezeTimer = 0;
@@ -101,7 +99,7 @@ export class Fighter {
       restitution: 0.04,
       friction: 0.5,
     });
-    const foot = Bodies.rectangle(this.facing * 17, 63, 46, 14, {
+    const foot = Bodies.rectangle(0, 63, 46, 14, {
       label: `${id}:foot`,
       chamfer: { radius: 6 },
       restitution: 0.05,
@@ -181,6 +179,7 @@ export class Fighter {
     this.sprite.setVisible(true);
     this.chilenaVisual.setAngle(0).setVisible(false);
     this.dashTimer = 0;
+    this.dashDirection = 0;
     this.stunTimer = 0;
     this.stunProtection = 0;
     this.powerArmed = 0;
@@ -188,9 +187,6 @@ export class Fighter {
     this.superShield = 0;
     this.hyperTimer = 0;
     this.freezeTimer = 0;
-    this.sprinting = false;
-    this.sprintDirection = 0;
-    this.sprintRequiresRelease = false;
     this.runCycle = 0;
     this.lastRunFrame = 0;
     this.lastAnimationX = x;
@@ -219,7 +215,9 @@ export class Fighter {
       this.lastStrikePowered = false;
     }
     this.kickCooldown = Math.max(0, this.kickCooldown - dt);
+    const wasDashing = this.dashTimer > 0;
     this.dashTimer = Math.max(0, this.dashTimer - dt);
+    if (wasDashing && this.dashTimer === 0) this.dashDirection = 0;
     this.dashCooldown = Math.max(0, this.dashCooldown - dt);
     this.stunTimer = Math.max(0, this.stunTimer - dt);
     this.stunProtection = Math.max(0, this.stunProtection - dt);
@@ -231,11 +229,8 @@ export class Fighter {
     this.setBigGuyScale(this.bigGuy.scale);
     this.meter = chargeMeter(this.meter, PLAYER_TUNING.passiveChargePerSecond * dt, this.stats.power);
 
-    if (!intent.sprint) this.sprintRequiresRelease = false;
-
     if (this.stunned) {
       if (this.chilenaActive) this.finishChilena();
-      this.stopSprint(true);
       this.updatePose();
       this.renderAura();
       return;
@@ -245,8 +240,6 @@ export class Fighter {
       this.continueChilenaAnimation(dt);
       return;
     }
-
-    this.updateSprint(intent);
 
     this.setFacing(resolveFacing({
       attackDirection: this.baseFacing,
@@ -283,7 +276,7 @@ export class Fighter {
         this.scene.events.emit('fighter-kick-boost-charged', this, this.kickBoostTaps);
       }
     }
-    if (intent.dash) this.startDash();
+    if (intent.dash || intent.dashDirection) this.startDash(intent.dashDirection || this.facing);
 
     const airborne = !this.grounded;
     if (airborne) {
@@ -293,18 +286,16 @@ export class Fighter {
 
     if (this.dashTimer > 0) {
       const hyperBoost = this.hyperTimer > 0 ? 1.2 : 1;
-      this.sprite.setVelocityX(this.facing * scaled(PLAYER_TUNING.dashSpeed, this.stats.dash) * hyperBoost);
+      this.sprite.setVelocityX(this.dashDirection * scaled(PLAYER_TUNING.dashSpeed, this.stats.dash) * hyperBoost);
     } else if (intent.move !== 0) {
       const airMultiplier = airborne ? PLAYER_TUNING.airControlMultiplier : 1;
       const hyperForce = this.hyperTimer > 0 ? 1.35 : 1;
-      const sprintForce = this.sprinting ? SPRINT_FORCE_MULTIPLIER : 1;
       this.sprite.applyForce({
-        x: intent.move * scaled(PLAYER_TUNING.moveForce, this.stats.speed) * airMultiplier * hyperForce * sprintForce,
+        x: intent.move * scaled(PLAYER_TUNING.moveForce, this.stats.speed) * airMultiplier * hyperForce,
         y: 0,
       });
       const hyperSpeed = this.hyperTimer > 0 ? 1.25 : 1;
-      const sprintSpeed = this.sprinting ? SPRINT_SPEED_MULTIPLIER : 1;
-      const maxSpeed = scaled(PLAYER_TUNING.maxSpeed, this.stats.speed) * (airborne ? 1.08 : 1) * hyperSpeed * sprintSpeed;
+      const maxSpeed = scaled(PLAYER_TUNING.maxSpeed, this.stats.speed) * (airborne ? 1.08 : 1) * hyperSpeed;
       this.sprite.setVelocityX(Phaser.Math.Clamp(this.sprite.body.velocity.x, -maxSpeed, maxSpeed));
     } else if (this.grounded) {
       this.sprite.setVelocityX(this.sprite.body.velocity.x * 0.82);
@@ -315,8 +306,7 @@ export class Fighter {
         const travelled = animationDistance > RUN_FRAME_DISTANCE * 2 ? 0 : animationDistance;
         this.runCycle += travelled / RUN_FRAME_DISTANCE;
       } else {
-        const sprintCadence = this.sprinting ? 1.5 : 1;
-        this.runCycle += dt * Math.max(7, Math.abs(this.sprite.body.velocity.x) * 1.25) * sprintCadence;
+        this.runCycle += dt * Math.max(7, Math.abs(this.sprite.body.velocity.x) * 1.25);
       }
     } else {
       this.runCycle = 0;
@@ -403,34 +393,65 @@ export class Fighter {
     return true;
   }
 
-  startDash() {
+  startDash(direction = this.facing) {
     if (this.dashCooldown > 0 || this.stunned) return false;
-    this.stopSprint(true);
+    this.dashDirection = Math.sign(direction) || this.facing;
     this.dashTimer = PLAYER_TUNING.dashDuration;
     this.dashCooldown = scaled(PLAYER_TUNING.dashCooldown, 2 - this.stats.dash);
     this.scene.events.emit('fighter-dash', this);
     return true;
   }
 
-  attemptBallStrike(ball) {
+  isKickContactActive() {
+    if (this.kickTimer <= 0) return false;
+    const progress = 1 - this.kickTimer / PLAYER_TUNING.kickDuration;
+    return progress >= 0 && progress <= 0.86;
+  }
+
+  strikeCapsule() {
+    const scale = this.bigGuyScale;
+    const y = this.sprite.y + 28 * scale;
+    return {
+      start: { x: this.sprite.x - this.facing * 8 * scale, y },
+      end: { x: this.sprite.x + this.facing * 106 * scale, y },
+      capsuleRadius: 44 * scale,
+    };
+  }
+
+  attemptBallStrike(ball, opponent = null) {
     if (this.kickTimer <= 0 || this.ballHitSerial === this.kickSerial) return null;
-    const dx = ball.body.x - this.sprite.x;
     const dy = ball.body.y - this.sprite.y;
     if (dy < -CHARACTER_GAMEPLAY_HEIGHT * 0.18) return null;
-    const inFront = dx * this.facing > -8 * this.bigGuyScale && dx * this.facing < 112 * this.bigGuyScale;
-    if (!inFront || Math.abs(dy) > 104 * this.bigGuyScale) return null;
+    if (!this.isKickContactActive() || !circleIntersectsCapsule({
+      circle: { x: ball.body.x, y: ball.body.y },
+      radius: ball.radius,
+      ...this.strikeCapsule(),
+    })) return null;
     this.ballHitSerial = this.kickSerial;
     const powered = this.powerArmed > 0;
     const lob = this.shotType === 'lob' && !powered;
+    const adaptiveLob = lob && opponent
+      ? resolveAdaptiveLob({
+        ballX: ball.body.x,
+        ballY: ball.body.y,
+        opponentX: opponent.sprite.x,
+        opponentY: opponent.sprite.y,
+        attackDirection: this.facing,
+      })
+      : null;
     const speed = powered
       ? PLAYER_TUNING.powerShotSpeed
-      : scaled(lob ? PLAYER_TUNING.lobSpeed : PLAYER_TUNING.kickSpeed, this.stats.kick);
-    const lift = powered ? -3.8 : lob ? PLAYER_TUNING.lobLift : PLAYER_TUNING.kickLift;
+      : scaled(adaptiveLob ? Math.abs(adaptiveLob.vx) : lob ? PLAYER_TUNING.lobSpeed : PLAYER_TUNING.kickSpeed, this.stats.kick);
+    const lift = powered ? -3.8 : adaptiveLob?.vy ?? (lob ? PLAYER_TUNING.lobLift : PLAYER_TUNING.kickLift);
     const boost = powered
       ? resolveKickBoost()
       : resolveKickBoost({ meter: this.meter, taps: this.kickBoostTaps, shotType: lob ? 'lob' : 'drive' });
-    ball.body.setVelocity(this.facing * speed * boost.speedMultiplier, lift * boost.liftMultiplier);
-    ball.body.setAngularVelocity(this.facing * 0.24);
+    ball.applyStrikeVelocity(
+      this.facing * speed * boost.speedMultiplier,
+      lift * boost.liftMultiplier,
+      { powered },
+    );
+    ball.applyStrikeSpin(this.facing * 0.24);
     if (powered) {
       this.meter = 0;
       this.powerArmed = 0;
@@ -450,6 +471,10 @@ export class Fighter {
       boosted: boost.boosted,
       boostStrength: boost.strength,
       energySpent: boost.energySpent,
+      targetX: adaptiveLob?.targetX ?? null,
+      opponentDistance: adaptiveLob?.opponentDistance ?? null,
+      predictedApexY: adaptiveLob?.predictedApexY ?? null,
+      predictedClearance: adaptiveLob?.predictedClearance ?? null,
     };
   }
 
@@ -488,8 +513,8 @@ export class Fighter {
     this.chilenaActive = true;
     this.chilenaElapsed = 0;
     this.chilenaSuccesses += 1;
-    this.stopSprint(true);
     this.dashTimer = 0;
+    this.dashDirection = 0;
     this.kickTimer = 0;
     this.kickBoostTaps = 0;
     this.kickBoostAppliedTaps = 0;
@@ -503,8 +528,8 @@ export class Fighter {
       Phaser.Math.Clamp((ball.body.x - this.sprite.x) * 0.025, -2.4, 2.4),
       CHILENA_TAKEOFF_VELOCITY,
     );
-    ball.body.setVelocity(shot.vx, shot.vy);
-    ball.body.setAngularVelocity(shot.spin);
+    ball.applyStrikeVelocity(shot.vx, shot.vy, { powered: true });
+    ball.applyStrikeSpin(shot.spin);
     this.currentPose = 'chilena';
     this.scene.events.emit('fighter-chilena', this, shot);
     return {
@@ -602,10 +627,12 @@ export class Fighter {
   }
 
   canHitOpponent(opponent) {
-    if (this.kickTimer <= 0 || this.combatHitSerial === this.kickSerial) return false;
-    const dx = opponent.sprite.x - this.sprite.x;
-    const dy = Math.abs(opponent.sprite.y - this.sprite.y);
-    return dx * this.facing > 4 && dx * this.facing < 104 * this.bigGuyScale && dy < 94 * this.bigGuyScale;
+    if (!this.isKickContactActive() || this.combatHitSerial === this.kickSerial) return false;
+    return circleIntersectsCapsule({
+      circle: { x: opponent.sprite.x, y: opponent.sprite.y + 5 },
+      radius: 42 * opponent.bigGuyScale,
+      ...this.strikeCapsule(),
+    });
   }
 
   markCombatHit() {
@@ -621,7 +648,6 @@ export class Fighter {
     if (this.stunProtection > 0) return false;
     if (this.chilenaActive) this.finishChilena();
     this.stunTimer = strong ? PLAYER_TUNING.stunDuration * 1.12 : PLAYER_TUNING.stunDuration;
-    this.stopSprint(true);
     this.stunProtection = this.stunTimer + PLAYER_TUNING.stunProtection;
     const knockback = strong ? PLAYER_TUNING.dashKnockback : PLAYER_TUNING.kickKnockback;
     this.sprite.setVelocity(fromDirection * knockback, strong ? -4.2 : -2.8);
@@ -630,7 +656,6 @@ export class Fighter {
 
   applyFreeze(fromDirection, seconds = 2) {
     if (this.chilenaActive) this.finishChilena();
-    this.stopSprint(true);
     this.freezeTimer = Math.max(this.freezeTimer, seconds);
     this.stunTimer = Math.max(this.stunTimer, seconds);
     this.stunProtection = Math.max(this.stunProtection, seconds + PLAYER_TUNING.stunProtection);
@@ -648,29 +673,6 @@ export class Fighter {
 
   activateBigGuy() {
     this.bigGuy = activateBigGuy(this.bigGuy);
-  }
-
-  updateSprint(intent) {
-    const direction = Math.sign(intent.move);
-    if (!intent.sprint || direction === 0) {
-      this.stopSprint(false);
-      return;
-    }
-    if (this.sprinting && direction !== this.sprintDirection) {
-      this.stopSprint(false);
-      return;
-    }
-    if (!this.sprinting && !this.sprintRequiresRelease && this.grounded) {
-      this.sprinting = true;
-      this.sprintDirection = direction;
-      this.scene.events.emit('fighter-sprint-start', this);
-    }
-  }
-
-  stopSprint(requireRelease = false) {
-    this.sprinting = false;
-    this.sprintDirection = 0;
-    if (requireRelease) this.sprintRequiresRelease = true;
   }
 
   setBigGuyScale(scale) {
@@ -713,15 +715,6 @@ export class Fighter {
   renderAura() {
     this.aura.clear();
     this.updateStatusVisuals();
-    if (this.sprinting) {
-      const direction = Math.sign(this.sprite.body.velocity.x) || this.facing;
-      this.aura.lineStyle(3, 0xdffbff, 0.32);
-      for (let index = 0; index < 3; index += 1) {
-        const y = this.sprite.y - 44 + index * 34;
-        const startX = this.sprite.x - direction * (50 + index * 13);
-        this.aura.strokeLineShape(new Phaser.Geom.Line(startX, y, startX - direction * (24 + index * 8), y));
-      }
-    }
     if (this.bigGuy.secondsRemaining > 0 || this.bigGuyScale > 1.01) {
       const pulse = 0.62 + Math.sin(this.scene.time.now * 0.015) * 0.12;
       this.aura.lineStyle(6, 0xffd25f, pulse);
@@ -820,10 +813,9 @@ export class Fighter {
       kickCooldown: Math.round(this.kickCooldown * 100) / 100,
       dashCooldown: Math.round(this.dashCooldown * 100) / 100,
       dashTimer: Math.round(this.dashTimer * 100) / 100,
+      dashDirection: this.dashDirection,
       kickTimer: Math.round(this.kickTimer * 100) / 100,
       powerArmed: this.powerArmed > 0,
-      sprinting: this.sprinting,
-      sprintSpeedMultiplier: this.sprinting ? SPRINT_SPEED_MULTIPLIER : 1,
       kickBoostTaps: this.kickBoostTaps,
       lastKickBoostSpent: this.lastKickBoostSpent,
       chilenaActive: this.chilenaActive,

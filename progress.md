@@ -1108,3 +1108,882 @@ Original prompt: Create a polished, playable 2D browser game with the dynamics o
   tablet browser journey, and the required web-game Playwright client. Visually
   inspected both refreshed menu portraits, Juanjo's live match rendering, and
   both complete animation atlases. Android was not rebuilt or deployed.
+
+## Performance and gameplay-polish audit (2026-07-12)
+
+- Audit only: no runtime behavior was changed. The clean production build still
+  succeeds and emits one 1,647.01 kB minified / 390.60 kB gzip JavaScript chunk.
+- Startup currently preloads the arena, all six portraits, and all six 1280×1440
+  fighter atlases before leaving Boot. Those visual files total about 7.8 MiB;
+  the six decoded atlases alone occupy about 42.2 MiB as RGBA textures even
+  though a match uses only two. Highest-value loading slice: boot the current
+  menu pair, idle-prefetch other portraits, and load only the selected match
+  atlases behind a small match-loading transition. Convert the 2.7 MiB arena
+  PNG to a visually verified WebP/AVIF variant and move legacy/source PNGs out
+  of `public/` so they no longer inflate the 27 MiB web distribution and APK.
+- Scene code is statically imported into the single entry chunk and Phaser's
+  packaged ESM build dominates it. Dynamic scene registration can defer Match
+  and Lab code; a separate Phaser vendor chunk improves repeat-deploy caching
+  but does not reduce first-load bytes. A custom Phaser Canvas+Matter build is
+  the only likely large JS reduction and should be benchmarked before accepting
+  its maintenance cost.
+- Audio warming is progressive after unlock, but `setScene()` also calls
+  `primeMediaFromCache()` during Splash; on a cold cache, `playableUrl()` fetches
+  the current track, ambience, ball effect, and whistle in parallel with visual
+  boot. Prime only cached entries before unlock, then warm the current music and
+  match essentials during idle time; keep the remaining tracks sequential and
+  data-saver-aware.
+- Fireball/player tunneling remains plausible: power velocity reaches 46
+  logical px/tick, Matter collision handling is discrete, and only
+  `collisionstart` triggers the counter path. Current browser coverage counters
+  at speed 18 and does not place a max-speed fireball through a player. Add a
+  swept segment-versus-expanded-player collision test (or power-only physics
+  substeps), correct to time of impact, and add mirrored body/head regressions
+  at maximum speed.
+- Fighter collision geometry has one spawn-facing foot part that does not
+  mirror after facing changes, while kick/combat reach is a broad center-point
+  rectangle active for the full kick timer. Replace it with a symmetric lower
+  body plus a short-lived front-foot strike capsule synchronized to the contact
+  animation; include the ball radius and sweep its previous/current position.
+- Add a deterministic clash/deadlock resolver for two grounded players pushing
+  or kicking toward each other with low relative speed: short symmetric recoil,
+  a brief clash cooldown, and an upward ball pop when the ball is trapped
+  between their feet. Cover held inward movement plus repeated kicks for both
+  sides so the resolver cannot introduce jitter or meter farming.
+- Make ordinary lob launch solve a bounded ballistic arc toward a landing point
+  just beyond the opponent, with distance/airborne lead and conservative clamps;
+  the current lob uses one fixed speed/lift pair and ignores opponent position.
+- Touch actions currently form a loose five-button arc. Group Kick and Lob as
+  an adjacent primary pair, separate Jump spatially, and treat Dash as movement
+  while keeping Power isolated to prevent accidental use. Verify thumb reach,
+  simultaneous movement/action, wide-phone safe areas, and an optional mirrored
+  layout before changing production coordinates.
+- Lower-risk render cleanup: update HUD text/graphics only when score, clock,
+  integer meters, or inventory changes; cache the sanitized profile instead of
+  cloning it every render; and consider baking each seven-object glass control
+  base into a shared texture. Existing Samsung profiling is already healthy,
+  so these are secondary to loading and collision correctness.
+
+### Implementation checkpoint
+
+- Added pure, mirrored contracts for swept circle-versus-player-bounds contact,
+  opponent-aware lob launch, and grounded inward player-clash detection.
+- Focused verification passes: 41/41 `pure.test.js` tests.
+- Next: integrate these contracts into MatchScene, add maximum-speed fireball
+  and repeated-kick deadlock browser regressions, then stage fighter assets.
+
+### Integrated performance and gameplay polish
+
+- Boot now decodes all six lightweight menu portraits but only the current
+  lineup's two 1280×1440 gameplay atlases. A dedicated MatchLoading scene shows
+  the arena spinner while loading only newly selected atlases before kickoff.
+- Replaced the 2.7 MiB runtime arena PNG with a visually inspected 268 KiB WebP.
+  Lossless arena, legacy sheets, generated PNG atlases, goal study, and launcher
+  master were preserved under `source-assets/` instead of being copied into
+  every web distribution and APK. Updated the reproducible atlas builder paths.
+- Cold-start audio priming now uses only existing Cache Storage entries and no
+  longer starts four full audio fetches during Splash. Post-gesture warming
+  prioritizes the current track, ball, whistle, and match ambience before the
+  remaining music, retaining sequential and data-saver behavior.
+- Added maximum-speed swept power-ball contact against expanded live player
+  bounds. Missed discrete Matter contacts are moved to time of impact and either
+  countered during a kick or physically rebounded; diagnostics count saves.
+- Centered the physical foot collider so it remains symmetric after facing
+  changes. Ball and combat strikes now share a front-foot capsule including the
+  ball/player radius and exclude late recovery frames.
+- Ordinary lobs now vary bounded speed, lift, and landing target using defender
+  distance and airborne position. Close blocks receive steeper chips; distant
+  defenders receive faster, longer arcs; mirrored play uses the same contract.
+- Added a deterministic inward-push/repeated-kick clash resolver with symmetric
+  recoil, cooldown, haptic/particle feedback, and a meter-free upward pop for a
+  ball trapped between both players.
+- Reorganized touch controls: Kick and Lob are an adjacent primary pair, Jump
+  and the now-clearly-visible Dash form an upper action row, Power is isolated,
+  and the Left/Right centers moved from 140 px to 180 px apart after visual
+  feedback showed the first revision was still too cramped.
+- HUD text and Canvas meter geometry now update only when visible score, clock,
+  integer meter, flash step, or inventory values change. Phaser is emitted as a
+  separate vendor chunk for durable repeat-visit caching across gameplay deploys.
+- Verification: 81/81 unit tests, production build, required web-game client
+  reaching live gameplay, and complete desktop/wide-phone/tablet browser suite.
+  Runtime/public cleanup reduced the generated distribution from about 27 MiB
+  to 14 MiB; the game bundle is now a 171.20 kB app chunk plus a cache-stable
+  1,481.79 kB Phaser vendor chunk. The first full
+  browser run hit the project's known intermittent Escape timing assertion; an
+  unchanged rerun and the final post-layout run passed. Visually inspected clean
+  captures for the optimized arena, swept fireball save, clash release, revised
+  wider movement controls, visible Dash, grouped Kick/Lob, and pressed icon
+  scaling. No Android build, sync, install, or launch was performed.
+
+## Directional double-tap dash and simplified controls (2026-07-13)
+
+- Removed the sustained 1.5× sprint mechanic, the standalone Dash touch button,
+  and the desktop C/L Dash bindings. Ordinary held movement now has one
+  consistent speed and one less action competes for thumb space.
+- Double-tapping either movement direction within 280 ms now starts the same
+  cooldown-governed ground dash in the direction the player deliberately
+  pressed. The direction is never silently redirected, so double-tapping away
+  from an opponent produces a true reverse/defensive dash while keeping the
+  fighter visually engaged with play.
+- Added contextual dash diagnostics that classify the chosen move as a
+  challenge, ball recovery, defensive retreat, or attacking run. The ball,
+  opponent, facing, and goal geometry inform the purpose without overriding the
+  player's arrow input.
+- Updated heuristic opponents to emit the same `dashDirection` intent. Easy AI
+  strips directional dash capability; Normal and Hard use it selectively for
+  pressure, recovery, and positioning.
+- Updated English/Spanish onboarding, Help, difficulty copy, provider docs, and
+  the gameplay specification. Preserved the retired run icon under
+  `source-assets/` instead of shipping it in `public/`.
+- Verification: 81/81 unit tests, production build, `git diff --check`, and the
+  complete browser gameplay suite all pass. Browser coverage includes real
+  keyboard and touch double-taps, forward and reverse dash, airborne rejection,
+  the removed C binding/button, and AI difficulty behavior. The required
+  web-game client reached live play at 1:22; its state reported a fully warmed
+  9/9 audio cache and the new directional-dash controls. Visually inspected the
+  live match plus dedicated forward, reverse, touch, landscape-control, and Help
+  captures; the wider arrows and four-button action cluster remain clear and
+  balanced. No Android build, sync, install, or launch was performed.
+
+## Field and physics-object customization (2026-07-13)
+
+### Implementation checkpoint
+
+- Added a persisted Match Playground selection with three field themes
+  (Skycourt, Neon Grid, Sunset Beach) and six kickable objects. Classic and
+  Neon footballs intentionally share identical fair-play physics; Balloon,
+  Rugby Ball, Soda Can, and Cannonball use distinct material presets.
+- Added original lightweight SVG artwork for the five new object designs. The
+  soda can uses a chamfered rectangle collider; all other objects expose their
+  effective collision radius for strikes, swept power contact, bounds, and
+  goal-mouth scoring.
+- Added per-object restitution, air drag, density, speed/lift response, speed
+  cap, and deterministic wobble. The balloon receives partial buoyancy, rugby
+  and can surface contacts kick sideways/tumble, and the cannonball stays low
+  and heavy.
+- Added a bilingual customization scene with live field treatment, animated
+  object preview, persistent cycling, physics-feel copy, back navigation, and
+  direct match launch. The Intro now exposes a dedicated Field & Ball button.
+- Added browser regressions for field/object cycling, refresh-safe persistence,
+  restoring defaults, direct match launch, cannonball material diagnostics,
+  and its measurably reduced ordinary-kick speed/lift. The existing full match,
+  scoring, power, desktop, touch, wide-phone, and tablet flows still pass.
+- The first visual pass revealed that theme grid/wave graphics sat 0.02 depth
+  above default UI and washed across the selection cards. Moved theme treatment
+  into the arena layer and reran the required web-game client; the fixed cards
+  are opaque and readable while the live field retains its treatment.
+- Final verification: 84/84 unit tests, production build, `git diff --check`,
+  the required web-game client, and the complete browser suite pass. One first
+  browser run reached the project's known intermittent late Escape assertion;
+  the unchanged rerun and final post-fix run passed. Visually inspected the
+  default playground, Neon+Balloon, Beach+Cannonball, Beach+Soda Can, the home
+  screen entry point, and an active Beach+Cannonball match. No new console/page
+  errors appeared. No Android build, sync, install, or launch was performed.
+
+### Genuine imagegen arena alternatives
+
+- Replaced the Neon and Beach color treatments after user feedback that they
+  were not true alternative fields. Used the built-in Image Generation skill
+  in edit mode with the lossless Skycourt as the geometry/composition target.
+- Generated two complete goal-free background illustrations: Neon Grid has
+  new night architecture, crowd lighting, skyline, floodlights, and violet
+  playing surface; Sunset Beach has bamboo terraces, palms, ocean, islands,
+  sunset lighting, and a firm sand pitch. Both preserve the side camera,
+  center markings, unobstructed level field, and ground-contact line required
+  by the existing physics and goal placement.
+- Preserved the generated PNGs as `source-assets/arena-neon.png` and
+  `source-assets/arena-beach.png`; shipped 1920×1080 WebP derivatives are about
+  224 KiB and 248 KiB respectively. Full imagegen prompts are recorded in the
+  runtime art manifest.
+- Removed runtime tint, wash, grid, and wave painting. Arena records now point
+  to distinct Phaser textures, and the Match Playground thumbnails display the
+  real images. Boot loads only the persisted arena; entering Match Playground
+  lazily loads the two alternatives.
+- Replaced scene restarts during selection with live texture/preview updates,
+  avoiding unnecessary reloads and pointer-state artifacts while preserving
+  immediate profile persistence.
+- Verification: 84/84 unit tests, production build, full browser suite, and the
+  required web-game client pass. Visually inspected both selection screens and
+  an active Beach+Cannonball match; generated architecture stays clear of the
+  runtime goals, HUD, fighters, and ball. No Android build, sync, install, or
+  launch was performed.
+
+## Distance-adaptive tactical lob revision (2026-07-13)
+
+- Reworked the ordinary lob distance curve around its tactical purpose: a
+  defender within 110 logical pixels now triggers a bounded maximum-height
+  launch, while distance through 440 pixels progressively trades vertical lift
+  for horizontal speed. Landing targets remain at least 220 pixels forward and
+  aim beyond the defender within arena bounds.
+- Increased standard close-lob lift from roughly -14 to -19 and reduced its
+  horizontal launch speed to 7.3. At long range the bounded curve reaches about
+  -14.6 lift and 11.4 speed. Airborne defenders add a small extra lift modifier.
+- Added deterministic apex/head-clearance diagnostics to each lob plan and
+  exposed them through `lastLobStrike` for browser verification.
+- Added pure regressions for mirrored close/far behavior, more than 100 pixels
+  of planned apex separation, substantial close head clearance, and the
+  point-blank height cap. Added a provider regression confirming the AI falls
+  back toward a high lob's projected landing point. A rising lob projected to
+  land behind the AI now suppresses its premature overhead jump so it stays
+  grounded and retreats instead of stopping the ball without moving.
+- Browser coverage now measures both complete trajectories: the nearby-defender
+  lob launches at least 2.5 velocity units steeper and reaches an actual apex
+  over 80 pixels higher than the distant-defender lob. The inspected close-lob
+  frame clears the grounded defender by a wide margin near the HUD.
+- Verification: 86/86 unit tests, production build, `git diff --check`, the
+  required web-game client, and the full browser suite pass. The first final
+  browser run hit an unrelated intermittent chilena landing-timing assertion;
+  the unchanged rerun passed. Visually inspected the dedicated close-defender
+  lob near its apex and a naturally produced AI close lob with a reported
+  201-pixel estimated head clearance. No Android build, sync, install, or
+  launch was performed.
+
+## Uncle Juanjo sprite registration repair (2026-07-13)
+
+- Traced the apparent haircut to the source contact sheet rather than Phaser:
+  Juanjo's anticipation/recovery hair extends above the nominal third-row cell,
+  and the rigid 4x3 crop discarded those original pixels. Reworked contact-sheet
+  extraction to support a 64-pixel overlap and select the connected subject with
+  the greatest coverage in its intended cell. Enabled recovery only for Juanjo,
+  so Uncle Juan and the other atlases remain byte-for-byte governed by their
+  existing extraction path.
+- Preserved the original artwork instead of synthesizing replacement hair. The
+  regenerated anticipation and recovery frames now retain the complete crown;
+  the recovery silhouette grows from 321 to 339 visible pixels and the
+  anticipation silhouette from 315 to 330 while staying on y=418.
+- Raised Juanjo's compact knees-up jump from 304 to 350 visible pixels (idle is
+  380), removing the in-game shrink pop without making the airborne pose taller
+  than his standing silhouette. Grounded pose registration and the fixed
+  320x480 runtime cells are unchanged.
+- Added browser atlas regressions for jump/idle height ratio and recovered kick
+  silhouettes, plus a Juanjo-specific live retreat, real-input jump, and frozen
+  three-stage kick visual sequence. Captures are
+  `output/e2e/04-juanjo-retreat.png`, `04-juanjo-jump.png`, and
+  `04-juanjo-kick-recovery.png`.
+- Verification: regenerated source PNG/runtime WebP atlases, 86/86 unit tests,
+  production build, `git diff --check`, and the complete browser gameplay/touch
+  suite pass. The required web-game client independently selected Uncle Juanjo;
+  its final inspected image/state are under
+  `output/web-game/juanjo-fix-selector-final/`. One initial full browser pass
+  hit the existing intermittent maximum-speed fireball sweep assertion; the
+  final unchanged gameplay runs passed. No Android build, sync, install, or
+  launch was performed.
+
+## Netlify web release (2026-07-13)
+
+- Rebuilt the game, published the generated bundle into the clean sibling
+  `luisnomad.com` repository at `public/games/joel-football/`, and retained the
+  legacy `/games/head-soccer/` redirect page.
+- Verified 86/86 game tests and a complete 103-page Astro production build,
+  then committed the generated site payload as `819cb2f` (`feat: publish latest
+  Joel Football web build`) and pushed `main` to the website repository.
+- Confirmed the live response is served by Netlify and references the new
+  `index-ypwthIlj.js` and `phaser-B61OQUcB.js` bundles. The game JS, corrected
+  Juanjo WebP, Neon arena, and Beach arena all return HTTP 200 at their public
+  URLs.
+- Ran the required web-game client against the production URL. It reached the
+  Intro, selected Uncle Juanjo, reported no console/page errors, and produced
+  the inspected live capture at `output/web-game/netlify-live/shot-4.png`.
+
+## Uncle Juan jump scale repair (2026-07-13)
+
+- Applied the calibrated contact-sheet jump height already proven for Juanjo to
+  Uncle Juan. His knees-up jump silhouette is now 350 pixels instead of 287,
+  while idle remains 380 and the internal foot anchor remains y=418.
+- Generalized the browser atlas regression so both Juan and Juanjo must retain
+  at least 90% of their idle silhouette height during the jump frame.
+- Added a dedicated real-input Uncle Juan match scenario and inspected
+  `output/e2e/04-juan-jump.png`; the head/torso scale remains consistent while
+  the tucked legs still communicate an airborne pose.
+- Verification: regenerated the source/runtime atlas, 102/102 unit tests,
+  production build, `git diff --check`, complete browser gameplay/Kickfall/touch
+  suite, and required web-game client pass. The client independently selected
+  Uncle Juan without console/page errors; artifacts are under
+  `output/web-game/juan-jump-fix/`. This follow-up has not been redeployed.
+
+## Kickfall mini-game prototype (2026-07-13)
+
+- Recorded the requested falling-ball/brick-gate mini-game in
+  `docs/KICKFALL_SPEC.md` before implementation.
+- Fixed the prototype scope at one three-tier zigzag, two one-hit gates, eight
+  stacking balls, three-second spawns, a two-second danger grace, selected
+  character reuse, and explicit victory/defeat/retry/menu flows.
+- Chose a dynamic scene import plus a mini-game-only asset directory so neither
+  playable code nor exclusive art joins the opening payload.
+- Kept Kickfall physics separate from the normal singleton `Ball` and
+  ground-specific `Fighter`; only shared character content and UI conventions
+  are reused.
+
+### Kickfall TODO
+
+- Implement the lazy loading shell, exclusive asset pack, scene, rules, input,
+  collision behavior, feedback, diagnostics, and Intro entry.
+- Add unit tests for danger/gate/terminal rules and browser coverage for the
+  entry, kick-to-break, drain/victory, defeat, retry, and menu paths.
+- Run the required web-game client, inspect active and result screenshots, and
+  complete the full unit/build/browser regression pass.
+
+### Kickfall implementation checkpoint
+
+- Added a bilingual Intro entry and a generic loading shell that dynamically
+  imports the playable scene. The production build emits Kickfall as its own
+  25.36 kB JavaScript chunk.
+- Added an exclusive SVG backdrop, ramp, brick gate, and ball pack under the
+  mini-game asset directory; the playable scene alone requests them.
+- Implemented the three-tier Matter board, two solid breakable gates, stacking
+  ball bodies, selected-character movement/jump/kick, simplified touch input,
+  armed-ball gate damage, danger recovery/grace, drain accounting, result
+  overlays, retry/menu flows, diagnostics, and debug fixtures.
+- Existing verification remains green at 86/86 tests, production build, and
+  `git diff --check`. The first browser entry found that deterministic stepping
+  could run during asset preload before input creation; preload stepping is now
+  render-only and has a dedicated guard.
+
+### Kickfall browser and gameplay refinement
+
+- Added six pure rule tests for danger accumulation/recovery, one-hit armed
+  gate contact, terminal-state priority, victory quota, and isolated progress.
+- Added permanent browser coverage for deferred code/assets, selected-character
+  reuse, natural no-input pile-up defeat, real keyboard hits against both gate
+  directions, physical bottom-drain accounting, victory, Retry, danger defeat,
+  menu return, and an extended-tablet touch kick.
+- The first natural-pressure proof exposed a genuine stalled-run case: all
+  available balls could settle below the line without room for the next ball.
+  A blocked hatch now fills the same grace meter, matching the requested Tetris
+  rule. A visible ball-only hatch rail also narrows the top queue so ignored
+  balls physically stack upward while the player can still reach their rear.
+- Replaced result-container layering with explicit display depths after visual
+  inspection found a post-Retry defeat capture with hidden button artwork. The
+  corrected defeat, victory, gate-break, Intro entry, and tablet touch layouts
+  were visually inspected.
+- The first complete browser run reached an unrelated timing-sensitive match
+  boost assertion; the next unchanged run passed. After the hatch and drain
+  coverage was added, the complete 260-check browser suite passed.
+
+### Kickfall final prototype verification
+
+- Final unit verification passes 92/92 tests across five files, including the
+  six new Kickfall rule contracts.
+- Final production build succeeds and emits the playable mode as
+  `KickfallScene-DVq3Jolc.js` (26.47 kB, 8.42 kB gzip) rather than folding it
+  into the 190.24 kB opening application chunk. The existing stable Phaser
+  vendor chunk remains the only size warning.
+- The required `develop-web-game` client entered the live lazy-loaded mode and
+  naturally reached defeat with seven physical balls: six settled against the
+  first gate and the seventh stacked above them across the danger line.
+- The final 260-check browser suite passes after covering desktop, touch,
+  dynamic assets, real gate kicks, actual bottom draining, both result paths,
+  retry, and menu return. `git diff --check` also passes.
+- Visually inspected `01-intro.png`, `01-kickfall-gate-break.png`,
+  `01-kickfall-victory.png`, `01-kickfall-defeat.png`,
+  `01-kickfall-natural-pile-up.png`, and
+  `08-extended-tablet-kickfall.png`; final UI, controls, stacking, brick debris,
+  and overlays are present and legible.
+- No Android build, sync, install, or launch was performed.
+
+### Kickfall next steps
+
+- Play-tune spawn interval, kick impulse, character scale, and the top queue
+  capacity with human sessions before adding progression.
+- Replace Continue's prototype restart with seeded level progression built from
+  the validated tier-module rules in `docs/KICKFALL_SPEC.md`.
+- Add reinforced gates and special balls one pressure axis at a time only after
+  the fixed layout's completion and failure rates are understood.
+
+### Kickfall traversal and density refinement (2026-07-13)
+
+- Reworked the prototype from three thick tiers/two gates to four thinner
+  tiers/three gates, with a smaller character and ball scale and a final
+  bottom-left drain.
+- Replaced slow force accumulation with responsive target-speed movement and
+  exposed the active visual frame/pose in diagnostics so the enhanced run
+  animation can be browser-verified.
+- Split vertical direction from jumping: W/Up and S/Down now perform a short
+  adjacent-tier transfer, Space is the dedicated jump, and touch has a four-way
+  pad plus separate Jump and Kick controls. Transfers refuse corridors occupied
+  by a live brick gate or ball.
+- Removed the redundant Intro rule/help panel and moved the primary menu stack
+  upward to give the home screen more breathing room.
+- Expanded browser contracts to cover movement distance, run animation,
+  keyboard tier transfers, separate jump behavior, Gate C, the left drain, and
+  touch tier/jump controls.
+- Final verification passes 92/92 unit tests, the production build, and the
+  complete browser suite across desktop, wide-phone touch, and extended-tablet
+  layouts. The browser suite's pre-existing timing-sensitive Escape assertion
+  failed once and passed on the immediate unchanged rerun.
+- The production build still keeps Kickfall deferred in its own
+  `KickfallScene-DVVGhFGW.js` chunk (29.29 kB, 9.29 kB gzip).
+- Ran the required web-game client and inspected the refined board. Also
+  inspected the final Intro, natural pile-up, gate-break, and extended-tablet
+  screenshots; four-tier spacing, three-gate progression, menu cleanup, and
+  the directional/jump/kick touch controls are legible and unobstructed.
+
+### Kickfall physics and grounding refinement (2026-07-13)
+
+- Fixed the apparent character levitation by applying the same authored
+  418-pixel foot anchor used by the main match to Kickfall's smaller sprite.
+  Diagnostics now expose the current ramp surface and visual foot-anchor Y;
+  the inspected result differs by only 0.36 px.
+- Increased Kickfall gravity, reduced character air drag, and added post-apex
+  fall acceleration. Browser coverage now requires a Space jump to return to
+  the same ramp within 700 ms on desktop and tablet.
+- Made adjacent-tier navigation reliable with a 240 ms input buffer, geometric
+  grounded fallback, and nearby clear-corridor selection. Intact gates and
+  balls still cannot be crossed.
+- Increased ramp inclination and replaced the negligible ball force with a
+  bounded downhill target speed. A focused browser fixture now requires useful
+  displacement and velocity within 400 ms.
+- The first roll-response setting passed displacement but produced only 1.37
+  horizontal velocity in the browser fixture, so it was increased and retested.
+- Final verification passes 92/92 unit tests, production build, and the complete
+  browser suite. The required web-game client was run after both meaningful
+  tuning passes; its state showed a successful top-to-upper transfer, prompt
+  jump landing, and a 0.36 px foot-to-ramp registration gap. Normal e2e captures
+  of the gate break, natural pile-up, and tablet landing were visually inspected
+  after one client WebGL readback produced a partial black-frame artifact with
+  otherwise complete state and no console errors.
+
+### Kickfall Level 2 challenge prototype (2026-07-13)
+
+- Added two authored level configurations. Level 1 remains the untimed
+  eight-ball baseline; Level 2 schedules ten balls every 2.65 seconds and runs
+  on a 60-second clock.
+- Continue now advances from Level 1 to Level 2, Retry preserves the active
+  level, and the final prototype level no longer exposes a misleading Continue
+  action.
+- Added a cyan ball-only catch pocket on the upper lane and an amber three-tooth
+  kick cleat on the lower lane. Unarmed balls remain stalled; a real kick in the
+  lane's flow direction releases each ball through the existing armed window.
+  Obstacles reset per ball rather than disappearing after one clear.
+- Added bilingual level, clock, obstacle, and timeout copy plus concise level,
+  timer, obstacle, stalled-ball, and passed-obstacle diagnostics.
+- Added two pure contracts for the Level 2 definition and timeout defeat. The
+  full browser flow now verifies Level 1 victory, Continue progression, both
+  real kick releases, timeout defeat, Level 2 Retry persistence, and the danger
+  defeat path.
+- The required web-game client passed entry/movement with the new level-aware
+  state. The complete browser suite passed twice after adding progression. A
+  transient black-block WebGL capture on the first post-kick screenshot was
+  resolved by allowing the renderer to settle; the rerun capture is complete.
+- Visually inspected the clean Level 1 client capture and the final Level 2
+  countdown, obstacle-release, and timeout screenshots. Final verification
+  passes 94/94 unit tests, production build, `git diff --check`, and the complete
+  desktop/phone/tablet browser suite.
+
+### Kickfall next challenge steps
+
+- Play-tune the 60-second Level 2 clock with human sessions before reducing it.
+- Record how often balls stall at each obstacle and whether the player can
+  recover without danger-line failure; those rates should guide Level 3.
+- Add only one new pressure axis in Level 3, preferably a two-hit reinforced
+  gate before introducing moving bumpers or reverse belts.
+
+### Kickfall cross-tier obstacle fix (2026-07-13)
+
+- Reproduced the reported Level 2 pocket bug: obstacle capture considered only
+  horizontal distance, so a top-tier ball directly above the upper-tier pocket
+  was teleported down and marked as stalled.
+- Added a browser regression before the fix. It failed with the top-tier ball's
+  `stalledObstacleId` incorrectly set to `pocket-a`.
+- Scoped pocket and cleat interactions to both the obstacle's authored tier and
+  a small vertical tolerance around that ramp. Correct-lane stall and real-kick
+  release behavior remains unchanged.
+- Visually inspected the focused Level 2 capture with the ball remaining on the
+  top ramp over an empty pocket, plus a live Level 1 run from the required
+  web-game client. No client console-error artifact was produced.
+- Final verification passes 94/94 unit tests, the production build, and the
+  complete browser suite. The first post-fix browser run passed the new
+  Kickfall regression and later hit the suite's known timing-sensitive desktop
+  Escape assertion; the immediate unchanged rerun passed end to end.
+
+### Kickfall queue and combo-control refinement (2026-07-13)
+
+- Reproduced the obstacle stacking bug with two balls at the pocket: both were
+  assigned the same captive state and hold position instead of colliding as a
+  queue.
+- Obstacles now own one captive-ball slot. The captive becomes a solid physical
+  anchor while later balls remain normal ball bodies, visibly queue behind it,
+  and advance one at a time as the lead ball is released.
+- Kicks within reach prioritize the captive lead ball over nearer queued balls,
+  preventing a multi-ball queue from making the obstacle impossible to clear.
+- Moved the pocket and cleat prompts above the full ball silhouette; the longer
+  Spanish pocket copy no longer renders through the ball.
+- Changed tier navigation to require Jump + Up/Down on keyboard and touch.
+  Up/Down alone no longer changes lanes, while Jump alone retains the ordinary
+  same-lane jump.
+- Added pure input-contract coverage and desktop/tablet browser regressions for
+  arrow-only input, both lane-transfer directions, ordinary jumping, physical
+  queues at both obstacle types, lead-ball kick release, and prompt clearance.
+- TDD evidence: the focused input test first failed because the combo resolver
+  did not exist, and the browser queue regression first failed with the trailing
+  ball incorrectly assigned to `pocket-a`; both pass after implementation.
+- Final verification passes 95/95 unit tests, the production build,
+  `git diff --check`, and the complete desktop/phone/tablet browser suite. The
+  required web-game client entered live Kickfall with the updated control
+  diagnostics and produced no console-error artifact.
+- Visually inspected clean pocket and cleat queue captures, the corrected prompt
+  placement, the tablet character landed after Jump + Down, and the live Level 1
+  client board. Resetting completed camera FX before the focused cleat capture
+  eliminated the intermittent headless WebGL readback blocks.
+
+### Kickfall production-art pass (2026-07-13)
+
+- Selected a cohesive neon maintenance-shaft direction: a cyan recessed intake,
+  an amber three-pad mechanical bumper, and coral masonry inside a navy/gold
+  breakable industrial frame.
+- Generated all three opaque source illustrations with the built-in image tool
+  on flat chroma backgrounds, preserved the full generated sources under
+  `source-assets/minigames/kickfall/`, removed the backgrounds with a soft matte,
+  despill, and one-pixel edge contraction, and created downscaled alpha PNGs for
+  the lazy-loaded runtime bundle.
+- Integrated the pocket, bumper, and gate textures without changing their
+  collision dimensions or obstacle rules. Gate destruction now emits cropped
+  fragments from the actual masonry art instead of generic rectangles.
+- Updated the public manifest, Kickfall art contract, and source prompt/processing
+  README so future Level 3 assets can extend the same visual system.
+- Final verification passes 95/95 unit tests, the production build,
+  `git diff --check`, and the complete desktop/phone/tablet browser suite. The
+  browser suite also asserts all three new PNGs remain in the lazy Kickfall
+  payload and gate destruction emits fragments from the production texture.
+- The required web-game client entered a live Level 1 run with no captured
+  console errors. Visually inspected the clean Level 1 gate board, Level 2
+  pocket/bumper board, both physical queue fixtures, and the gate-break frame;
+  assets are aligned, legible at gameplay scale, and free of chroma fringe.
+
+### Kickfall integrated catch-rail revision (2026-07-13)
+
+- Replaced the floating oval pocket visual with a hand-authored SVG magnetic
+  catch rail whose masonry cassette masks and matches the platform below it.
+- Kept the existing lane-scoped capture and collision behavior unchanged: the
+  board remains physically continuous, only the lead ball is retained, and a
+  correctly directed kick releases it.
+- Removed the broad glow and above-deck portal silhouette. The new low rollers,
+  shallow dark brake channel, fasteners, and cyan rail sit inside the platform
+  thickness so queued balls remain visible and the obstacle stays crisp at any
+  rendering scale.
+- Updated the lazy-payload browser contract and asset/spec documentation. The
+  generated oval is retained only as non-runtime source history.
+- Verified the new Level 2 empty, cross-tier guard, and two-ball queue captures;
+  the rail follows the lane angle, stays inside the platform thickness, and
+  leaves both balls readable. The required web-game client reached live
+  Kickfall with no captured errors. Final checks pass: 95/95 unit tests,
+  production build, `git diff --check`, and the complete desktop/phone/tablet
+  browser suite (the known timing-sensitive Escape assertion passed on the
+  standard unchanged rerun).
+
+### Kickfall direct-contact kicking fix (2026-07-13)
+
+- Reproduced the reported remote kick with a permanent browser fixture: a ball
+  86 px ahead of the player was incorrectly launched and armed by the old
+  125×78 px proximity rectangle. The new assertion failed with ball id `2`
+  where no kicked ball was expected.
+- Replaced the broad selection rectangle with circle-overlap geometry between a
+  small 8 px strike shape at the forward boot and the physical 18 px ball. A
+  separated ball is ignored; a ball touching the extended kick pose connects.
+- Reset `lastKickedBallId` on every kick attempt so diagnostics report misses
+  accurately, and moved gate/obstacle debug fixtures into real contact range.
+- Added pure mirrored contact tests plus browser regressions and inspected the
+  rejected-distance, contact-ready, and launched-ball captures. Final
+  verification passes 96/96 unit tests, production build, `git diff --check`,
+  the required web-game client with no captured errors, and the complete
+  desktop/phone/tablet browser suite on the standard unchanged rerun.
+
+### Kickfall twenty-level campaign (2026-07-13)
+
+- Replaced the labeled danger-line prototype graphic with an integrated dark
+  machinery channel and eighteen alternating coral warning inlays. Occupancy
+  pulses the texture; the floating danger and intake legends were removed in
+  both languages.
+- Expanded the two-level prototype into twenty authored configurations. Level
+  3 introduces flat lanes with no horizontal roll assist, Level 5 reinforced
+  gates with visible health pips, and Level 6 uphill lanes that backslide unless
+  the player keeps applying force. Later levels combine larger quotas, faster
+  spawns, clocks, obstacles, lane modes, and stronger gates.
+- Added rival encounters at Levels 10 and 20. The selected opponent physically
+  blocks the bottom route and counter-kicks ordinary balls; only a directly
+  player-kicked armed ball can stagger them toward the final drain. Boss defeat
+  is an explicit victory condition.
+- Persisted `highestUnlockedLevel` and `lastPlayedLevel` in the player profile.
+  Returning players can continue at their saved level or restart the campaign
+  from Level 1, while Retry remains on the current level.
+- TDD began with failing contracts for all twenty levels, the three lane modes,
+  reinforced gates, boss victory, and persisted campaign progress. Pure and
+  store coverage now passes, and browser fixtures verify Levels 3, 5, 6, 10,
+  and 20 plus the resume choice.
+- Visually inspected the flat, reinforced, uphill, first-boss, finale, resume,
+  and live fresh-profile boards. The required web-game client reached Level 1
+  with the textured boundary, `maxLevel: 20`, and no captured console-error
+  artifact. Final verification passes 101/101 unit tests, the production build,
+  `git diff --check`, and the complete desktop/phone/tablet browser suite.
+
+### Kickfall background boundary and pause flow (2026-07-13)
+
+- Reworked the danger indicator after visual feedback showed the short strip
+  reading as a foreground obstacle through the character. It now spans the full
+  1280 px playfield as thirty-two repeated low-contrast background panels at a
+  depth below platforms and all gameplay entities.
+- Replaced the immediate Menu exit with a visible Pause control and the football
+  match interaction model. P, Escape, and the HUD control freeze the complete
+  simulation and show Resume, Restart Level, and Leave Kickfall.
+- Leave Kickfall opens the shared confirmation overlay. Stay restores the
+  existing paused run; Leave returns to Intro without erasing unlocked campaign
+  progress. The same flow is available on keyboard, mouse, touch, and platform
+  Back/lifecycle handling.
+- Added browser regressions before implementation. The red run exposed the old
+  412 px foreground strip; the green suite verifies background depth/width,
+  frozen simulation time, P/Escape, cancel/confirm, and extended-tablet touch.
+- Visually inspected the live board, pause menu, leave confirmation, and tablet
+  pause capture. The required standalone web-game client reached a paused live
+  Level 1 with accurate text diagnostics and no captured console-error artifact.
+- Final verification passes 101/101 unit tests, the production build,
+  `git diff --check`, and the complete desktop/phone/tablet browser suite.
+
+### Kickfall flat-lane receiving wedges (2026-07-13)
+
+- Added a mirrored triangular wedge against the outer receiving wall of every
+  non-top flat tier. The simple deck-colored silhouette follows the supplied
+  mockup and replaces the rejected mechanical chute/rail concept.
+- The wedge has a real static incline and wall collision. A ball is captured
+  only when its physical circle reaches that incline, is carried down the face,
+  and then regains its normal bounce and free flat-lane physics immediately
+  after clearing the inner tip.
+- Kept the top flat feed unchanged because its authored spawn already leaves
+  room behind the ball. This preserves the campaign rule that an untouched ball
+  on ordinary flat ground stays still and must be pushed or kicked by the player.
+- TDD started with a failing mirrored-layout contract, then a Level 4 browser
+  fixture exposed an outward Matter rebound. The contact-scoped ramp response
+  fixes that rebound without adding a proximity trigger or disabling ball-ball
+  collisions.
+- Visually inspected the Level 4 right-edge wedge and its released ball. The
+  browser assertion verifies at least 70 px of inward travel and 180 px of
+  standing/kicking clearance, and confirms the assist has ended before normal
+  lane play resumes.
+- Final checks pass 102/102 unit tests, the production build, `git diff --check`,
+  and the complete desktop/phone/tablet browser suite. The required standalone
+  web-game client also booted the packaged canvas with no console-error artifact;
+  the feature-specific screenshot and text state came from the deterministic
+  Level 4 browser fixture. No follow-up TODO remains for this wedge behavior.
+
+### Kickfall Cosmic Foundry theme system (2026-07-14)
+
+- Generated seven independent production assets with the built-in image tool:
+  quiet space-city base, additive Milky Way, additive Moon, lane material,
+  energy gate, empty catch rail, and three-pad kick cleat. The first catch-rail
+  output incorrectly included a ball, so a targeted edit removed it before the
+  runtime alpha pass.
+- Kept full generated and alpha-intermediate files under
+  `source-assets/kickfall/cosmic/`; optimized runtime WebP/PNG files live under
+  `public/assets/minigames/kickfall/themes/cosmic/` and total roughly 436 KiB.
+- Added `kickfallThemes.js` with `cosmic` and `workshop` manifests. Themes own
+  lazy asset keys, visual palette, and ambient timing only; tier coordinates,
+  Matter bodies, obstacle rules, and all level difficulty remain shared.
+  Unknown theme IDs resolve to Cosmic Foundry, and scene data/profile can later
+  provide a persisted screen-design choice without changing the scene API.
+- Rebuilt the scene presentation around the selected theme: layered backdrop,
+  three-minute additive Milky Way rotation, timed/ambient Moon travel, subtle
+  twinkling stars, neon frame, themed warning boundary and HUD, metal lanes,
+  energy gates, integrated traps, wedge panels, damage tint, and theme-cropped
+  destruction fragments. Every ambient layer advances on fixed simulation time
+  and therefore freezes with pause.
+- TDD began with a missing theme module and then missing trap asset keys. Pure
+  tests now lock fallback behavior, unique manifests, selected-only loading,
+  and the absence of gameplay geometry from themes. Browser checks verify the
+  seven Cosmic Foundry files stay out of boot, load only on Kickfall entry, the
+  Workshop backdrop stays unloaded, layered diagnostics are present, motion is
+  visible, and parallax freezes while paused.
+- Visually inspected live Level 1, gate destruction, Level 2 two-ball obstacle
+  queues, and the Level 4 flat receiving wedge. The required standalone client
+  reached live Cosmic Foundry, advanced its animated layers, spawned four balls,
+  and completed a natural pile-up defeat with no console-error artifact.
+- Added `docs/KICKFALL_THEMES.md` for future complete or mixed screen designs
+  and `docs/KICKFALL_COSMIC_ASSET_PROMPTS.md` with the final built-in prompt set.
+- Final checks pass 104/104 unit tests, production build, `git diff --check`,
+  and the full desktop/phone/tablet browser suite. One unrelated maximum-speed
+  fireball assertion double-counted on the first run; the standard unchanged
+  rerun passed the complete suite.
+
+Future option: expose the existing `themeId` scene/profile hook in a screen-
+design selector. No rendering or physics refactor is required for that UI.
+
+### Kickfall magnetic capture and corner clearance (2026-07-14)
+
+- Replaced the catch rail's first-frame teleport with a 320 ms magnetic capture
+  state. The ball now eases through a lifted arc, rotates, pulses, and remains
+  visible behind a cyan energy tether before settling into the held state.
+  Kicking during or after the pull cancels the effect cleanly and restores the
+  normal dynamic body; following balls still queue against the one lead ball.
+- Reduced flat-lane receiving wedges from 88 px to 54 px and made their Matter
+  ramp/wall bodies ball-only. Falling players now pass the receiver hardware and
+  land on the actual lane below instead of becoming wedged between the ramp and
+  the platform above. Ball receiving and inward handoff remain unchanged.
+- Increased physical fall acceleration from 0.34 to 0.50 velocity units per
+  fixed step and raised terminal fall speed from 14 to 15, removing the floaty
+  final half of jumps and unassisted drops.
+- Added red-first pure regressions for wedge clearance, the magnetic trajectory,
+  and fall acceleration. Browser fixtures verify a visible mid-pull state, the
+  final held state, player landing at the problematic Level 4 receiver corner,
+  and the existing inward ball handoff after that player test is isolated.
+- Visually inspected the magnetic mid-frame and player-clearance captures. The
+  complete desktop/phone/tablet browser suite passes, and the required standalone
+  web-game client reached live Cosmic Foundry with matching text diagnostics and
+  no console-error artifact.
+
+No follow-up TODO remains for this capture/corner/fall-speed pass.
+
+### Kickfall forgiving input, recoverable queues, and timer pressure (2026-07-14)
+
+- Removed the complete danger system: no warning stripe, HUD meter, danger
+  counters, diagnostics, force-defeat helper, or danger terminal condition
+  remains. Level 1 now provides a forgiving 90-second clock, so every authored
+  level uses obstacles and time as its failure pressure. A blocked intake delays
+  spawning but cannot defeat the player on its own.
+- Added a 140 ms jump buffer so a press just before landing is retained. Any
+  Space + Up/Down request that has no valid adjacent lane now falls back to a
+  normal jump rather than swallowing the input; successful lane transfers still
+  take priority.
+- Added contiguous queue charge transfer. The player's kick still requires
+  exact foot-to-rear-ball overlap, but its single armed charge travels through
+  physically touching balls toward the gate. Only the leading charge can damage
+  the gate, preventing a packed queue from becoming an unwinnable wall or
+  multiplying one kick into several reinforced-gate hits.
+- Fixed a magnetic catch-rail ownership bug reported during this pass. Once a
+  rail owns a ball, its attraction now advances independently of the initial
+  lane-tolerance check. A displaced ball therefore completes at the hold point
+  (or releases from a real directed kick) instead of freezing in midair while
+  later balls bypass the occupied rail.
+- Added red-first pure regressions for timer-only outcomes, removed danger state,
+  jump buffering, and queue charge transfer. Browser fixtures cover blocked
+  direction fallback, buffered landing input, a seven-ball rear-kick gate break,
+  a 26-second spawn pile that remains in play, the absent warning art, and a
+  deliberately displaced magnetic capture watchdog.
+- Visually inspected the clean timer-only board, buffered jump, queued gate
+  breakthrough, stable held catch-rail ball, and non-fatal pile. The required
+  standalone web-game client reached live Level 1 with a 90-second timer, no
+  danger diagnostics, and no console-error artifact. Unit tests pass 107/107 and
+  the production build passes. Every Kickfall browser assertion passes; the
+  complete multi-mode browser run continues beyond Kickfall but currently stops
+  later on the unrelated pre-existing tablet-match touch-mash assertion (one
+  boost step registered where that test expects two).
+
+Follow-up outside this request: stabilize the normal-match tablet touch-mash
+test timing in `test/browser-game.mjs` without changing its boost balance.
+
+### Kickfall animation cadence and queue resistance (2026-07-14)
+
+- Replaced the velocity-multiplied Kickfall run counter (which could advance at
+  roughly 26 visual steps per second) with a time-based cadence that scales from
+  6 to 9 steps per second. Movement speed and responsiveness are unchanged, but
+  each drawing now remains on screen long enough for the three-frame run cycle
+  to read cleanly.
+- Rebalanced contiguous queue kicks through impact attenuation. Direct contact
+  starts at full power and every touching ball-to-ball handoff retains 90%, so
+  normal direct gate kicks still break immediately while a seven-ball queue
+  reaches its gate at roughly 53% power. The first rear kick visibly damages
+  that Level 1 gate; the second deliberate kick clears it.
+- Gate health now accepts fractional impact and consumes the armed charge on
+  contact. Reinforced gates preserve their authored extra health, so later
+  packed queues demand proportionally more work instead of inheriting a free
+  full-strength chain reaction.
+- Added red-first pure coverage for run-cycle cadence and six-hop impact loss.
+  The browser fixture samples the live run frames (requiring a readable 2–5
+  transitions across 480 ms and all three run drawings), then verifies the
+  seven-ball gate remains active with partial health after one kick and breaks
+  after the second.
+- Visually inspected the intact first-impact queue and the second-kick gate
+  destruction captures. The required standalone web-game client reached live
+  Cosmic Foundry with the new ball impact-power diagnostics and no console-error
+  artifact. Kickfall unit tests pass 20/20. The complete browser run passes all
+  new Kickfall assertions and continues into the normal game, where it stops on
+  an unrelated profile-state assertion (`lucia` persisted where that older test
+  expects `bob`).
+
+No follow-up TODO remains for this cadence/queue-balance pass.
+
+### Kickfall twenty-stage route audit and uphill receivers (2026-07-14)
+
+- Reproduced the reported impossible route as a missing receiver on a non-top
+  uphill lane: reverse roll assist returned every ball to the outer wall, while
+  the Level 4 triangular receiver was previously created only for flat lanes.
+  A player approaching from inside the board could therefore become trapped on
+  the wrong side of the backsliding pile.
+- Generalized the existing Level 4 triangle to every non-top lane whose natural
+  motion does not carry balls away from the entry (`flat` and `uphill`). The
+  wedge remains ball-only, mirrors with lane flow, hands falling balls inward,
+  and acts as a chock when an uphill ball rolls back. Top flat/uphill lanes keep
+  their existing ball-only intake rail, which the player can walk through.
+- Moved the three gate layouts into shared pure configuration and added a
+  campaign route auditor. Each stage now checks required receivers, legal player
+  strike coordinates, gate entry/exit ordering, obstacle ordering and approach,
+  boss approach, ball quota versus required hits, and at least 30 seconds after
+  the final scheduled spawn. Concise audit state is exposed through Kickfall
+  diagnostics without changing the existing `level` payload contract.
+- Added red-first regressions for the missing uphill receiver and all twenty
+  complete route audits. A browser campaign loop then restarts Levels 1–20 one
+  by one, verifies their audit state, physically drops a ball through every
+  required receiver, requires at least 100 px outer-wall clearance, and performs
+  a real direct-contact kick from the resulting legal standing position.
+- All twenty browser stage checks pass. The tightest measured receiver clearance
+  is 182.2 px; the tightest clock margin is Level 2 at 36.15 seconds after its
+  final scheduled ball. Captured and visually inspected a labeled 20-stage
+  contact sheet plus full-size uphill receiver frames for Levels 7, 13, 18, and
+  19. The machine-readable results live in
+  `output/e2e/01-kickfall-campaign-audit.json`, and the permanent review table is
+  documented in `docs/KICKFALL_STAGE_AUDIT.md`.
+- The complete browser test passes the entire Kickfall campaign audit and then
+  reaches the same unrelated normal-game profile assertion as the previous pass
+  (`lucia` persisted where that older assertion expects `bob`).
+
+No follow-up TODO remains for the twenty-stage route-safety pass.
+
+### Kickfall modal polish and Spanish overflow regression (2026-07-14)
+
+- Reworked the Kickfall pause and outcome cards around compact, explicit layout
+  contracts. Titles are smaller, supporting copy has a bounded advanced wrap,
+  card shadows and short accent rails replace the heavy frame treatment, and
+  progress now sits in a dedicated low-contrast status plate.
+- Replaced the result screen's fixed vertical action stack with context-aware
+  rows: defeat/final-stage results keep Retry and Main Menu together inside the
+  card, while a cleared stage with a successor uses an evenly spaced three-way
+  Retry / Continue / Main Menu row. The reusable button helper can now safely
+  reposition buttons and refresh localized labels while preserving text fitting.
+- Tightened the shared leave-confirmation overlay to the same spacing and type
+  hierarchy, while retaining its warning accent and existing cancel/confirm
+  behavior for both Kickfall and normal matches.
+- Added red-first unit coverage that proves pause, two-action, and three-action
+  layouts stay inside their panels. The live browser regression forces the
+  longest Spanish timeout copy, asserts every visible element remains within
+  the result card, verifies localized actions, and captures
+  `output/e2e/01-kickfall-level-2-timeout-es.png`.
+- Visually inspected the Spanish timeout, three-action victory, pause, and leave
+  confirmation captures. The standalone web-game client reached the live menu
+  without console errors. All 110 unit tests and the production build pass. The
+  complete browser run passes all Kickfall modal and campaign checks, then stops
+  later at the same unrelated persisted-profile assertion (`lucia` where the
+  older normal-match fixture expects `bob`).
+
+No follow-up TODO remains for the modal-polish pass.
+
+### Kickfall boss counter-shot strength (2026-07-14)
+
+- Reproduced the weak Level 10 counter as a single-ball velocity overwrite: the
+  target immediately transferred its limited impulse into the incoming packed
+  queue, so the boss completed his kick animation while the pile barely moved.
+- Added a pure contiguous counter-wave resolver. A boss kick now identifies the
+  touching same-lane queue, reverses every connected ball with slight distance
+  attenuation, clears player attack charge, and suppresses lane roll assist for
+  0.9 seconds so the return shot has time to read before gravity retakes control.
+- Raised authored counter speed from 10.5 to 14.5 on Level 10 and from 12 to 16
+  on the Level 20 finale. The stronger kick adds a small impact burst and camera
+  response without changing boss health, cadence, or the player's counterplay.
+- Added red-first pure coverage for connected-versus-isolated balls. The live
+  Level 10 browser fixture now creates a four-ball queue, requires every ball to
+  reverse above 9 velocity units, and verifies each travels at least 115 px away
+  from the boss within 360 ms. The reviewed frame is
+  `output/e2e/01-kickfall-level-10-boss-counter.png`.
+- All 111 unit tests and the production build pass. The required standalone
+  web-game client reached live Kickfall without console errors. The complete
+  browser run passes the new Level 10 counter-shot regression and all Kickfall
+  checks, then stops later at the unchanged unrelated profile fixture mismatch
+  (`lucia` where the older normal-match assertion expects `bob`).
+
+No follow-up TODO remains for the boss counter-shot fix.

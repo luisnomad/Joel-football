@@ -70,7 +70,7 @@ const createHelpContent = (scene, language, inputMode, depth) => {
   const touch = inputMode === 'touch';
   const actions = [
     ['move', 'right'], ['jump', 'jump'], ['kick', 'kick'],
-    ['lob', 'lob'], ['dash', 'dash'], ['power', 'power'],
+    ['lob', 'lob'], ['power', 'power'],
   ];
   const objects = [];
   actions.forEach(([action, icon], index) => {

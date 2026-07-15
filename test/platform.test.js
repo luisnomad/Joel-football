@@ -46,6 +46,7 @@ describe('WebPlatformServices', () => {
       documentRef: {},
       screenRef: { width: 844 },
       navigatorRef: { maxTouchPoints: 1, userAgent: 'Mobile Safari' },
+      development: false,
     });
     expect(mobileService.getInstallState()).toEqual({ available: true, installed: false, method: 'instructions' });
 
@@ -58,6 +59,54 @@ describe('WebPlatformServices', () => {
     expect(mobileService.getInstallState().method).toBe('prompt');
     expect(await mobileService.installWebApp()).toMatchObject({ outcome: 'accepted' });
     expect(prompt).toHaveBeenCalledOnce();
+  });
+
+  it('does not suppress the browser install prompt during development', () => {
+    const preventDefault = vi.fn();
+    const service = new WebPlatformServices({ development: true });
+
+    service.onBeforeInstallPrompt({ preventDefault });
+
+    expect(preventDefault).not.toHaveBeenCalled();
+    expect(service.deferredInstallPrompt).toBeNull();
+  });
+
+  it('unregisters an existing app worker and reloads once during development', async () => {
+    const unregister = vi.fn(async () => true);
+    const reload = vi.fn();
+    const serviceWorker = {
+      controller: {},
+      getRegistrations: vi.fn(async () => [{ scope: 'https://game.test/', unregister }]),
+      register: vi.fn(),
+    };
+    const service = new WebPlatformServices({
+      navigatorRef: { serviceWorker },
+      locationRef: { href: 'https://game.test/', reload },
+      secureContext: true,
+      development: true,
+    });
+
+    await service.registerServiceWorker();
+
+    expect(unregister).toHaveBeenCalledOnce();
+    expect(serviceWorker.register).not.toHaveBeenCalled();
+    expect(reload).toHaveBeenCalledOnce();
+  });
+
+  it('forces production worker updates to bypass the HTTP cache', async () => {
+    const register = vi.fn(async () => ({}));
+    const service = new WebPlatformServices({
+      navigatorRef: { serviceWorker: { register } },
+      secureContext: true,
+      development: false,
+    });
+
+    await service.registerServiceWorker();
+
+    expect(register).toHaveBeenCalledWith('/sw.js?v=3', {
+      scope: '/',
+      updateViaCache: 'none',
+    });
   });
 });
 

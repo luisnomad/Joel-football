@@ -61,7 +61,7 @@ export const EMPTY_INTENT = Object.freeze({
   kick: false,
   lob: false,
   dash: false,
+  dashDirection: 0,
   power: false,
-  sprint: false,
   kickBoost: 0,
 });

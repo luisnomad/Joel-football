@@ -15,11 +15,12 @@ CELL_HEIGHT = 480
 GROUND_ANCHOR_Y = 418
 SAFE_HORIZONTAL_MARGIN = 8
 ALPHA_THRESHOLD = 8
+CONTACT_CELL_BLEED = 64
 GROUNDED_FRAMES = frozenset({0, 1, 4, 5, 6, 7, 8, 9, 10, 11})
 
 PLAYERS = {
     "joel": {
-        "legacy": ROOT / "public/assets/player-nova-sheet.png",
+        "legacy": ROOT / "source-assets/animation/legacy/player-nova-sheet.png",
         "selected": ROOT / "source-assets/animation/selected/joel",
         "source_out": ROOT / "source-assets/animation/final/player-nova-sheet-v2.png",
         "runtime_out": ROOT / "public/assets/player-nova-sheet-v2.webp",
@@ -27,7 +28,7 @@ PLAYERS = {
         "kick_height": 347,
     },
     "vex": {
-        "legacy": ROOT / "public/assets/player-vex-sheet.png",
+        "legacy": ROOT / "source-assets/animation/legacy/player-vex-sheet.png",
         "selected": ROOT / "source-assets/animation/selected/vex",
         "source_out": ROOT / "source-assets/animation/final/player-vex-sheet-v2.png",
         "runtime_out": ROOT / "public/assets/player-vex-sheet-v2.webp",
@@ -39,13 +40,21 @@ PLAYERS = {
 CONTACT_SHEET_PLAYERS = {
     "juan": {
         "sheet": ROOT / "source-assets/animation/selected/juan/contact-sheet.png",
-        "source_out": ROOT / "public/assets/player-juan-sheet-v3.png",
+        "source_out": ROOT / "source-assets/animation/final/player-juan-sheet-v3.png",
         "runtime_out": ROOT / "public/assets/player-juan-sheet-v3.webp",
+        # Match the calibrated knees-up jump scale used by Juanjo so the pose
+        # reads as airborne compression rather than a full-character shrink.
+        "frame_heights": {2: 350},
     },
     "juanjo": {
         "sheet": ROOT / "source-assets/animation/selected/juanjo/contact-sheet.png",
-        "source_out": ROOT / "public/assets/player-juanjo-sheet-v1.png",
+        "source_out": ROOT / "source-assets/animation/final/player-juanjo-sheet-v1.png",
         "runtime_out": ROOT / "public/assets/player-juanjo-sheet-v1.webp",
+        "recover_cell_bleed": True,
+        # The compact knees-up source pose reads as a full-character shrink at
+        # runtime even though its face is correctly sized. Keep it slightly
+        # shorter than idle while restoring the motion silhouette's presence.
+        "frame_heights": {2: 350},
     },
 }
 
@@ -70,8 +79,11 @@ def alpha_bbox(image: Image.Image) -> tuple[int, int, int, int]:
     return bbox
 
 
-def keep_largest_alpha_component(image: Image.Image) -> Image.Image:
-    """Discard disconnected chroma-removal fragments while retaining soft edges."""
+def keep_largest_alpha_component(
+    image: Image.Image,
+    preferred_box: tuple[int, int, int, int] | None = None,
+) -> Image.Image:
+    """Keep one subject, preferring the component centered in its source cell."""
 
     rgba = image.convert("RGBA")
     alpha = rgba.getchannel("A")
@@ -81,6 +93,7 @@ def keep_largest_alpha_component(image: Image.Image) -> Image.Image:
     solid = bytearray(value > ALPHA_THRESHOLD for value in alpha_bytes)
     visited = bytearray(total)
     largest: list[int] = []
+    largest_key = (-1, -1)
 
     for seed in range(total):
         if not solid[seed] or visited[seed]:
@@ -113,8 +126,19 @@ def keep_largest_alpha_component(image: Image.Image) -> Image.Image:
                 if solid[neighbor] and not visited[neighbor]:
                     visited[neighbor] = 1
                     queue.append(neighbor)
-        if len(component) > len(largest):
+        if preferred_box is None:
+            preferred_pixels = len(component)
+        else:
+            preferred_left, preferred_top, preferred_right, preferred_bottom = preferred_box
+            preferred_pixels = sum(
+                preferred_left <= index % width < preferred_right
+                and preferred_top <= index // width < preferred_bottom
+                for index in component
+            )
+        component_key = (preferred_pixels, len(component))
+        if component_key > largest_key:
             largest = component
+            largest_key = component_key
 
     if not largest:
         raise ValueError("Generated frame contains no connected subject")
@@ -225,8 +249,12 @@ def build_player(player_name: str, player: dict[str, object]) -> None:
     atlas.save(runtime_out, format="WEBP", lossless=True, quality=90, method=6)
 
 
-def contact_sheet_source_cells(sheet_path: Path) -> list[Image.Image]:
-    """Split an uneven generated 4x3 contact sheet into clean character cells."""
+def contact_sheet_source_cells(
+    sheet_path: Path,
+    *,
+    recover_cell_bleed: bool = False,
+) -> list[Image.Image]:
+    """Split an uneven 4x3 sheet without clipping poses that bleed across cells."""
 
     sheet = Image.open(sheet_path).convert("RGBA")
     cells: list[Image.Image] = []
@@ -237,13 +265,33 @@ def contact_sheet_source_cells(sheet_path: Path) -> list[Image.Image]:
         right = round((column + 1) * sheet.width / 4)
         top = round(row * sheet.height / 3)
         bottom = round((row + 1) * sheet.height / 3)
-        cell = keep_largest_alpha_component(sheet.crop((left, top, right, bottom)))
+        if not recover_cell_bleed:
+            cell = keep_largest_alpha_component(sheet.crop((left, top, right, bottom)))
+            cells.append(cell.crop(alpha_bbox(cell)))
+            continue
+        crop_left = max(0, left - CONTACT_CELL_BLEED)
+        crop_top = max(0, top - CONTACT_CELL_BLEED)
+        crop_right = min(sheet.width, right + CONTACT_CELL_BLEED)
+        crop_bottom = min(sheet.height, bottom + CONTACT_CELL_BLEED)
+        preferred_box = (
+            left - crop_left,
+            top - crop_top,
+            right - crop_left,
+            bottom - crop_top,
+        )
+        cell = keep_largest_alpha_component(
+            sheet.crop((crop_left, crop_top, crop_right, crop_bottom)),
+            preferred_box=preferred_box,
+        )
         cells.append(cell.crop(alpha_bbox(cell)))
     return cells
 
 
 def build_contact_sheet_player(player_name: str, player: dict[str, object]) -> None:
-    source_cells = contact_sheet_source_cells(Path(player["sheet"]))
+    source_cells = contact_sheet_source_cells(
+        Path(player["sheet"]),
+        recover_cell_bleed=bool(player.get("recover_cell_bleed", False)),
+    )
     idle = source_cells[0]
     scale = 380 / idle.height
     atlas = Image.new("RGBA", (CELL_WIDTH * 4, CELL_HEIGHT * 3), (0, 0, 0, 0))
@@ -253,6 +301,9 @@ def build_contact_sheet_player(player_name: str, player: dict[str, object]) -> N
         width = max(1, round(source.width * scale))
         height = max(1, round(source.height * scale))
         content = source.resize((width, height), Image.Resampling.LANCZOS)
+        frame_height = dict(player.get("frame_heights", {})).get(frame)
+        if frame_height is not None:
+            content = resize_to_height(content, int(frame_height))
         if content.height > 380:
             content = resize_to_height(content, 380)
         content = enforce_horizontal_margin(content)

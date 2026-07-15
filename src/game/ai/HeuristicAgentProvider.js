@@ -25,6 +25,9 @@ export const decideHeuristicIntent = (snapshot, side = 'right', difficulty = 'no
   }
 
   const aerialThreat = approaching && ball.y < self.y - 42 && Math.abs(ball.x - self.x) < 145;
+  const lobLandingBehind = ball.vy < -1
+    && ball.y < self.y - 100
+    && (side === 'right' ? predictedX > self.x + 80 : predictedX < self.x - 80);
   const counterThreat = snapshot.powerBall.active && snapshot.powerBall.owner !== side && ballDistance < 150;
   const strikeRange = ballDistance < 112 && Math.abs(ball.y - self.y) < 105;
   const opponentPressure = Math.abs(opponent.x - self.x) < 116;
@@ -35,25 +38,29 @@ export const decideHeuristicIntent = (snapshot, side = 'right', difficulty = 'no
     || (counterThreat && ballDistance < 165)
   );
   const advanced = difficulty !== 'easy';
-  const sprintDistance = difficulty === 'hard' ? 170 : 260;
-  const shouldSprint = advanced
-    && !opponentPressure
-    && (
-      (self.grounded && Math.abs(targetX - self.x) > sprintDistance)
-      || (self.sprinting && signDeadzone(targetX - self.x) !== 0)
-    );
+  const dashDistance = difficulty === 'hard' ? 170 : 260;
+  const dashTargetDirection = opponentPressure && !emergency
+    ? directionToOpponent
+    : signDeadzone(targetX - self.x);
+  const dashDirection = advanced
+    && self.grounded
+    && self.dashCooldown <= 0
+    && dashTargetDirection !== 0
+    && (opponentPressure || Math.abs(targetX - self.x) > dashDistance)
+    ? dashTargetDirection
+    : 0;
   const kickBoost = advanced && (self.kickTimer > 0 || shouldKick || shouldLob) && !self.powerArmed && self.meter > 0
     ? (difficulty === 'hard' ? 2 : 1)
     : 0;
 
   return {
     move: signDeadzone(targetX - self.x),
-    jump: self.grounded && (aerialThreat || (emergency && ball.y < 500)),
+    jump: self.grounded && !lobLandingBehind && (aerialThreat || (emergency && ball.y < 500)),
     kick: shouldKick,
     lob: shouldLob,
-    dash: self.dashCooldown <= 0 && opponentPressure && !emergency && directionToOpponent === Math.sign(opponent.x - self.x),
+    dash: dashDirection !== 0,
+    dashDirection,
     power: self.meter >= 100 && strikeRange && (ballInOwnHalf || ball.y > 515),
-    sprint: shouldSprint,
     kickBoost,
   };
 };

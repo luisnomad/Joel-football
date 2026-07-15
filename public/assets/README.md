@@ -1,25 +1,36 @@
 # Skyhead Showdown art manifest
 
-All files in this directory are original art created for this project. Raster
-art was generated and locally processed; the runtime goal is a hand-authored
-SVG. The provided genre screenshot was treated as context only: it was not
-copied, traced, edited, or included in the project.
+All files in this directory are optimized runtime art created for this project.
+Lossless masters, legacy sheets, and generated studies live under
+`source-assets/` so Vite and Capacitor do not package them. Raster art was
+generated and locally processed; runtime assets use optimized WebP, alpha PNG,
+or hand-authored SVG according to the asset's needs. The provided genre
+screenshot was treated as context only: it was not copied, traced, edited, or
+included in the project.
 
 ## Runtime assets
 
 | File | Pixels | Alpha | Suggested use at 1280x720 |
 | --- | ---: | :---: | --- |
-| `arena-skycourt.png` | 1920x1080 | no | Cover the full logical 16:9 canvas. It contains continuous turf and wall art with no goals, openings, or bays. At 1280x720 the turf foreground spans roughly y=398-636 and its clean ground-contact line is near y=636. |
+| `arena-skycourt.webp` | 1920x1080 | no | Optimized runtime arena. Cover the full logical 16:9 canvas. It contains continuous turf and wall art with no goals, openings, or bays. At 1280x720 the turf foreground spans roughly y=398-636 and its clean ground-contact line is near y=636. The lossless source PNG lives under `source-assets/`. |
+| `arena-neon.webp` | 1920x1080 | no | Imagegen-derived genuine night arena: newly illustrated synthwave architecture, crowd, skyline, lighting, and violet pitch. The generated PNG lives under `source-assets/arena-neon.png`. |
+| `arena-beach.webp` | 1920x1080 | no | Imagegen-derived genuine beach arena: bamboo terraces, ocean sunset, islands, palms, and a flat sand pitch. The generated PNG lives under `source-assets/arena-beach.png`. |
 | `goal-side.svg` | 180x320 viewBox | yes | Runtime goal: a deliberately narrow left-side profile. Display at 150x235, origin `(0.5, 1)`, center `(75, 636)`, then mirror at `(1205, 636)`. |
-| `goal-side.png` | 512x479 | yes | Unused generated design study retained as source exploration; runtime code uses the simpler SVG. |
 | `player-nova.png` | 512x512 | yes | Left/human boy's idle cutout, facing right. Start near 185-205 px display height. |
 | `player-vex.png` | 512x512 | yes | Right/provider boy's idle cutout, facing left. Start near 185-205 px display height. |
-| `player-nova-sheet.png` | 1254x1254 | yes | Legacy 3x2 pose source sheet; frame size 418x627. |
-| `player-vex-sheet.png` | 1254x1254 | yes | Legacy 3x2 pose source sheet; frame size 418x627. |
 | `player-nova-sheet-v2.webp` | 1280x1440 | yes | Runtime 4x3 animation sheet for Joel; twelve 320x480 frames. |
 | `player-vex-sheet-v2.webp` | 1280x1440 | yes | Runtime 4x3 animation sheet for Vex; twelve 320x480 frames. |
 | `ball.png` | 256x256 | yes | Rotation-safe ball. Start near 58-66 px display diameter. |
+| `ball-neon.svg` | 96x96 viewBox | yes | Cosmetic football variant with the same competitive physics as `ball.png`. |
+| `ball-balloon.svg` | 96x112 viewBox | yes | Party balloon used with the large buoyant, high-drag material preset. |
+| `ball-rugby.svg` | 128x80 viewBox | yes | Oval rugby visual used with deterministic asymmetric surface wobble. |
+| `ball-soda-can.svg` | 72x120 viewBox | yes | Upright soda can used with the chamfered rectangular tumbling collider. |
+| `ball-cannonball.svg` | 96x96 viewBox | yes | Dense low-bounce cannonball with an original unlit fuse motif. |
 | `power-flare.png` | 1024x512 | yes | Right-facing comet overlay with a transparent ball aperture. Flip X for left-facing shots; start near 230-260 px display width and render behind the ball. |
+| `minigames/kickfall/kickfall-catch-rail.svg` | 320x80 | yes | Crisp magnetic catch rail with a platform-matched masonry cassette. Display near 144x36 and keep capture logic separate from the visual. |
+| `minigames/kickfall/kickfall-pocket-v1.png` | 512x138 | no (legacy) | Superseded oval intake retained as source/reference; it looked detached from the continuous platform at gameplay scale. |
+| `minigames/kickfall/kickfall-bumper-v1.png` | 384x109 | yes | Amber three-pad mechanical blocker. Display near 82x29; it replaces the prototype triangles without changing ball physics. |
+| `minigames/kickfall/kickfall-gate-v2.png` | 192x384 | yes | Coral masonry gate in a navy/gold frame. Display at the authored gate collider size and reuse cropped regions for break debris. |
 
 The source-sheet frame order is row-major:
 
@@ -65,6 +76,8 @@ right upright at x≈1154. The diamond net is clipped entirely inside the frame.
   different faces, hair, colors, and silhouettes. Neither depicts a real person
   or an existing character.
 - Ball and power art deliberately reuse both rivals' colors to bind the set.
+- Match Playground object SVGs are hand-authored, compact, unbranded, and use
+  silhouettes that stay readable while rotating at gameplay size.
 - No embedded text, logos, trademarks, or watermarks.
 
 ## Generation prompt set
@@ -86,6 +99,34 @@ openings, doors, arches, nets, posts, crossbars, players, balls, UI, signs, text
 logos, or mascots. Render as polished original modern animated-series game art
 with crisp vector-like shapes, subtle painted texture, dark-teal contour
 accents, and warm afternoon light.
+```
+
+### Neon arena edit
+
+```text
+Use case: lighting-weather
+Asset type: full-screen 2D arcade-football game arena background, exact 16:9 landscape
+Input image: the lossless Skycourt is the edit target and geometry reference.
+Transform it into a genuinely new futuristic synthwave stadium at night—not a
+tint, filter, or overlay—while preserving the side-on camera, horizon, center
+markings, level pitch, ground-contact line, and empty gameplay zones. Redesign
+the architecture, crowd lighting, skyline, pitch surface, rails, floodlights,
+flags, and details. Use indigo, cyan, magenta, and a readable violet-blue pitch.
+No goals, players, balls, UI, text, logos, tunnels, or dark edge openings.
+```
+
+### Beach arena edit
+
+```text
+Use case: style-transfer
+Asset type: full-screen 2D arcade-football game arena background, exact 16:9 landscape
+Input image: the lossless Skycourt is the edit target and geometry reference.
+Transform it into a genuinely new tropical sunset beach arena—not a tint,
+filter, or overlay—with bamboo-and-canvas terraces, ocean, islands, palms,
+coastal decorations, and a firm golden-sand pitch. Preserve the exact side-on
+camera, horizon, center markings, level pitch, ground-contact line, and empty
+gameplay zones. No goals, players, balls, UI, text, logos, tunnels, or dark
+edge openings.
 ```
 
 ### Generated side-view goal study (not used at runtime)
@@ -180,6 +221,21 @@ chroma-key sources, followed by the Image Generation skill's supported
 non-destructively trimmed/resized with ImageMagick. All transparent deliverables
 were validated as RGBA (`srgba`) PNGs with fully transparent corner pixels; the
 power flare's circular aperture is also fully transparent.
+
+## Kickfall mini-game asset pack
+
+`minigames/kickfall/` stays outside the boot asset list. The neon factory
+backdrop, stretched brick-and-metal ramps, rotation-safe ball, and
+platform-integrated magnetic catch rail remain compact hand-authored SVGs. The
+production bumper and masonry gate are image-generated alpha PNGs selected and
+processed specifically for the current collision silhouettes. Phaser requests
+the entire pack only after the user enters Kickfall; Level 2 does not leak its
+art into the opening menu payload.
+
+The selected chroma sources, full-resolution alpha intermediates, exact prompt
+set, and processing notes live in
+`source-assets/minigames/kickfall/README.md`. The original prototype gate SVG is
+retained as a non-runtime fallback/reference.
 
 The requested pinned `gpt-image-2` CLI path could not run because
 `OPENAI_API_KEY` was not configured in the local environment. The built-in image

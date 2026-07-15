@@ -32,11 +32,10 @@ power strike; missed kicks do not consume charges.
 ## Controls
 
 - Move: A/D or Left/Right
-- Sprint: double-tap the same direction within 280 ms and hold the second press
+- Directional dash: double-tap either movement direction within 280 ms
 - Jump: W, Up, or Space
 - Kick: X or K
 - Lob: Z or I (or hold Up while pressing Kick)
-- Dash: C or L
 - Power: V or J when the meter is full
 - Boosted kick/lob: repeat either kick button during the kick animation; energy
   is spent only if the ball is hit
@@ -56,12 +55,48 @@ live play; opening it during a match pauses safely, and Android Back closes it
 before affecting the match or activity.
 
 Settings offers persistent Easy, Normal, and Hard AI difficulty. Easy prevents
-the rival from sprinting or boosting basic kicks; Normal and Hard allow both.
+the rival from using directional dashes or boosting basic kicks; Normal and
+Hard allow both.
+
+## Fields and kickable objects
+
+Open **Field & Ball** on the home screen to choose a persistent match setup.
+The three fields are Skycourt Stadium, Neon Grid, and Sunset Beach. Object
+choices include two football designs plus a party balloon, rugby ball, soda
+can, and cannonball.
+
+The football designs deliberately share the same competitive physics. The fun
+objects do not: the balloon is buoyant and draggy, the rugby ball wobbles into
+unpredictable bounces, the can uses a tumbling box collider, and the cannonball
+is heavy, low-bouncing, and hard to lift. Object radius is respected by kicks,
+power-shot sweeps, arena recovery, crossbar release, and goal detection.
+
+## Kickfall mini-game
+
+The home screen also opens **Kickfall**, a separately loaded four-tier arcade
+course. Level 1 sends eight physical balls toward three brick gates; Level 2
+adds ten balls, a 60-second clock, a catch pocket, and a kick cleat that only a
+deliberate kick can clear. Balls collide and stack and must be kicked through
+before the top hatch or danger line stays blocked for two seconds. The selected
+player character carries into the mode;
+horizontal movement, adjacent-tier direction, Jump, and Kick are the gameplay
+actions.
+
+Kickfall's playable scene is a dynamic Vite import and its backdrop, ramp,
+gate, and ball art live under `public/assets/minigames/kickfall/`. Neither the
+scene chunk nor those exclusive assets is requested during initial startup.
+See `docs/KICKFALL_SPEC.md` for the prototype rules, future validated-layout
+generator, difficulty progression, loading boundary, and acceptance criteria.
 
 Both players can cross midfield. Before passing the defender, retreating is a
 backpedal and each character keeps facing the rival goal. After passing the
 defender, movement can turn the attacker back toward them; continuing toward
 goal still keeps shots aimed at that goal.
+
+Lobs adapt to the defender's distance. A nearby defender produces the bounded
+maximum-height arc, clearing their head by a wide margin and forcing them to
+retreat toward the projected landing point. As distance increases, the launch
+trades height for horizontal speed while still targeting space beyond them.
 
 ## Verify
 
@@ -72,7 +107,8 @@ npm run test:e2e
 ```
 
 The browser test writes inspected state screenshots to `output/e2e/` and
-exercises bilingual switching, randomized math, earning and accumulating
+exercises bilingual switching, field/object selection and persistence,
+material-specific ball physics, randomized math, earning and accumulating
 charges, equipping, refresh persistence, the five-minute penalty, enhanced
 power use, full gameplay, and the complete touch system flow.
 
@@ -137,8 +173,8 @@ the default sibling repository path on another machine. The former
 - `src/game/ai/`: pluggable provider implementations.
 - `src/game/pure/`: renderer-independent rules, snapshots, prediction, intent,
   math challenges, player-profile economy, and power math.
-- `src/game/content/`: the ten data-driven superpower definitions and shot
-  modifiers.
+- `src/game/content/`: data-driven characters, match customization, powers,
+  physics presets, and shot modifiers.
 - `src/game/i18n.js`: centralized English/Spanish interface copy.
 - `src/game/input/`, `ui/`, `services/`: narrow platform adapters.
 - `src/platform/`: web and Capacitor lifecycle/orientation/haptics/Back adapters.
@@ -157,8 +193,8 @@ game.registry.set('agentProvider', {
       kick: false,
       lob: false,
       dash: false,
+      dashDirection: 0,
       power: false,
-      sprint: false,
       kickBoost: 0,
     };
   },

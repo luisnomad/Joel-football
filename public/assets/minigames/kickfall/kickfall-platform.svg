@@ -1,0 +1,15 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="512" height="64" viewBox="0 0 512 64">
+  <defs>
+    <linearGradient id="metal" x1="0" y1="0" x2="0" y2="1">
+      <stop stop-color="#62ebf6"/><stop offset=".16" stop-color="#224b6f"/><stop offset="1" stop-color="#0a1830"/>
+    </linearGradient>
+    <pattern id="bricks" width="80" height="38" patternUnits="userSpaceOnUse">
+      <rect width="80" height="38" fill="#7b2848"/>
+      <path d="M0 2h80M0 36h80M40 2v17M0 19h80M18 19v17M68 19v17" stroke="#f7ad83" stroke-opacity=".62" stroke-width="3"/>
+      <path d="M4 7h30M45 25h17" stroke="#ffcca8" stroke-opacity=".18" stroke-width="4"/>
+    </pattern>
+  </defs>
+  <rect width="512" height="64" rx="8" fill="url(#bricks)"/>
+  <rect width="512" height="12" rx="6" fill="url(#metal)"/>
+  <path d="M10 57h492" stroke="#250c24" stroke-width="8" opacity=".55"/>
+</svg>

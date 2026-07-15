@@ -45,19 +45,47 @@ asset.
    clipped 180 ms beeps; second 1 uses the full recording, creating a
    beep–beep–beeeeeep cadence. The result signal is exactly three consecutive
    full whistles and is emitted only once per finished match.
+9. The home screen opens a bilingual Match Playground where the player chooses
+   a persistent field and kickable object before starting. The current choice
+   survives refresh, rematch, Settings, and Power Lab navigation.
+
+### Field and object customization
+
+- Fields include three complete background illustrations: the classic
+  Skycourt, a newly illustrated Neon Grid night stadium, and a newly illustrated
+  Sunset Beach arena. They share gameplay-safe geometry while changing the
+  architecture, crowd, environment, lighting, and playing surface—not merely a
+  color treatment. Goal and player contrast remains readable.
+- Classic and Neon football designs are cosmetic peers and use exactly the
+  same balanced physics.
+- Party Balloon uses a larger round collider, partial buoyancy, high
+  restitution, strong air drag, reduced terminal speed, and extra lift.
+- Rugby Ball uses an oval visual, strong spin, and deterministic asymmetric
+  surface deflections so ground bounces are awkward without becoming random or
+  untestable.
+- Soda Can uses a chamfered rectangular collider, extra ground friction,
+  tumbling spin, and moderate energy loss.
+- Cannonball is dense, low-restitution, low-drag, speed-limited, and responds
+  weakly to ordinary kick lift.
+- Every object exposes its effective radius/material contract to strike reach,
+  swept power collision, bounds recovery, crossbar release, diagnostics, and
+  full-ball goal-mouth scoring.
 
 ### Human controls
 
 - Move: A/D or Left/Right.
-- Sprint: double-tap the same direction within 280 ms and keep holding the
-  second press. Sprint runs at 1.5× speed, survives a jump already in progress,
-  cannot begin in mid-air, and stops on release, reversal, stun, or knockback.
+- Directional dash: double-tap either movement direction within 280 ms. The
+  chosen arrow remains authoritative: toward the rival challenges them, while
+  the opposite arrow creates a reverse defensive dash or a goalward escape.
+  It cannot begin in mid-air and retains the normal dash cooldown.
 - Jump: W, Up, or Space.
 - Kick: X or K.
 - Lob: Z or I; Up + Kick is an alternate chord. The lob trades horizontal
   velocity for enough upward lift to clear a grounded opponent and creates a
-  parabolic interception opportunity.
-- Dash: C or L.
+  parabolic interception opportunity. Its trajectory is distance-adaptive:
+  defenders within the close band trigger a bounded maximum-height arc with
+  substantial head clearance, while increasing distance progressively trades
+  height for horizontal reach and still targets landing space beyond them.
 - Power shot: V or J, available only with a full meter.
 - Boosted basic kick: repeat either kick button during the current kick/lob
   animation. Up to three extra presses borrow at most 24 meter only when the
@@ -75,8 +103,9 @@ asset.
 
 - The player consists of a large circular head/body collision region and a
   short-lived forward kick sensor.
-- The ball uses continuous-feeling arcade physics with gravity, spin/rolling,
-  wall bounce, a terminal speed, and reliable collision groups.
+- The selected ball/object uses continuous-feeling arcade physics with its
+  configured gravity response, spin/rolling, wall bounce, terminal speed,
+  density, restitution, air drag, and reliable collision groups.
 - A late/poorly positioned head contact can deflect the ball backward.
 - Kicks add a strong horizontal impulse with a smaller lift component.
 - The ball-kick sound plays only when a kick actually contacts the ball; a
@@ -102,8 +131,8 @@ asset.
   alternating directly with the idle drawing.
 - Kicks visually progress through anticipation, contact, and recovery while
   retaining the existing strike window, boost taps, and cooldown timing.
-- Sustained sprint has a faster leg cadence, takeoff dust, and subtle speed
-  lines. Dash remains the separate short attacking lunge.
+- Normal running retains one consistent speed; there is no sustained sprint
+  mode. Directional double-tap dash is the single burst-movement mechanic.
 - Before overtaking the defender, each player always faces the rival goal;
   retreating is a backpedal and cannot accidentally aim a shot at their own
   net. After overtaking the defender, horizontal movement may turn the attacker
@@ -111,7 +140,8 @@ asset.
   orientation.
 - Jump is ground-gated, has responsive air steering, and returns quickly enough
   that a failed aerial defense creates a short rather than prolonged opening.
-- Dash provides a short horizontal burst and has a visible cooldown.
+- Directional dash provides a short burst in the chosen arrow direction and
+  has a visible cooldown.
 - Direct kick/dash contact briefly stuns and visibly knocks back the opponent.
 - Stun has a strict short duration and recovery protection to prevent an
   endless stun lock.
@@ -133,8 +163,8 @@ asset.
 
 - The scene depends on an `AgentProvider` contract, not a concrete bot.
 - The contract receives a compact immutable world snapshot and returns an
-  action intent: horizontal movement plus jump, kick, lob, dash, power,
-  optional sprint, and optional kick-boost fields.
+  action intent: horizontal movement plus jump, kick, lob, directional dash,
+  power, and optional kick-boost fields.
 - The included heuristic provider predicts ball landing/intercept position,
   guards the right-side defensive third, attacks favorable balls, jumps for
   reachable aerial threats, lobs over a nearby blocking defender, attempts
@@ -145,7 +175,7 @@ asset.
 - Provider failures must fail safe to a neutral intent rather than crash the
   match.
 - Persistent Easy/Normal/Hard difficulty is selected in bilingual Settings.
-  Easy strips sprint and kick-boost intents from every AI provider at the scene
+  Easy strips directional-dash and kick-boost intents from every AI provider at the scene
   boundary; Normal and Hard may use the same mechanics as Joel, with Hard
   requesting them more aggressively. Human providers are never stripped.
 

@@ -20,20 +20,20 @@ const crossingHeightAt = (previous, current, lineX) => {
 // identical ground-level shots do not alternate between scoring and missing.
 const GOAL_MOUTH_TOLERANCE = 1.5;
 
-export const detectGoalCrossing = ({ previous, current } = {}) => {
+export const detectGoalCrossing = ({ previous, current, radius = BALL_RADIUS } = {}) => {
   if (!previous || !current) return null;
   const crossbarBottom = CROSSBAR_Y + CROSSBAR_HEIGHT / 2;
   const fitsGoalMouth = (centerY) => (
-    centerY - BALL_RADIUS >= crossbarBottom - GOAL_MOUTH_TOLERANCE
-    && centerY + BALL_RADIUS <= GROUND_Y + GOAL_MOUTH_TOLERANCE
+    centerY - radius >= crossbarBottom - GOAL_MOUTH_TOLERANCE
+    && centerY + radius <= GROUND_Y + GOAL_MOUTH_TOLERANCE
   );
 
-  const rightThreshold = GOAL_LINE_RIGHT + BALL_RADIUS;
+  const rightThreshold = GOAL_LINE_RIGHT + radius;
   if (previous.x <= rightThreshold && current.x > rightThreshold) {
     return fitsGoalMouth(crossingHeightAt(previous, current, rightThreshold)) ? 'left' : null;
   }
 
-  const leftThreshold = GOAL_LINE_LEFT - BALL_RADIUS;
+  const leftThreshold = GOAL_LINE_LEFT - radius;
   if (previous.x >= leftThreshold && current.x < leftThreshold) {
     return fitsGoalMouth(crossingHeightAt(previous, current, leftThreshold)) ? 'right' : null;
   }

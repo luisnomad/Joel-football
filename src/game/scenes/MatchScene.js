@@ -33,6 +33,7 @@ import { createIconButton } from '../ui/createIconButton.js';
 import { createInfoOverlay } from '../ui/createInfoOverlay.js';
 import { createConfirmationOverlay } from '../ui/createConfirmationOverlay.js';
 import { resolveChilenaShot, shouldRedirectLobChilena } from '../pure/chilena.js';
+import { shouldResolvePlayerClash, sweepCircleAgainstBounds } from '../pure/gameplayPhysics.js';
 
 const round = (value, places = 2) => {
   const factor = 10 ** places;
@@ -83,12 +84,16 @@ export class MatchScene extends Phaser.Scene {
     this.humanProvider = {
       id: 'keyboard-touch',
       type: 'human',
-      decide: (snapshot) => this.inputController.sample(snapshot.players.left),
+      decide: (snapshot) => this.inputController.sample(snapshot.players.left, {
+        attackDirection: 1,
+        opponent: snapshot.players.right,
+        ball: snapshot.ball,
+      }),
     };
     this.opponentProvider = this.registry.get('agentProvider')
       ?? createHeuristicAgentProvider('right', { difficulty: this.profile.difficulty });
     this.currentIntents = { left: null, right: null };
-    this.lastAiAdvancedIntent = { sprint: false, kickBoost: 0 };
+    this.lastAiAdvancedIntent = { dashDirection: 0, kickBoost: 0 };
     this.aiThinkTimer = 0;
 
     this.leftPlayer = new Fighter(this, {
@@ -110,7 +115,7 @@ export class MatchScene extends Phaser.Scene {
       stats: this.opponent.stats,
     });
     this.players = { left: this.leftPlayer, right: this.rightPlayer };
-    this.ball = new Ball(this, GAME_WIDTH / 2, 336);
+    this.ball = new Ball(this, GAME_WIDTH / 2, 336, this.profile.ballTypeId);
     this.previousBallPosition = { x: this.ball.body.x, y: this.ball.body.y };
     this.powerBall = createPowerBallState();
     this.trail = [];
@@ -131,8 +136,15 @@ export class MatchScene extends Phaser.Scene {
     this.bannerTimer = 0;
     this.meterFlash = { left: 0, right: 0 };
     this.lastBoostedStrike = null;
+    this.lastLobStrike = null;
     this.lastChilenaStrike = null;
     this.lastInstantPower = null;
+    this.sweptPlayerSaves = 0;
+    this.clashTimer = 0;
+    this.clashCooldown = 0;
+    this.clashCount = 0;
+    this.lastClashPoppedBall = false;
+    this.hudSignature = null;
     this.goalLatch = false;
     this.isPaused = false;
     this.pauseReason = null;
@@ -205,7 +217,9 @@ export class MatchScene extends Phaser.Scene {
         this.rightPlayer.setFacing(-1);
         this.rightPlayer.stunTimer = 0;
         this.rightPlayer.stunProtection = 0;
-        this.rightPlayer.stopSprint(false);
+        this.rightPlayer.dashTimer = 0;
+        this.rightPlayer.dashCooldown = 0;
+        this.rightPlayer.dashDirection = 0;
         this.rightPlayer.kickTimer = 0;
         this.rightPlayer.kickBoostTaps = 0;
         this.rightPlayer.kickBoostAppliedTaps = 0;
@@ -237,7 +251,9 @@ export class MatchScene extends Phaser.Scene {
         this.leftPlayer.lastStrikePowered = false;
         this.leftPlayer.stunTimer = 0;
         this.leftPlayer.stunProtection = 0;
-        this.leftPlayer.stopSprint(false);
+        this.leftPlayer.dashTimer = 0;
+        this.leftPlayer.dashCooldown = 0;
+        this.leftPlayer.dashDirection = 0;
         this.inputController.resetAdvancedInput();
         this.meterFlash.left = 0;
         this.lastBoostedStrike = null;
@@ -350,7 +366,6 @@ export class MatchScene extends Phaser.Scene {
       'fighter-power-armed',
       'fighter-power-denied',
       'fighter-dash',
-      'fighter-sprint-start',
       'fighter-step',
       'fighter-kick-boost-charged',
       'fighter-chilena',
@@ -359,15 +374,12 @@ export class MatchScene extends Phaser.Scene {
     this.events.on('fighter-jump', () => arcadeAudio.jump());
     this.events.on('fighter-power-armed', (fighter) => this.showPowerArmed(fighter));
     this.events.on('fighter-power-denied', (fighter) => this.showPowerDenied(fighter));
-    this.events.on('fighter-dash', (fighter) => this.spawnImpact(fighter.sprite.x - fighter.facing * 26, fighter.sprite.y + 58, 0xb79aff, 4));
-    this.events.on('fighter-sprint-start', (fighter) => {
-      this.spawnImpact(fighter.sprite.x - fighter.facing * 24, GROUND_Y - 8, 0xdffbff, 10);
-    });
+    this.events.on('fighter-dash', (fighter) => this.spawnImpact(fighter.sprite.x - fighter.dashDirection * 26, fighter.sprite.y + 58, 0xb79aff, 8));
     this.events.on('fighter-step', (fighter) => this.spawnImpact(
       fighter.sprite.x - fighter.facing * 18,
       GROUND_Y - 5,
-      fighter.sprinting ? 0xbdefff : 0xd8f5dd,
-      fighter.sprinting ? 5 : 2,
+      0xd8f5dd,
+      2,
     ));
     this.events.on('fighter-kick-boost-charged', (fighter, taps) => {
       this.spawnImpact(fighter.sprite.x + fighter.facing * 58, fighter.sprite.y + 40, 0xffdc62, 2 + taps * 2);
@@ -390,6 +402,7 @@ export class MatchScene extends Phaser.Scene {
     if (equipped && isInstantSuperpower(equipped.id)) {
       const consumedPowerId = playerProfileStore.consumeEquipped();
       if (consumedPowerId) {
+        this.profile = playerProfileStore.get();
         fighter.powerArmed = 0;
         fighter.meter = 0;
         if (consumedPowerId === 'ice') this.rightPlayer.applyFreeze(0, 2);
@@ -711,7 +724,7 @@ export class MatchScene extends Phaser.Scene {
         ? proposedIntent
         : applyAiDifficulty(proposedIntent, this.profile.difficulty);
       this.lastAiAdvancedIntent = {
-        sprint: this.currentIntents.right.sprint,
+        dashDirection: this.currentIntents.right.dashDirection,
         kickBoost: this.currentIntents.right.kickBoost,
       };
       this.aiThinkTimer = 0.075;
@@ -724,8 +737,11 @@ export class MatchScene extends Phaser.Scene {
       this.currentIntents.right = { ...this.currentIntents.right, kickBoost: 0 };
     }
     this.handleStrikes();
-    this.handleCombat();
-    this.ball.clampVelocity(this.powerBall.active ? (this.powerBall.counterFlash > 0 ? 46 : 29) : 25);
+    this.handleSweptPowerContact();
+    const clashResolved = this.handlePlayerClash(dt);
+    if (!clashResolved) this.handleCombat();
+    this.ball.applyMaterialForces();
+    this.ball.clampVelocity(this.powerBall.active ? (this.powerBall.counterFlash > 0 ? 46 : 29) : undefined);
     this.ball.releaseGoalPerch(dt);
     this.updatePowerBall(dt);
     this.updateEffects(dt);
@@ -739,6 +755,7 @@ export class MatchScene extends Phaser.Scene {
 
   handleStrikes() {
     for (const fighter of [this.leftPlayer, this.rightPlayer]) {
+      const opponent = fighter.side === 'left' ? this.rightPlayer : this.leftPlayer;
       const chilenaStrike = fighter.attemptChilena(this.ball);
       if (chilenaStrike) {
         this.activateChilenaStrike(fighter, chilenaStrike);
@@ -747,8 +764,20 @@ export class MatchScene extends Phaser.Scene {
       const incomingPowerVelocity = this.powerBall.active && this.powerBall.owner !== fighter.side
         ? { ...this.ball.body.body.velocity }
         : null;
-      const strike = fighter.attemptBallStrike(this.ball);
+      const strike = fighter.attemptBallStrike(this.ball, opponent);
       if (!strike) continue;
+      if (strike.shotType === 'lob') {
+        this.lastLobStrike = {
+          side: fighter.side,
+          opponentX: opponent.sprite.x,
+          opponentDistance: round(strike.opponentDistance),
+          targetX: strike.targetX,
+          predictedApexY: round(strike.predictedApexY),
+          predictedClearance: round(strike.predictedClearance),
+          vx: round(this.ball.body.body.velocity.x),
+          vy: round(this.ball.body.body.velocity.y),
+        };
+      }
       arcadeAudio.kick(strike.powered);
       if (strike.boosted) this.showBoostedStrike(fighter, strike);
       if (incomingPowerVelocity) {
@@ -761,6 +790,7 @@ export class MatchScene extends Phaser.Scene {
           if (equippedPowerId && profile.powers[equippedPowerId] > 0) {
             const consumedPowerId = playerProfileStore.consumeEquipped();
             if (consumedPowerId) {
+              this.profile = playerProfileStore.get();
               superShot = applySuperShot(consumedPowerId, {
                 direction: fighter.facing,
                 baseSpeed: PLAYER_TUNING.powerShotSpeed,
@@ -791,6 +821,89 @@ export class MatchScene extends Phaser.Scene {
         this.cameras.main.shake(150, 0.006);
       }
     }
+  }
+
+  handleSweptPowerContact() {
+    if (!this.powerBall.active || !this.previousBallPosition) return false;
+    const defender = this.powerBall.owner === 'left' ? this.rightPlayer : this.leftPlayer;
+    const current = { x: this.ball.body.x, y: this.ball.body.y };
+    const hit = sweepCircleAgainstBounds({
+      previous: this.previousBallPosition,
+      current,
+      radius: this.ball.snapshot().radius,
+      bounds: defender.sprite.body.bounds,
+    });
+    if (!hit) return false;
+    const velocity = { ...this.ball.body.body.velocity };
+    const approachingSpeed = velocity.x * hit.normal.x + velocity.y * hit.normal.y;
+    if (approachingSpeed >= 0) return false;
+
+    this.ball.body.setPosition(hit.x + hit.normal.x * 0.8, hit.y + hit.normal.y * 0.8);
+    this.sweptPlayerSaves += 1;
+    if (defender.isKickContactActive()) {
+      this.counterPower(defender, velocity);
+      return true;
+    }
+
+    const restitution = 0.58;
+    this.ball.body.setVelocity(
+      velocity.x - (1 + restitution) * approachingSpeed * hit.normal.x,
+      velocity.y - (1 + restitution) * approachingSpeed * hit.normal.y,
+    );
+    defender.onBallContact(true);
+    this.spawnImpact(hit.x, hit.y, defender.side === 'left' ? 0x78f5ff : 0xffa062, 10);
+    arcadeAudio.impact();
+    return true;
+  }
+
+  handlePlayerClash(dt) {
+    this.clashCooldown = Math.max(0, this.clashCooldown - dt);
+    const left = this.leftPlayer.snapshot();
+    const right = this.rightPlayer.snapshot();
+    const clashing = shouldResolvePlayerClash({
+      left,
+      right,
+      intents: this.currentIntents,
+    });
+    this.clashTimer = clashing ? this.clashTimer + dt : Math.max(0, this.clashTimer - dt * 2);
+    const simultaneousKicks = left.kickTimer > 0 && right.kickTimer > 0;
+    const threshold = simultaneousKicks ? 0.05 : 0.2;
+    if (!clashing || this.clashCooldown > 0 || this.clashTimer < threshold) return false;
+
+    const leftIsLeft = this.leftPlayer.sprite.x <= this.rightPlayer.sprite.x;
+    const leftDirection = leftIsLeft ? -1 : 1;
+    this.leftPlayer.sprite.setVelocityX(leftDirection * 4.2);
+    this.rightPlayer.sprite.setVelocityX(-leftDirection * 4.2);
+    this.leftPlayer.kickTimer = 0;
+    this.rightPlayer.kickTimer = 0;
+    this.leftPlayer.kickCooldown = Math.max(this.leftPlayer.kickCooldown, 0.3);
+    this.rightPlayer.kickCooldown = Math.max(this.rightPlayer.kickCooldown, 0.3);
+
+    const minX = Math.min(this.leftPlayer.sprite.x, this.rightPlayer.sprite.x) - 10;
+    const maxX = Math.max(this.leftPlayer.sprite.x, this.rightPlayer.sprite.x) + 10;
+    const ballVelocity = this.ball.body.body.velocity;
+    const trappedBall = !this.powerBall.active
+      && this.ball.body.x >= minX
+      && this.ball.body.x <= maxX
+      && this.ball.body.y > Math.min(this.leftPlayer.sprite.y, this.rightPlayer.sprite.y) - 35
+      && Math.hypot(ballVelocity.x, ballVelocity.y) < 12;
+    if (trappedBall) {
+      const midpoint = (this.leftPlayer.sprite.x + this.rightPlayer.sprite.x) / 2;
+      const horizontal = Math.sign(this.ball.body.x - midpoint) || (this.clashCount % 2 === 0 ? 1 : -1);
+      this.ball.body.setVelocity(horizontal * 3.4, -9.4);
+    }
+    this.lastClashPoppedBall = trappedBall;
+    this.clashCount += 1;
+    this.clashTimer = 0;
+    this.clashCooldown = 0.48;
+    this.spawnImpact(
+      (this.leftPlayer.sprite.x + this.rightPlayer.sprite.x) / 2,
+      (this.leftPlayer.sprite.y + this.rightPlayer.sprite.y) / 2 + 20,
+      0xffdc72,
+      14,
+    );
+    this.game.events.emit('platform:haptic', 'medium');
+    return true;
   }
 
   activateChilenaStrike(fighter, strike) {
@@ -838,10 +951,11 @@ export class MatchScene extends Phaser.Scene {
     pairs.forEach(([attacker, defender]) => {
       const dx = defender.sprite.x - attacker.sprite.x;
       const dy = Math.abs(defender.sprite.y - attacker.sprite.y);
-      const dashHit = attacker.dashTimer > 0 && dx * attacker.facing > 0 && dx * attacker.facing < 100 && dy < 95;
+      const dashDirection = attacker.dashDirection || attacker.facing;
+      const dashHit = attacker.dashTimer > 0 && dx * dashDirection > 0 && dx * dashDirection < 100 && dy < 95;
       if (attacker.canHitOpponent(defender) || dashHit) {
         const shieldBefore = defender.superShield;
-        if (defender.applyStun(attacker.facing, dashHit)) {
+        if (defender.applyStun(dashDirection, dashHit)) {
           attacker.markCombatHit();
           arcadeAudio.impact();
           this.spawnImpact(defender.sprite.x, defender.sprite.y - 24, 0xffe271, dashHit ? 12 : 8);
@@ -917,6 +1031,7 @@ export class MatchScene extends Phaser.Scene {
       const ballIndex = labels.indexOf('ball');
       if (ballIndex < 0) return;
       const otherLabel = labels[1 - ballIndex] ?? '';
+      this.ball.onSurfaceCollision(otherLabel);
       const [fighterId, part] = otherLabel.split(':');
       const fighter = fighterId === HUMAN_PLAYER_ID ? this.leftPlayer : fighterId === 'vex' ? this.rightPlayer : null;
       if (!fighter) {
@@ -941,7 +1056,11 @@ export class MatchScene extends Phaser.Scene {
   checkGoal() {
     if (this.goalLatch) return;
     const current = { x: this.ball.body.x, y: this.ball.body.y };
-    const scoringSide = detectGoalCrossing({ previous: this.previousBallPosition, current });
+    const scoringSide = detectGoalCrossing({
+      previous: this.previousBallPosition,
+      current,
+      radius: this.ball.radius,
+    });
     if (scoringSide) {
       this.registerGoal(scoringSide);
       return;
@@ -975,6 +1094,7 @@ export class MatchScene extends Phaser.Scene {
     this.trail.length = 0;
     this.meterFlash = { left: 0, right: 0 };
     this.lastBoostedStrike = null;
+    this.lastLobStrike = null;
     this.lastChilenaStrike = null;
     this.inputController.resetAdvancedInput();
     this.leftPlayer.reset(340);
@@ -1084,13 +1204,32 @@ export class MatchScene extends Phaser.Scene {
     });
   }
 
-  updateHud() {
+  updateHud(force = false) {
     if (!this.score || !this.leftPlayer) return;
+    const leftMeterValue = Math.floor(this.leftPlayer.meter);
+    const rightMeterValue = Math.floor(this.rightPlayer.meter);
+    const profile = this.profile;
+    const equipped = getSuperpower(profile.equippedPowerId);
+    const equippedCount = equipped ? profile.powers[equipped.id] : 0;
+    const signature = [
+      this.score.left,
+      this.score.right,
+      Math.ceil(this.score.secondsLeft),
+      this.score.suddenDeath,
+      leftMeterValue,
+      rightMeterValue,
+      Math.ceil(this.meterFlash.left * 20),
+      Math.ceil(this.meterFlash.right * 20),
+      equipped?.id ?? '',
+      equippedCount,
+    ].join('|');
+    if (!force && signature === this.hudSignature) return;
+    this.hudSignature = signature;
     this.scoreText.setText(`${this.score.left}  :  ${this.score.right}`);
     this.clockText.setText(formatClock(this.score.secondsLeft, false));
     this.suddenDeathText.setText(this.score.suddenDeath ? t(this.language, 'match.goldenGoal') : '');
-    const leftMeter = this.leftPlayer.meter / 100;
-    const rightMeter = this.rightPlayer.meter / 100;
+    const leftMeter = leftMeterValue / 100;
+    const rightMeter = rightMeterValue / 100;
     this.meterGraphics.clear();
     this.meterGraphics.fillStyle(0x162842, 1).fillRoundedRect(382, 92, 190, 15, 7).fillRoundedRect(708, 92, 190, 15, 7);
     this.meterGraphics.fillStyle(leftMeter >= 1 ? 0xffd94f : 0x41dced, 1).fillRoundedRect(382, 92, 190 * leftMeter, 15, 7);
@@ -1104,14 +1243,11 @@ export class MatchScene extends Phaser.Scene {
       this.meterGraphics.fillStyle(0xffef9b, Math.min(0.5, this.meterFlash.right * 1.4)).fillRoundedRect(708, 92, 190, 15, 7);
       this.meterGraphics.lineStyle(3, 0xffdc62, 0.9).strokeRoundedRect(708, 92, 190, 15, 7);
     }
-    this.leftNameText.setText(`${getCharacterLabel(this.playerCharacter, this.language)}  ${Math.floor(this.leftPlayer.meter)}%`);
-    this.rightNameText.setText(`${Math.floor(this.rightPlayer.meter)}%  ${getCharacterLabel(this.opponent, this.language)}`);
-    this.profile = playerProfileStore.get();
-    const equipped = getSuperpower(this.profile.equippedPowerId);
+    this.leftNameText.setText(`${getCharacterLabel(this.playerCharacter, this.language)}  ${leftMeterValue}%`);
+    this.rightNameText.setText(`${rightMeterValue}%  ${getCharacterLabel(this.opponent, this.language)}`);
     if (equipped) {
-      const count = this.profile.powers[equipped.id];
       this.superPowerText
-        .setText(`${equipped.icon}  ${t(this.language, 'match.powerReady', { power: t(this.language, equipped.nameKey), count })}`)
+        .setText(`${equipped.icon}  ${t(this.language, 'match.powerReady', { power: t(this.language, equipped.nameKey), count: equippedCount })}`)
         .setColor(Phaser.Display.Color.IntegerToColor(equipped.color).rgba);
       this.superPowerPill.setStrokeStyle(2, equipped.color, 0.45);
     } else {
@@ -1167,6 +1303,10 @@ export class MatchScene extends Phaser.Scene {
       },
       language: this.language,
       difficulty: this.profile?.difficulty ?? 'normal',
+      customization: {
+        arenaThemeId: this.profile?.arenaThemeId ?? 'skycourt',
+        ballTypeId: this.ball?.type?.id ?? 'classic',
+      },
       playerCharacter: { id: this.playerCharacter.id, name: getCharacterName(this.playerCharacter, this.language) },
       opponent: { id: this.opponent.id, name: getCharacterName(this.opponent, this.language) },
       audio: arcadeAudio.diagnostics(),
@@ -1182,21 +1322,28 @@ export class MatchScene extends Phaser.Scene {
         right: round(this.meterFlash?.right ?? 0),
       },
       lastBoostedStrike: this.lastBoostedStrike,
+      lastLobStrike: this.lastLobStrike,
       lastChilenaStrike: this.lastChilenaStrike,
       lastInstantPower: this.lastInstantPower,
+      physicsPolish: {
+        sweptPlayerSaves: this.sweptPlayerSaves,
+        clashCount: this.clashCount,
+        clashCooldown: round(this.clashCooldown),
+        lastClashPoppedBall: this.lastClashPoppedBall,
+      },
       touchControls: this.touchControls?.visible ?? false,
       touchControlVisuals: this.touchControls?.diagnostics?.() ?? {},
       inputMode: this.isTouchLayout ? 'touch' : 'keyboard',
       currentIntent: this.currentIntents,
+      humanDashResolution: this.inputController?.lastDashResolution ?? { direction: 0, purpose: 'none' },
       controls: this.isTouchLayout ? {
         move: 'on-screen left/right',
-        sprint: 'double-tap and hold the same direction',
+        dash: 'double-tap either direction arrow',
         jump: 'on-screen up',
         kick: 'on-screen kick icon',
         lob: 'on-screen lob icon',
         kickBoost: 'repeat the kick or lob icon during the kick animation',
         chilena: 'double kick: direct; double lob: high arc',
-        dash: 'on-screen dash icon',
         power: 'on-screen power icon at 100%',
         pause: 'on-screen pause',
         restart: 'on-screen restart',
@@ -1204,13 +1351,12 @@ export class MatchScene extends Phaser.Scene {
         fullscreen: 'on-screen fullscreen',
       } : {
         move: 'A/D or Left/Right',
-        sprint: 'double-tap and hold the same direction',
+        dash: 'double-tap A/D or Left/Right',
         jump: 'W/Up/Space',
         kick: 'X/K',
         lob: 'Z/I or Up + Kick',
         kickBoost: 'repeat kick or lob during the kick animation',
         chilena: 'double kick: direct; double lob: high arc',
-        dash: 'C/L',
         power: 'V/J at 100%',
         pause: 'P/Escape',
         fullscreen: 'F',

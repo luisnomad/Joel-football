@@ -25,13 +25,12 @@ export class TouchControls {
       scene.game.registry.get('platformActions')?.toggleFullscreen();
     }, 0xc3a8ff);
 
-    this.addHoldButton(98 + horizontalOffset, 630 + this.gameplayYOffset, 64, 'left', 'left');
-    this.addHoldButton(238 + horizontalOffset, 630 + this.gameplayYOffset, 64, 'right', 'right');
-    this.addPulseButton(1020 + horizontalOffset, 630 + this.gameplayYOffset, 60, 'jump', 'jump', 0x2ac7d4);
+    this.addHoldButton(80 + horizontalOffset, 630 + this.gameplayYOffset, 64, 'left', 'left');
+    this.addHoldButton(260 + horizontalOffset, 630 + this.gameplayYOffset, 64, 'right', 'right');
+    this.addPulseButton(930 + horizontalOffset, 500 + this.gameplayYOffset, 56, 'jump', 'jump', 0x2ac7d4);
     this.addPulseButton(1165 + horizontalOffset, 610 + this.gameplayYOffset, 68, 'kick', 'kick', 0xff5b78);
-    this.addPulseButton(1110 + horizontalOffset, 505 + this.gameplayYOffset, 50, 'dash', 'dash', 0x8a66ff);
-    this.addPulseButton(1010 + horizontalOffset, 505 + this.gameplayYOffset, 50, 'lob', 'lob', 0x39d9a0);
-    this.addPulseButton(1210 + horizontalOffset, 485 + this.gameplayYOffset, 50, 'power', 'power', 0xffa62b);
+    this.addPulseButton(1035 + horizontalOffset, 610 + this.gameplayYOffset, 56, 'lob', 'lob', 0x39d9a0);
+    this.addPulseButton(1195 + horizontalOffset, 475 + this.gameplayYOffset, 50, 'power', 'power', 0xffa62b);
   }
 
   createBase(x, y, radius, icon, accent = 0xffffff, group = 'gameplay') {

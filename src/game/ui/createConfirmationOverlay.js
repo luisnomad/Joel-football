@@ -23,29 +23,33 @@ export const createConfirmationOverlay = (scene, {
     .setOrigin(0)
     .setDepth(depth)
     .setInteractive();
-  const panel = scene.add.rectangle(640, panelY, 620, 310, 0x0d1b34, 0.99)
-    .setStrokeStyle(3, 0xffb36b, 0.6)
+  const panelShadow = scene.add.rectangle(640, panelY + 10, 640, 300, 0x020711, 0.66)
     .setDepth(depth + 0.1);
-  const titleText = scene.add.text(640, panelY - 82, title, textStyle(38, '#ffffff', { fontStyle: 'bold' }))
+  const panel = scene.add.rectangle(640, panelY, 640, 300, 0x0d1b34, 0.99)
+    .setStrokeStyle(2, 0xffb36b, 0.66)
+    .setDepth(depth + 0.1);
+  const accent = scene.add.rectangle(640, panelY - 150, 170, 4, 0xffb36b, 0.92)
+    .setDepth(depth + 0.2);
+  const titleText = scene.add.text(640, panelY - 78, title, textStyle(34, '#ffffff', { fontStyle: 'bold' }))
     .setOrigin(0.5)
     .setDepth(depth + 0.2);
-  const messageText = scene.add.text(640, panelY - 20, message, textStyle(19, '#c5d7eb', {
-    wordWrap: { width: 500 },
+  const messageText = scene.add.text(640, panelY - 18, message, textStyle(18, '#c5d7eb', {
+    wordWrap: { width: 520, useAdvancedWrap: true },
   })).setOrigin(0.5).setDepth(depth + 0.2);
   const cancelButton = createButton(scene, {
-    x: 505,
-    y: panelY + 78,
-    width: 230,
-    height: 58,
+    x: 520,
+    y: panelY + 76,
+    width: 210,
+    height: 54,
     label: cancelLabel,
     color: 0x247f98,
     onPress: onCancel,
   });
   const confirmButton = createButton(scene, {
-    x: 775,
-    y: panelY + 78,
-    width: 230,
-    height: 58,
+    x: 760,
+    y: panelY + 76,
+    width: 210,
+    height: 54,
     label: confirmLabel,
     color: 0xa34457,
     onPress: onConfirm,
@@ -57,7 +61,7 @@ export const createConfirmationOverlay = (scene, {
     button.zone,
   ]);
   buttonObjects.forEach((object) => object.setDepth(depth + 0.3));
-  const objects = [shade, panel, titleText, messageText, ...buttonObjects];
+  const objects = [shade, panelShadow, panel, accent, titleText, messageText, ...buttonObjects];
 
   return {
     kind: 'abandon-confirm',

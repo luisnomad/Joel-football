@@ -1,5 +1,11 @@
 import { SUPERPOWERS, getSuperpower } from '../content/superpowers.js';
 import { DEFAULT_OPPONENT_ID, DEFAULT_PLAYER_CHARACTER_ID, sanitizeLineup } from '../content/characters.js';
+import {
+  DEFAULT_ARENA_THEME_ID,
+  DEFAULT_BALL_TYPE_ID,
+  sanitizeArenaThemeId,
+  sanitizeBallTypeId,
+} from '../content/matchCustomization.js';
 
 const emptyPowers = () => Object.fromEntries(SUPERPOWERS.map(({ id }) => [id, 0]));
 const RETIRED_SHOT_POWERS = Object.freeze(['lightning', 'tornado', 'rocket', 'boomerang', 'warp']);
@@ -12,8 +18,9 @@ export const DEFAULT_AUDIO_SETTINGS = Object.freeze({
 });
 
 export const DIFFICULTIES = Object.freeze(['easy', 'normal', 'hard']);
-export const PROFILE_VERSION = 9;
+export const PROFILE_VERSION = 11;
 export const LANGUAGE_SOURCES = Object.freeze(['device', 'user']);
+export const KICKFALL_MAX_LEVEL = 20;
 
 export const sanitizeDifficulty = (value) => DIFFICULTIES.includes(value) ? value : 'normal';
 
@@ -30,6 +37,19 @@ export const sanitizeAudioSettings = (candidate) => ({
   effectsMuted: candidate?.effectsMuted === true,
 });
 
+const cleanKickfallLevel = (value) => Math.min(
+  KICKFALL_MAX_LEVEL,
+  Math.max(1, Math.floor(Number(value) || 1)),
+);
+
+export const sanitizeKickfallProgress = (candidate) => {
+  const highestUnlockedLevel = cleanKickfallLevel(candidate?.highestUnlockedLevel);
+  return {
+    highestUnlockedLevel,
+    lastPlayedLevel: Math.min(highestUnlockedLevel, cleanKickfallLevel(candidate?.lastPlayedLevel)),
+  };
+};
+
 export const createDefaultProfile = ({ language = 'en', languageSource = 'device' } = {}) => ({
   version: PROFILE_VERSION,
   language: language === 'es' ? 'es' : 'en',
@@ -37,10 +57,13 @@ export const createDefaultProfile = ({ language = 'en', languageSource = 'device
   difficulty: 'normal',
   playerCharacterId: DEFAULT_PLAYER_CHARACTER_ID,
   opponentId: DEFAULT_OPPONENT_ID,
+  arenaThemeId: DEFAULT_ARENA_THEME_ID,
+  ballTypeId: DEFAULT_BALL_TYPE_ID,
   equippedPowerId: null,
   mathLockUntil: 0,
   powers: emptyPowers(),
   audio: sanitizeAudioSettings(),
+  kickfall: sanitizeKickfallProgress(),
 });
 
 const cleanCount = (value) => Math.min(999, Math.max(0, Math.floor(Number(value) || 0)));
@@ -72,10 +95,37 @@ export const sanitizeProfile = (candidate) => {
       : 'user',
     difficulty: sanitizeDifficulty(candidate.difficulty),
     ...lineup,
+    arenaThemeId: sanitizeArenaThemeId(candidate.arenaThemeId),
+    ballTypeId: sanitizeBallTypeId(candidate.ballTypeId),
     equippedPowerId,
     mathLockUntil: Math.max(0, Math.floor(Number(candidate.mathLockUntil) || 0)),
     powers,
     audio: sanitizeAudioSettings(candidate.audio),
+    kickfall: sanitizeKickfallProgress(candidate.kickfall),
+  };
+};
+
+export const setKickfallLastPlayed = (profile, level) => {
+  const safe = sanitizeProfile(profile);
+  return {
+    ...safe,
+    kickfall: {
+      ...safe.kickfall,
+      lastPlayedLevel: Math.min(safe.kickfall.highestUnlockedLevel, cleanKickfallLevel(level)),
+    },
+  };
+};
+
+export const unlockKickfallLevel = (profile, level) => {
+  const safe = sanitizeProfile(profile);
+  const requested = cleanKickfallLevel(level);
+  if (requested <= safe.kickfall.highestUnlockedLevel) return safe;
+  return {
+    ...safe,
+    kickfall: {
+      highestUnlockedLevel: requested,
+      lastPlayedLevel: requested,
+    },
   };
 };
 
@@ -98,6 +148,16 @@ export const setProfileOpponent = (profile, opponentId) => ({
 export const setProfilePlayerCharacter = (profile, playerCharacterId) => ({
   ...sanitizeProfile(profile),
   ...sanitizeLineup({ ...sanitizeProfile(profile), playerCharacterId }),
+});
+
+export const setProfileArenaTheme = (profile, arenaThemeId) => ({
+  ...sanitizeProfile(profile),
+  arenaThemeId: sanitizeArenaThemeId(arenaThemeId),
+});
+
+export const setProfileBallType = (profile, ballTypeId) => ({
+  ...sanitizeProfile(profile),
+  ballTypeId: sanitizeBallTypeId(ballTypeId),
 });
 
 export const setProfileAudio = (profile, patch) => {

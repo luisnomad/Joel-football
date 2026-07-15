@@ -3,7 +3,7 @@ import { clamp } from './actions.js';
 
 export const predictBallXAtHeight = (
   ball,
-  targetY = GROUND_Y - BALL_RADIUS,
+  targetY = GROUND_Y - (ball.radius ?? BALL_RADIUS),
   gravity = 0.58,
   maxSeconds = 2.2,
 ) => {
@@ -17,8 +17,9 @@ export const predictBallXAtHeight = (
     vy += gravity * dt * 60;
     x += vx * dt * 60;
     y += vy * dt * 60;
-    if (x < BALL_RADIUS || x > 1280 - BALL_RADIUS) vx *= -0.78;
-    x = clamp(x, BALL_RADIUS, 1280 - BALL_RADIUS);
+    const radius = ball.radius ?? BALL_RADIUS;
+    if (x < radius || x > 1280 - radius) vx *= -0.78;
+    x = clamp(x, radius, 1280 - radius);
   }
 
   return x;

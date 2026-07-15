@@ -2,6 +2,8 @@ import Phaser from 'phaser';
 import { GAME_HEIGHT, GAME_WIDTH } from '../constants.js';
 import { t } from '../i18n.js';
 import { playerProfileStore } from '../services/PlayerProfile.js';
+import { CHARACTERS, getCharacter } from '../content/characters.js';
+import { getArenaTheme } from '../content/matchCustomization.js';
 
 const assetUrl = (filename) => `${import.meta.env.BASE_URL}assets/${filename}`;
 
@@ -19,24 +21,31 @@ export class BootScene extends Phaser.Scene {
     }).setOrigin(0.5);
     this.load.on('progress', (progress) => loading.setText(`${t(language, 'boot.loading')} ${Math.round(progress * 100)}%`));
 
-    this.load.image('arena', assetUrl('arena-skycourt.png'));
-    this.load.image('joel-football-splash', assetUrl('splash/joel-football-option-a.webp'));
-    this.load.image('joel', assetUrl('player-nova.png'));
-    this.load.image('vex', assetUrl('player-vex.png'));
-    this.load.image('lucia', assetUrl('player-lucia-portrait.png'));
-    this.load.image('luna', assetUrl('player-luna-portrait.png'));
-    this.load.image('juan', assetUrl('player-juan-portrait.png'));
-    this.load.image('juanjo', assetUrl('player-juanjo-portrait.png'));
-    this.load.spritesheet('joel-sheet', assetUrl('player-nova-sheet-v2.webp'), { frameWidth: 320, frameHeight: 480 });
-    this.load.spritesheet('vex-sheet', assetUrl('player-vex-sheet-v2.webp'), { frameWidth: 320, frameHeight: 480 });
-    this.load.spritesheet('lucia-sheet', assetUrl('player-lucia-sheet-v2.webp'), { frameWidth: 320, frameHeight: 480 });
-    this.load.spritesheet('luna-sheet', assetUrl('player-luna-sheet-v2.webp'), { frameWidth: 320, frameHeight: 480 });
-    this.load.spritesheet('juan-sheet', assetUrl('player-juan-sheet-v3.webp'), { frameWidth: 320, frameHeight: 480 });
-    this.load.spritesheet('juanjo-sheet', assetUrl('player-juanjo-sheet-v1.webp'), { frameWidth: 320, frameHeight: 480 });
+    const arenaTheme = getArenaTheme(playerProfileStore.get().arenaThemeId);
+    this.load.image(arenaTheme.texture, assetUrl(arenaTheme.asset));
+    CHARACTERS.forEach((character) => {
+      this.load.image(character.portraitTexture, assetUrl(character.portraitAsset));
+    });
+    const profile = playerProfileStore.get();
+    const lineup = [
+      getCharacter(profile.playerCharacterId),
+      getCharacter(profile.opponentId, 'bob'),
+    ];
+    [...new Map(lineup.map((character) => [character.sheetTexture, character])).values()]
+      .forEach((character) => {
+        this.load.spritesheet(character.sheetTexture, assetUrl(character.sheetAsset), {
+          frameWidth: 320,
+          frameHeight: 480,
+        });
+      });
     this.load.image('ball', assetUrl('ball.png'));
+    this.load.svg('ball-neon', assetUrl('ball-neon.svg'), { width: 96, height: 96 });
+    this.load.svg('ball-balloon', assetUrl('ball-balloon.svg'), { width: 96, height: 112 });
+    this.load.svg('ball-rugby', assetUrl('ball-rugby.svg'), { width: 128, height: 80 });
+    this.load.svg('ball-soda-can', assetUrl('ball-soda-can.svg'), { width: 72, height: 120 });
+    this.load.svg('ball-cannonball', assetUrl('ball-cannonball.svg'), { width: 96, height: 96 });
     this.load.image('flare', assetUrl('power-flare.png'));
     this.load.svg('goal-side', assetUrl('goal-side.svg'), { width: 180, height: 320 });
-    this.load.svg('control-run', assetUrl('icons/run.svg'), { width: 128, height: 128 });
     this.load.svg('control-high-kick', assetUrl('icons/high-kick.svg'), { width: 128, height: 128 });
     this.load.svg('control-kick', assetUrl('icons/kick.svg'), { width: 128, height: 128 });
     this.load.svg('control-jump', assetUrl('icons/jump.svg'), { width: 128, height: 128 });
@@ -48,7 +57,8 @@ export class BootScene extends Phaser.Scene {
   }
 
   ensureFallbackTextures() {
-    if (!this.textures.exists('arena')) this.createArenaFallback();
+    const arenaTheme = getArenaTheme(playerProfileStore.get().arenaThemeId);
+    if (!this.textures.exists(arenaTheme.texture)) this.createArenaFallback(arenaTheme.texture);
     if (!this.textures.exists('joel')) this.createFighterFallback('joel', 0x22cfe5, 0xffd7b5);
     if (!this.textures.exists('vex')) this.createFighterFallback('vex', 0xff6b66, 0xc98765);
     if (!this.textures.exists('lucia')) this.createFighterFallback('lucia', 0x16bfb5, 0xf2b079);
@@ -60,7 +70,7 @@ export class BootScene extends Phaser.Scene {
     if (!this.textures.exists('goal-side')) this.createGoalFallback();
   }
 
-  createArenaFallback() {
+  createArenaFallback(textureKey = 'arena-skycourt') {
     const graphics = this.make.graphics({ add: false });
     graphics.fillGradientStyle(0x5fd6ff, 0x5fd6ff, 0xa8efff, 0xa8efff, 1);
     graphics.fillRect(0, 0, GAME_WIDTH, GAME_HEIGHT);
@@ -69,7 +79,7 @@ export class BootScene extends Phaser.Scene {
     graphics.fillStyle(0x40a654, 1).fillRect(0, 440, GAME_WIDTH, 280);
     graphics.fillStyle(0x24823c, 1).fillRect(0, 585, GAME_WIDTH, 135);
     graphics.lineStyle(5, 0xe9fff0, 0.7).strokeLineShape(new Phaser.Geom.Line(0, 635, GAME_WIDTH, 635));
-    graphics.generateTexture('arena', GAME_WIDTH, GAME_HEIGHT);
+    graphics.generateTexture(textureKey, GAME_WIDTH, GAME_HEIGHT);
     graphics.destroy();
   }
 

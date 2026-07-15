@@ -17,11 +17,16 @@ import {
   lockMathPractice,
   sanitizeProfile,
   sanitizeAudioSettings,
+  sanitizeKickfallProgress,
   setProfileAudio,
+  setProfileArenaTheme,
+  setProfileBallType,
   setProfileDifficulty,
   setProfileLanguage,
   setProfileOpponent,
   setProfilePlayerCharacter,
+  setKickfallLastPlayed,
+  unlockKickfallLevel,
 } from '../src/game/pure/profile.js';
 import { normalizeLanguage, t } from '../src/game/i18n.js';
 import { SUPERPOWERS, applySuperShot, getSuperpower } from '../src/game/content/superpowers.js';
@@ -30,6 +35,13 @@ import { fitTextSize } from '../src/game/ui/textFit.js';
 import { createAudioAssetCache } from '../src/game/services/AudioAssetCache.js';
 import { AUDIO_ASSET_URLS, MUSIC_TRACKS, WHISTLE_EFFECT_URL } from '../src/game/services/ArcadeAudio.js';
 import { CHARACTERS, cycleCharacter, getCharacter, sanitizeLineup } from '../src/game/content/characters.js';
+import {
+  ARENA_THEMES,
+  BALL_TYPES,
+  cycleArenaTheme,
+  cycleBallType,
+  getBallType,
+} from '../src/game/content/matchCustomization.js';
 import {
   BIG_GUY_DURATION,
   activateBigGuy,
@@ -185,6 +197,28 @@ describe('persistent power inventory rules', () => {
   });
 });
 
+describe('Kickfall progression persistence', () => {
+  it('starts at level one and clamps corrupt saved progress to the twenty-level campaign', () => {
+    expect(createDefaultProfile().kickfall).toEqual({ highestUnlockedLevel: 1, lastPlayedLevel: 1 });
+    expect(sanitizeKickfallProgress({ highestUnlockedLevel: 999, lastPlayedLevel: -4 })).toEqual({
+      highestUnlockedLevel: 20,
+      lastPlayedLevel: 1,
+    });
+    expect(sanitizeKickfallProgress({ highestUnlockedLevel: 8, lastPlayedLevel: 14 })).toEqual({
+      highestUnlockedLevel: 8,
+      lastPlayedLevel: 8,
+    });
+  });
+
+  it('unlocks only forward and remembers a playable last level', () => {
+    const levelEight = unlockKickfallLevel(createDefaultProfile(), 8);
+    expect(levelEight.kickfall).toEqual({ highestUnlockedLevel: 8, lastPlayedLevel: 8 });
+    expect(unlockKickfallLevel(levelEight, 4).kickfall).toEqual(levelEight.kickfall);
+    expect(setKickfallLastPlayed(levelEight, 3).kickfall).toEqual({ highestUnlockedLevel: 8, lastPlayedLevel: 3 });
+    expect(setKickfallLastPlayed(levelEight, 12).kickfall.lastPlayedLevel).toBe(8);
+  });
+});
+
 describe('opponent selection', () => {
   it('offers every family character while skipping the character on the other side', () => {
     expect(CHARACTERS.map(({ id }) => id)).toEqual(['joel', 'bob', 'lucia', 'luna', 'juan', 'juanjo']);
@@ -217,6 +251,38 @@ describe('opponent selection', () => {
     expect(sanitizeLineup({ playerCharacterId: 'lucia', opponentId: 'lucia' })).toEqual({
       playerCharacterId: 'lucia',
       opponentId: 'joel',
+    });
+  });
+});
+
+describe('match playground customization', () => {
+  it('offers distinct fields and both cosmetic and physics-changing objects', () => {
+    expect(ARENA_THEMES.map(({ id }) => id)).toEqual(['skycourt', 'neon', 'beach']);
+    expect(BALL_TYPES.map(({ id }) => id)).toEqual([
+      'classic',
+      'neon-ball',
+      'balloon',
+      'rugby',
+      'soda-can',
+      'cannonball',
+    ]);
+    expect(getBallType('classic')).toMatchObject({ family: 'football', shape: 'circle' });
+    expect(getBallType('neon-ball')).toMatchObject({ family: 'football', shape: 'circle' });
+    expect(getBallType('neon-ball').restitution).toBe(getBallType('classic').restitution);
+    expect(getBallType('balloon').liftScale).toBeGreaterThan(1);
+    expect(getBallType('cannonball').density).toBeGreaterThan(getBallType('classic').density * 5);
+    expect(getBallType('soda-can').shape).toBe('rectangle');
+    expect(getBallType('rugby').wobble).toBeGreaterThan(0);
+  });
+
+  it('cycles, persists, and sanitizes customization choices', () => {
+    expect(cycleArenaTheme('skycourt', -1).id).toBe('beach');
+    expect(cycleBallType('classic', -1).id).toBe('cannonball');
+    const customized = setProfileBallType(setProfileArenaTheme(createDefaultProfile(), 'neon'), 'rugby');
+    expect(customized).toMatchObject({ arenaThemeId: 'neon', ballTypeId: 'rugby' });
+    expect(sanitizeProfile({ arenaThemeId: 'unknown', ballTypeId: 'brick' })).toMatchObject({
+      arenaThemeId: 'skycourt',
+      ballTypeId: 'classic',
     });
   });
 });
@@ -295,6 +361,20 @@ describe('audio asset cache', () => {
     expect(await assetCache.playableUrl('/a.mp3')).toBe('blob:cached-audio');
     expect(fetches).toBe(2);
   });
+
+  it('does not fetch an uncached audio file while cold-start media is only being primed', async () => {
+    let fetches = 0;
+    const cache = { match: async () => null, put: async () => {} };
+    const assetCache = createAudioAssetCache({
+      cacheStorage: { open: async () => cache },
+      fetchAsset: async () => {
+        fetches += 1;
+        return new Response('audio', { status: 200 });
+      },
+    });
+    expect(await assetCache.cachedPlayableUrl('/cold.mp3')).toBe('/cold.mp3');
+    expect(fetches).toBe(0);
+  });
 });
 
 describe('local player profile storage', () => {
@@ -348,6 +428,8 @@ describe('local player profile storage', () => {
     firstSession.equip('hyper');
     firstSession.lockMath(50_000);
     firstSession.setAudio({ musicVolume: 0.35, effectsMuted: true });
+    firstSession.unlockKickfallLevel(8);
+    firstSession.setKickfallLastPlayed(6);
 
     const refreshedSession = createPlayerProfileStore(storage);
     const restored = refreshedSession.get();
@@ -358,6 +440,7 @@ describe('local player profile storage', () => {
     expect(restored.powers.hyper).toBe(2);
     expect(restored.equippedPowerId).toBe('hyper');
     expect(restored.audio).toMatchObject({ musicVolume: 0.35, effectsMuted: true });
+    expect(restored.kickfall).toEqual({ highestUnlockedLevel: 8, lastPlayedLevel: 6 });
     expect(refreshedSession.getMathLockRemaining(50_000)).toBe(5 * 60 * 1_000);
   });
 

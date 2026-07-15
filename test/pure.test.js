@@ -19,11 +19,11 @@ import {
 } from '../src/game/pure/chilena.js';
 import { PLAYER_TUNING } from '../src/game/constants.js';
 import {
-  SPRINT_DOUBLE_TAP_MS,
-  SPRINT_SPEED_MULTIPLIER,
+  DIRECTIONAL_DASH_DOUBLE_TAP_MS,
   createDirectionTapState,
   registerDirectionTap,
-} from '../src/game/pure/sprint.js';
+  resolveDirectionalDash,
+} from '../src/game/pure/directionalDash.js';
 import {
   KICK_BOOST_MAX_TAPS,
   addKickBoostTaps,
@@ -43,6 +43,83 @@ import {
   kickVisualAt,
   runVisualAt,
 } from '../src/game/pure/characterAnimation.js';
+import {
+  circleIntersectsCapsule,
+  resolveAdaptiveLob,
+  shouldResolvePlayerClash,
+  sweepCircleAgainstBounds,
+} from '../src/game/pure/gameplayPhysics.js';
+
+describe('gameplay physics polish', () => {
+  it('sweeps a fast ball through an expanded player body without tunneling', () => {
+    const hit = sweepCircleAgainstBounds({
+      previous: { x: 500, y: 500 },
+      current: { x: 620, y: 500 },
+      radius: 22,
+      bounds: { min: { x: 550, y: 420 }, max: { x: 600, y: 570 } },
+    });
+    expect(hit).toMatchObject({ x: 528, y: 500, normal: { x: -1, y: 0 } });
+    expect(hit.time).toBeCloseTo(28 / 120);
+    expect(sweepCircleAgainstBounds({
+      previous: { x: 500, y: 380 },
+      current: { x: 620, y: 380 },
+      radius: 22,
+      bounds: { min: { x: 550, y: 420 }, max: { x: 600, y: 570 } },
+    })).toBeNull();
+  });
+
+  it('aims close lobs higher and distant lobs farther while mirroring cleanly', () => {
+    const close = resolveAdaptiveLob({ ballX: 600, ballY: 537, opponentX: 720, opponentY: 547, attackDirection: 1 });
+    const far = resolveAdaptiveLob({ ballX: 600, ballY: 537, opponentX: 980, opponentY: 547, attackDirection: 1 });
+    const mirrored = resolveAdaptiveLob({ ballX: 680, ballY: 537, opponentX: 560, opponentY: 547, attackDirection: -1 });
+    expect(close.vy).toBeLessThan(far.vy);
+    expect(far.vx).toBeGreaterThan(close.vx);
+    expect(close.vy).toBeLessThanOrEqual(-18.8);
+    expect(close.predictedApexY).toBeLessThan(far.predictedApexY - 100);
+    expect(close.predictedClearance).toBeGreaterThan(140);
+    expect(far.predictedClearance).toBeGreaterThan(35);
+    expect(close.targetX).toBeGreaterThan(720);
+    expect(mirrored.vx).toBeCloseTo(-close.vx);
+    expect(mirrored.vy).toBeCloseTo(close.vy);
+    expect(mirrored.predictedApexY).toBeCloseTo(close.predictedApexY);
+  });
+
+  it('caps point-blank lob height instead of becoming an unbounded vertical exploit', () => {
+    const overlapping = resolveAdaptiveLob({ ballX: 600, ballY: 537, opponentX: 610, opponentY: 547 });
+    const close = resolveAdaptiveLob({ ballX: 600, ballY: 537, opponentX: 710, opponentY: 547 });
+    expect(overlapping.vy).toBe(close.vy);
+    expect(overlapping.vx).toBe(close.vx);
+    expect(overlapping.predictedApexY).toBeGreaterThan(210);
+    expect(overlapping.targetX).toBeGreaterThanOrEqual(820);
+  });
+
+  it('recognizes a grounded inward stalemate but ignores ordinary passing movement', () => {
+    const players = {
+      left: { x: 590, vx: 0.4, grounded: true, stunned: false, kickTimer: 0 },
+      right: { x: 680, vx: -0.3, grounded: true, stunned: false, kickTimer: 0 },
+    };
+    expect(shouldResolvePlayerClash({
+      ...players,
+      intents: { left: { move: 1 }, right: { move: -1 } },
+    })).toBe(true);
+    expect(shouldResolvePlayerClash({
+      ...players,
+      intents: { left: { move: 1 }, right: { move: 1 } },
+    })).toBe(false);
+    expect(shouldResolvePlayerClash({
+      left: { ...players.left, grounded: false },
+      right: players.right,
+      intents: { left: { move: 1 }, right: { move: -1 } },
+    })).toBe(false);
+  });
+
+  it('uses a front-foot capsule that includes the ball radius', () => {
+    const strike = { start: { x: 608, y: 575 }, end: { x: 706, y: 575 }, capsuleRadius: 44 };
+    expect(circleIntersectsCapsule({ circle: { x: 690, y: 637 }, radius: 22, ...strike })).toBe(true);
+    expect(circleIntersectsCapsule({ circle: { x: 530, y: 575 }, radius: 22, ...strike })).toBe(false);
+    expect(circleIntersectsCapsule({ circle: { x: 690, y: 650 }, radius: 22, ...strike })).toBe(false);
+  });
+});
 
 describe('enhanced character animation', () => {
   it('defines one shared grounded foot anchor for every planted pose', () => {
@@ -96,25 +173,45 @@ describe('movement tuning', () => {
   });
 });
 
-describe('double-tap sprint contract', () => {
-  it('starts only after a same-direction second tap within 280 ms', () => {
+describe('directional double-tap dash contract', () => {
+  it('requests one dash only after a same-direction second tap within 280 ms', () => {
     let state = createDirectionTapState();
     state = registerDirectionTap(state, { direction: 1, at: 100 });
-    expect(state.sprintDirection).toBe(0);
-    state = registerDirectionTap(state, { direction: 1, at: 100 + SPRINT_DOUBLE_TAP_MS });
-    expect(state.sprintDirection).toBe(1);
+    expect(state.dashDirection).toBe(0);
+    state = registerDirectionTap(state, { direction: 1, at: 100 + DIRECTIONAL_DASH_DOUBLE_TAP_MS });
+    expect(state.dashDirection).toBe(1);
 
     state = registerDirectionTap(createDirectionTapState(), { direction: -1, at: 100 });
     state = registerDirectionTap(state, { direction: 1, at: 200 });
-    expect(state.sprintDirection).toBe(0);
+    expect(state.dashDirection).toBe(0);
 
     state = registerDirectionTap(createDirectionTapState(), { direction: -1, at: 100 });
-    state = registerDirectionTap(state, { direction: -1, at: 101 + SPRINT_DOUBLE_TAP_MS });
-    expect(state.sprintDirection).toBe(0);
+    state = registerDirectionTap(state, { direction: -1, at: 101 + DIRECTIONAL_DASH_DOUBLE_TAP_MS });
+    expect(state.dashDirection).toBe(0);
   });
 
-  it('uses the requested exact 1.5× maximum-speed multiplier', () => {
-    expect(SPRINT_SPEED_MULTIPLIER).toBe(1.5);
+  it('keeps the chosen arrow direction and labels its useful match purpose', () => {
+    expect(resolveDirectionalDash({
+      tapDirection: 1,
+      attackDirection: 1,
+      playerX: 400,
+      opponentX: 700,
+      ballX: 760,
+    })).toEqual({ direction: 1, purpose: 'challenge' });
+    expect(resolveDirectionalDash({
+      tapDirection: -1,
+      attackDirection: 1,
+      playerX: 400,
+      opponentX: 700,
+      ballX: 300,
+    })).toEqual({ direction: -1, purpose: 'recover-ball' });
+    expect(resolveDirectionalDash({
+      tapDirection: 1,
+      attackDirection: 1,
+      playerX: 800,
+      opponentX: 600,
+      ballX: 700,
+    })).toEqual({ direction: 1, purpose: 'attack-space' });
   });
 });
 
@@ -210,6 +307,19 @@ describe('rules', () => {
     expect(detectGoalCrossing({ previous: { x: 120, y: 520 }, current: { x: 80, y: 520 } })).toBe('right');
     expect(detectGoalCrossing({ previous: { x: 1160, y: 410 }, current: { x: 1195, y: 410 } })).toBeNull();
     expect(detectGoalCrossing({ previous: { x: 1160, y: 620 }, current: { x: 1195, y: 620 } })).toBeNull();
+  });
+
+  it('uses the selected object radius when checking the goal mouth', () => {
+    expect(detectGoalCrossing({
+      previous: { x: 1160, y: 520 },
+      current: { x: 1200, y: 520 },
+      radius: 27,
+    })).toBe('left');
+    expect(detectGoalCrossing({
+      previous: { x: 1160, y: 420 },
+      current: { x: 1200, y: 420 },
+      radius: 27,
+    })).toBeNull();
   });
 
   it('scores a ball rolling across either goal line at pitch level', () => {
@@ -375,18 +485,18 @@ describe('provider boundary', () => {
       kick: false,
       lob: false,
       dash: false,
+      dashDirection: 0,
       power: false,
-      sprint: false,
       kickBoost: 0,
     });
     expect(safeDecide({ decide: () => { throw new Error('offline'); } }, snapshot).move).toBe(0);
   });
 
   it('normalizes optional advanced intents and strips them from Easy AI', () => {
-    const advanced = normalizeIntent({ move: -1, sprint: true, kickBoost: 8 });
-    expect(advanced).toMatchObject({ sprint: true, kickBoost: 3 });
-    expect(applyAiDifficulty(advanced, 'easy')).toMatchObject({ sprint: false, kickBoost: 0 });
-    expect(applyAiDifficulty(advanced, 'normal')).toMatchObject({ sprint: true, kickBoost: 3 });
+    const advanced = normalizeIntent({ move: -1, dash: true, dashDirection: -8, kickBoost: 8 });
+    expect(advanced).toMatchObject({ dash: true, dashDirection: -1, kickBoost: 3 });
+    expect(applyAiDifficulty(advanced, 'easy')).toMatchObject({ dash: false, dashDirection: 0, kickBoost: 0 });
+    expect(applyAiDifficulty(advanced, 'normal')).toMatchObject({ dash: true, dashDirection: -1, kickBoost: 3 });
   });
 
   it('lets Normal and Hard AI request advanced mechanics while Easy plays without them', () => {
@@ -397,9 +507,9 @@ describe('provider boundary', () => {
       right: { x: 1080, y: 547, grounded: true, meter: 24, dashCooldown: 0, kickTimer: 0.1 },
       powerBall: { active: false, owner: null },
     });
-    expect(decideHeuristicIntent(chase, 'right', 'easy')).toMatchObject({ sprint: false, kickBoost: 0 });
-    expect(decideHeuristicIntent(chase, 'right', 'normal')).toMatchObject({ sprint: true, kickBoost: 1 });
-    expect(decideHeuristicIntent(chase, 'right', 'hard')).toMatchObject({ sprint: true, kickBoost: 2 });
+    expect(applyAiDifficulty(decideHeuristicIntent(chase, 'right', 'easy'), 'easy')).toMatchObject({ dashDirection: 0, kickBoost: 0 });
+    expect(decideHeuristicIntent(chase, 'right', 'normal')).toMatchObject({ dash: true, dashDirection: -1, kickBoost: 1 });
+    expect(decideHeuristicIntent(chase, 'right', 'hard')).toMatchObject({ dash: true, dashDirection: -1, kickBoost: 2 });
   });
 
   it('produces a useful defensive/attacking intent from immutable state', () => {
@@ -430,6 +540,19 @@ describe('provider boundary', () => {
       powerBall: { active: false, owner: null },
     });
     expect(decideHeuristicIntent(aerialThreat, 'right').jump).toBe(true);
+  });
+
+  it('falls back toward the projected landing point of a high lob', () => {
+    const lobThreat = createWorldSnapshot({
+      score: createScoreState(),
+      ball: { x: 820, y: 270, vx: 7.3, vy: -4, radius: 22 },
+      left: { x: 620, y: 547, grounded: true, meter: 0, dashCooldown: 0 },
+      right: { x: 790, y: 547, grounded: true, meter: 20, dashCooldown: 1 },
+      powerBall: { active: false, owner: null },
+    });
+    const intent = decideHeuristicIntent(lobThreat, 'right');
+    expect(intent.move).toBe(1);
+    expect(intent.jump).toBe(false);
   });
 
   it('lobs over a nearby defender instead of driving into the block', () => {

@@ -1,0 +1,51 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="320" height="80" viewBox="0 0 320 80">
+  <defs>
+    <linearGradient id="housing" x1="0" y1="0" x2="0" y2="1">
+      <stop stop-color="#183c59"/>
+      <stop offset=".55" stop-color="#0a2039"/>
+      <stop offset="1" stop-color="#061326"/>
+    </linearGradient>
+    <linearGradient id="rail" x1="0" y1="0" x2="0" y2="1">
+      <stop stop-color="#d4ffff"/>
+      <stop offset=".22" stop-color="#54eff7"/>
+      <stop offset=".72" stop-color="#13a8c5"/>
+      <stop offset="1" stop-color="#075471"/>
+    </linearGradient>
+    <linearGradient id="slot" x1="0" y1="0" x2="0" y2="1">
+      <stop stop-color="#020916"/>
+      <stop offset="1" stop-color="#0b1f3d"/>
+    </linearGradient>
+    <pattern id="deck" width="80" height="38" patternUnits="userSpaceOnUse">
+      <rect width="80" height="38" fill="#7b2848"/>
+      <path d="M0 2h80M0 36h80M40 2v17M0 19h80M18 19v17M68 19v17" stroke="#f7ad83" stroke-opacity=".58" stroke-width="3"/>
+      <path d="M4 7h30M45 25h17" stroke="#ffcca8" stroke-opacity=".18" stroke-width="4"/>
+    </pattern>
+  </defs>
+
+  <!-- Matching masonry turns the obstacle into a deck cassette. -->
+  <path d="M15 37Q15 29 25 29H295Q305 29 305 37V72H15Z" fill="url(#deck)"/>
+  <path d="M18 70H302" stroke="#250c24" stroke-width="8" stroke-opacity=".55"/>
+  <path d="M15 37Q15 29 25 29H295Q305 29 305 37" fill="none" stroke="#183f5a" stroke-width="7"/>
+
+  <!-- The capture point is a shallow magnetic brake, not an open portal. -->
+  <rect x="28" y="24" width="264" height="28" rx="11" fill="url(#housing)" stroke="#275777" stroke-width="3"/>
+  <path d="M54 31H266Q274 31 274 37T266 43H54Q46 43 46 37T54 31Z" fill="url(#slot)" stroke="#102f4e" stroke-width="2"/>
+  <path d="M63 30H257" stroke="#76f7fb" stroke-opacity=".74" stroke-width="3" stroke-linecap="round"/>
+  <path d="M74 45H246" stroke="#0b7e9e" stroke-opacity=".8" stroke-width="2" stroke-linecap="round"/>
+
+  <!-- Low side rollers mark the hold point without hiding ball queues. -->
+  <g>
+    <rect x="18" y="19" width="45" height="36" rx="12" fill="url(#housing)" stroke="#10253e" stroke-width="4"/>
+    <rect x="25" y="23" width="30" height="27" rx="10" fill="url(#rail)"/>
+    <path d="M31 27H49" stroke="#e5ffff" stroke-opacity=".72" stroke-width="3" stroke-linecap="round"/>
+    <circle cx="20" cy="59" r="5" fill="#ffca63" stroke="#40243b" stroke-width="3"/>
+  </g>
+  <g transform="translate(320 0) scale(-1 1)">
+    <rect x="18" y="19" width="45" height="36" rx="12" fill="url(#housing)" stroke="#10253e" stroke-width="4"/>
+    <rect x="25" y="23" width="30" height="27" rx="10" fill="url(#rail)"/>
+    <path d="M31 27H49" stroke="#e5ffff" stroke-opacity=".72" stroke-width="3" stroke-linecap="round"/>
+    <circle cx="20" cy="59" r="5" fill="#ffca63" stroke="#40243b" stroke-width="3"/>
+  </g>
+
+  <path d="M139 55l8 7 8-7M165 55l8 7 8-7" fill="none" stroke="#5feff5" stroke-opacity=".58" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>
+</svg>

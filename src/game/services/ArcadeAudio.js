@@ -184,10 +184,10 @@ class ArcadeAudio {
     if (!this.music || this.unlocked || !this.music.paused) return;
     const trackIndex = this.trackIndex;
     const [musicUrl, audienceUrl, ballUrl, whistleUrl] = await Promise.all([
-      audioAssetCache.playableUrl(MUSIC_TRACKS[trackIndex]),
-      audioAssetCache.playableUrl(AUDIENCE_AMBIENT_URL),
-      audioAssetCache.playableUrl(BALL_EFFECT_URL),
-      audioAssetCache.playableUrl(WHISTLE_EFFECT_URL),
+      audioAssetCache.cachedPlayableUrl(MUSIC_TRACKS[trackIndex]),
+      audioAssetCache.cachedPlayableUrl(AUDIENCE_AMBIENT_URL),
+      audioAssetCache.cachedPlayableUrl(BALL_EFFECT_URL),
+      audioAssetCache.cachedPlayableUrl(WHISTLE_EFFECT_URL),
     ]);
     if (this.unlocked || trackIndex !== this.trackIndex || !this.music.paused) return;
     this.music.src = musicUrl;
@@ -201,9 +201,11 @@ class ArcadeAudio {
     this.cacheWarmStarted = true;
     const connection = globalThis.navigator?.connection;
     const dataSaver = connection?.saveData || ['slow-2g', '2g'].includes(connection?.effectiveType);
+    const currentTrack = MUSIC_TRACKS[this.trackIndex];
+    const essentialUrls = [currentTrack, BALL_EFFECT_URL, WHISTLE_EFFECT_URL, AUDIENCE_AMBIENT_URL];
     const urls = dataSaver
-      ? [AUDIENCE_AMBIENT_URL, BALL_EFFECT_URL, WHISTLE_EFFECT_URL, MUSIC_TRACKS[this.trackIndex]]
-      : AUDIO_ASSET_URLS;
+      ? essentialUrls
+      : [...essentialUrls, ...MUSIC_TRACKS.filter((url) => url !== currentTrack)];
     audioAssetCache.warm(urls).catch(() => {});
   }
 

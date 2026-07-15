@@ -98,6 +98,10 @@ export const createAudioAssetCache = ({
     }
   };
 
+  const cachedPlayableUrl = async (url) => (
+    await has(url) ? playableUrl(url) : url
+  );
+
   const refreshCount = async (urls) => {
     await Promise.all(urls.map((url) => has(url)));
     return knownCachedUrls.size;
@@ -110,6 +114,7 @@ export const createAudioAssetCache = ({
 
   return Object.freeze({
     cacheOne,
+    cachedPlayableUrl,
     dispose,
     has,
     playableUrl,
