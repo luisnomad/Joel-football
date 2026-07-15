@@ -17,6 +17,7 @@ import { clearActiveScene, setActiveScene } from '../../stateBridge.js';
 import { createButton } from '../../ui/createButton.js';
 import { createConfirmationOverlay } from '../../ui/createConfirmationOverlay.js';
 import { createControlIcon } from '../../ui/createControlIcon.js';
+import { VirtualJoystick } from '../input/VirtualJoystick.js';
 import {
   KICKFALL_CONFIG,
   KICKFALL_GATE_LAYOUT,
@@ -103,6 +104,8 @@ export class KickfallScene extends Phaser.Scene {
     this.events.once(Phaser.Scenes.Events.SHUTDOWN, () => {
       clearActiveScene(this);
       this.matter?.world?.off('collisionactive', this.onCollisionActive, this);
+      this.movementJoystick?.destroy();
+      this.movementJoystick = null;
       this.unbindKeyboard();
       delete window.__KICKFALL_DEBUG__;
     });
@@ -199,6 +202,7 @@ export class KickfallScene extends Phaser.Scene {
     this.touch = { left: false, right: false, up: false, down: false };
     this.touchPulses = { jump: false, kick: false };
     this.touchObjects = [];
+    this.movementJoystick = null;
     this.suspended = false;
     this.isPaused = false;
     this.pauseReason = null;
@@ -663,10 +667,19 @@ export class KickfallScene extends Phaser.Scene {
     if (!this.isTouchLayout) return;
     const horizontalOffset = Math.max(0, this.stageLayout.width - GAME_WIDTH) / 2;
     const bottomOffset = this.stageLayout.bottomOffset;
-    this.addTouchButton(80 + horizontalOffset, 650 + bottomOffset, 50, 'left', 'left', 'hold', 0x50d8ef);
-    this.addTouchButton(240 + horizontalOffset, 650 + bottomOffset, 50, 'right', 'right', 'hold', 0x50d8ef);
-    this.addTouchButton(160 + horizontalOffset, 590 + bottomOffset, 40, 'up', 'up', 'hold', 0x73e5ff);
-    this.addTouchButton(160 + horizontalOffset, 700 + bottomOffset, 40, 'down', 'down', 'hold', 0x73e5ff);
+    const uiScale = getWideStageUiScale(this.stageLayout);
+    this.movementJoystick = new VirtualJoystick(this, {
+      x: 160 + horizontalOffset,
+      y: 635 + bottomOffset,
+      radius: 82 * uiScale,
+      thumbRadius: 32 * uiScale,
+      interactionRadius: 110 * uiScale,
+      deadZone: 0.24,
+      accent: 0x50d8ef,
+      onChange: ({ left, right, up, down }) => {
+        Object.assign(this.touch, { left, right, up, down });
+      },
+    });
     this.addTouchButton(1035 + horizontalOffset, 625 + bottomOffset, 50, 'jump', 'jump', 'pulse', 0x36d7c2);
     this.addTouchButton(1170 + horizontalOffset, 645 + bottomOffset, 60, 'kick', 'kick', 'pulse', 0xff5b78);
   }
@@ -692,7 +705,14 @@ export class KickfallScene extends Phaser.Scene {
     const zone = this.add.zone(x, y, radius * 2, radius * 2).setDepth(88).setInteractive({ useHandCursor: true });
     const visuals = [shadow, surface, rim, symbol, zone];
     this.touchObjects.push(...visuals);
-    const setScale = (scale) => [surface, rim, symbol].forEach((item) => item.setScale(scale));
+    const scalableObjects = [surface, rim, symbol].map((item) => ({
+      item,
+      scaleX: item.scaleX,
+      scaleY: item.scaleY,
+    }));
+    const setScale = (scale) => scalableObjects.forEach(({ item, scaleX, scaleY }) => {
+      item.setScale(scaleX * scale, scaleY * scale);
+    });
     const release = () => {
       setScale(1);
       if (behavior === 'hold') this.touch[action] = false;
@@ -2001,6 +2021,7 @@ export class KickfallScene extends Phaser.Scene {
   }
 
   setTouchControlsVisible(visible) {
+    this.movementJoystick?.setVisible(visible);
     this.touchObjects.forEach((item) => {
       item.setVisible(visible);
       if (item.input) item.input.enabled = visible;
@@ -2466,11 +2487,12 @@ export class KickfallScene extends Phaser.Scene {
       pauseActions: this.isPaused ? ['resume', 'restart level', 'leave Kickfall'] : [],
       confirmationActions: this.abandonConfirmation ? ['stay', 'leave Kickfall'] : [],
       controls: this.isTouchLayout ? {
-        move: 'on-screen left/right/up/down',
-        tiers: 'hold on-screen up/down + tap jump',
+        move: '8-way virtual joystick',
+        tiers: 'hold joystick up/down + tap jump',
         jump: 'tap jump without up/down',
         kick: 'on-screen kick',
         pause: 'on-screen pause',
+        joystick: this.movementJoystick?.diagnostics() ?? null,
       } : {
         move: 'A/D or Left/Right',
         tiers: 'Space + W/Up or S/Down',

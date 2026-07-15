@@ -2844,22 +2844,41 @@ try {
   assert.equal(tabletState.minigame, 'kickfall');
   assert.equal(tabletState.gates.find((gate) => gate.id === 'gate-a').active, false, 'tablet Kick should break a Kickfall gate');
   await tabletPage.evaluate(() => window.__KICKFALL_DEBUG__.clearBalls());
-  await touchControl(tabletPage, 160, 780, 70);
+  assert.equal(tabletState.controls.move, '8-way virtual joystick');
+  assert.deepEqual(
+    [tabletState.controls.joystick.x, tabletState.controls.joystick.y, tabletState.controls.joystick.direction],
+    [160, 715, 'neutral'],
+  );
+  const tabletTouch = await tablet.newCDPSession(tabletPage);
+  const joystickCenterTouch = { x: 160, y: 715, id: 1, radiusX: 8, radiusY: 8, force: 1 };
+  const joystickDownRightTouch = { x: 230, y: 780, id: 1, radiusX: 8, radiusY: 8, force: 1 };
+  const jumpTouch = { x: 1035, y: 705, id: 2, radiusX: 8, radiusY: 8, force: 1 };
+  await tabletTouch.send('Input.dispatchTouchEvent', { type: 'touchStart', touchPoints: [joystickCenterTouch] });
+  await tabletTouch.send('Input.dispatchTouchEvent', { type: 'touchMove', touchPoints: [joystickDownRightTouch] });
+  await advance(tabletPage, 80);
+  tabletState = await readState(tabletPage);
+  assert.equal(tabletState.controls.joystick.direction, 'down-right');
+  assert.ok(tabletState.player.vx > 0, 'the joystick horizontal component should move the player');
+  assert.equal(tabletState.player.tierId, 'top', 'joystick Down alone must not change tiers');
+  await tabletTouch.send('Input.dispatchTouchEvent', {
+    type: 'touchStart',
+    touchPoints: [joystickDownRightTouch, jumpTouch],
+  });
+  await advance(tabletPage, 40);
+  tabletState = await readState(tabletPage);
+  assert.equal(tabletState.controls.joystick.direction, 'down-right', 'Jump must not steal the joystick pointer');
+  assert.equal(tabletState.player.tierTransfer?.targetTierId, 'upper');
+  await tabletTouch.send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [jumpTouch] });
+  await advance(tabletPage, 40);
+  tabletState = await readState(tabletPage);
+  assert.equal(tabletState.controls.joystick.direction, 'down-right', 'releasing Jump must keep the joystick held');
+  assert.equal(tabletState.controls.joystick.pointerId, 1);
+  await tabletTouch.send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [joystickDownRightTouch] });
   await advance(tabletPage, 320);
   tabletState = await readState(tabletPage);
-  assert.equal(tabletState.player.tierId, 'top', 'tablet Down alone must not change tiers');
-  await tabletPage.evaluate(() => {
-    const scene = window.__SKYHEAD_GAME__.scene.getScene('Kickfall');
-    scene.touch.down = true;
-    scene.touchPulses.jump = true;
-  });
-  await advance(tabletPage, 20);
-  await tabletPage.evaluate(() => {
-    window.__SKYHEAD_GAME__.scene.getScene('Kickfall').touch.down = false;
-  });
-  await advance(tabletPage, 320);
-  tabletState = await readState(tabletPage);
-  assert.equal(tabletState.player.tierId, 'upper', 'tablet Jump + Down should move to the adjacent lower tier');
+  assert.equal(tabletState.controls.joystick.direction, 'neutral');
+  assert.equal(tabletState.controls.joystick.pointerId, null);
+  assert.equal(tabletState.player.tierId, 'upper', 'joystick Down + Jump should move to the adjacent lower tier');
   await touchControl(tabletPage, 1035, 705, 35);
   tabletState = await readState(tabletPage);
   assert.equal(tabletState.player.tierId, 'upper', 'tablet Jump should remain separate from tier direction');
@@ -2868,10 +2887,40 @@ try {
   tabletState = await readState(tabletPage);
   assert.equal(tabletState.player.grounded, true, 'tablet Jump should land promptly');
   assert.ok(Math.abs(tabletState.player.platformSurfaceY - tabletState.player.visualGroundAnchorY) < 3);
+  const joystickRightTouch = { ...joystickCenterTouch, x: 240 };
+  const kickTouch = { x: 1170, y: 725, id: 2, radiusX: 8, radiusY: 8, force: 1 };
+  await tabletTouch.send('Input.dispatchTouchEvent', { type: 'touchStart', touchPoints: [joystickCenterTouch] });
+  await tabletTouch.send('Input.dispatchTouchEvent', { type: 'touchMove', touchPoints: [joystickRightTouch] });
+  await advance(tabletPage, 60);
+  tabletState = await readState(tabletPage);
+  const kickJoystickPointerId = tabletState.controls.joystick.pointerId;
+  assert.equal(tabletState.controls.joystick.direction, 'right');
+  await tabletTouch.send('Input.dispatchTouchEvent', {
+    type: 'touchStart',
+    touchPoints: [joystickRightTouch, kickTouch],
+  });
+  await advance(tabletPage, 40);
+  tabletState = await readState(tabletPage);
+  assert.equal(tabletState.controls.joystick.direction, 'right', 'Kick must not steal the joystick pointer');
+  assert.equal(tabletState.controls.joystick.pointerId, kickJoystickPointerId);
+  assert.ok(tabletState.player.kickCooldown > 0, 'Kick should fire while the joystick remains held right');
+  assert.ok(tabletState.player.vx > 0, 'rightward joystick movement must continue during Kick');
+  await tabletTouch.send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [kickTouch] });
+  await advance(tabletPage, 80);
+  tabletState = await readState(tabletPage);
+  assert.equal(tabletState.controls.joystick.direction, 'right', 'releasing Kick must keep the joystick held');
+  assert.equal(tabletState.controls.joystick.pointerId, kickJoystickPointerId);
+  await tabletTouch.send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [joystickRightTouch] });
+  await advance(tabletPage, 40);
+  tabletState = await readState(tabletPage);
+  assert.equal(tabletState.controls.joystick.direction, 'neutral');
+  assert.equal(tabletState.controls.joystick.pointerId, null);
   await capture(tabletPage, `${output}/08-extended-tablet-kickfall.png`);
   await touchControl(tabletPage, 92, 38, 40);
   tabletState = await readState(tabletPage);
   assert.equal(tabletState.mode, 'paused', 'the Kickfall HUD button should open pause on touch layouts');
+  assert.equal(tabletState.controls.joystick.visible, false, 'pausing must hide and release the joystick');
+  assert.equal(tabletState.controls.joystick.direction, 'neutral');
   assert.deepEqual(tabletState.pauseActions, ['resume', 'restart level', 'leave Kickfall']);
   await capture(tabletPage, `${output}/08-extended-tablet-kickfall-pause.png`);
   await touchControl(tabletPage, 775, 475, 40);

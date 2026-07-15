@@ -1987,3 +1987,39 @@ No follow-up TODO remains for the modal-polish pass.
   (`lucia` where the older normal-match assertion expects `bob`).
 
 No follow-up TODO remains for the boss counter-shot fix.
+
+### Reusable minigame virtual joystick (2026-07-15)
+
+- Replaced Kickfall's four directional touch buttons with a reusable fixed
+  eight-way virtual joystick while preserving keyboard input, jump, kick, and
+  the existing jump-plus-direction tier-transfer rules.
+- Added a pure vector resolver with a configurable dead zone, eight-direction
+  quantization, normalized output, and a thumb position clamped to the outer
+  radius. Red-first unit coverage verifies neutral, cardinal, diagonal, and
+  clamping behavior.
+- Added a reusable Phaser component under `src/game/minigames/input/` with
+  logical ownership of the initiating pointer, scene-level drag tracking,
+  fixed-camera support, glass visuals, lifecycle cleanup, visibility/enabled
+  controls, diagnostics, polling state, and an optional change callback.
+- Kickfall is the only current consumer. The main match's `TouchControls`,
+  `InputController`, movement, and physics remain unchanged.
+- The touch-enabled browser pass claims the joystick with one pointer, drags it
+  down-right, presses Jump with a second pointer, verifies that Jump does not
+  steal joystick ownership, completes the top-to-upper tier transfer, and
+  confirms release returns the stick to neutral. The sequence is now permanent
+  coverage in the existing tablet browser suite.
+- Screenshot inspection exposed and fixed an older Kickfall-only icon-scale
+  bug: releasing Jump restored its authored 36 px icon instead of scaling the
+  texture to its native size. Active and released joystick screenshots were
+  recaptured and inspected after the fix.
+- Final verification: all 121 unit tests pass, the production build succeeds,
+  the required standalone web-game client reaches live Kickfall without console
+  errors, and the focused two-finger tablet scenario passes without page or
+  console errors.
+- Follow-up multi-pointer verification separately held joystick Down-Right with
+  Jump and joystick Right with Kick. In both cases the action fired without
+  changing joystick pointer ownership; lifting only the action finger preserved
+  movement, and the stick returned to neutral only when its own finger lifted.
+  Both partial-release sequences are now permanent tablet browser regressions.
+
+No follow-up TODO remains for the reusable joystick pass.
