@@ -39,6 +39,13 @@ export const PLAYER_TUNING = Object.freeze({
   fastFallAcceleration: 0.34,
   kickSpeed: 16.5,
   kickLift: -3.2,
+  /**
+   * Radius of the strike capsule around the boot line. The ball (radius 22)
+   * must come within this plus its own radius of the capsule segment, so
+   * kicks connect when the boot visibly reaches the ball. Was 44, which let
+   * players strike balls floating two ball-widths past the boot tip.
+   */
+  strikeCapsuleRadius: 24,
   lobSpeed: 9.4,
   lobLift: -12.4,
   kickDuration: 0.16,

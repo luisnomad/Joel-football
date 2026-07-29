@@ -9,6 +9,7 @@ import {
   PLAYER_TUNING,
 } from '../constants.js';
 import { circleIntersectsCapsule, resolveAdaptiveLob } from '../pure/gameplayPhysics.js';
+import { DEFAULT_KICK_REACH } from '../content/characters.js';
 import { resolveFacing } from '../pure/facing.js';
 import { activateBigGuy, createBigGuyState, stepBigGuy } from '../pure/bigGuy.js';
 import { armPower, chargeMeter } from '../pure/power.js';
@@ -65,6 +66,9 @@ export class Fighter {
     name,
     stats = DEFAULT_STATS,
     visualScale = 1,
+    kickReach = 0,
+    frameScales = null,
+    colliderHeadTop = 0,
   }) {
     this.scene = scene;
     this.id = id;
@@ -72,6 +76,10 @@ export class Fighter {
     this.name = name;
     this.stats = { ...DEFAULT_STATS, ...stats };
     this.visualScale = Phaser.Math.Clamp(Number(visualScale) || 1, 0.85, 1.2);
+    /** Boot-tip distance used for the strike capsule; see getCharacterKickReach. */
+    this.kickReach = kickReach > 0 ? kickReach : DEFAULT_KICK_REACH;
+    /** Per-frame display enlargement for pipeline-shrunk drawings (or null). */
+    this.frameScales = frameScales;
     this.facing = side === 'left' ? 1 : -1;
     this.baseFacing = this.facing;
     this.textureFacing = textureFacing === -1 ? -1 : 1;
@@ -121,7 +129,14 @@ export class Fighter {
       restitution: 0.1,
       friction: 0.15,
     });
-    const headCap = Bodies.circle(0, -76, 40, {
+    // Characters whose visible head sits proportionally higher than Joel's
+    // (e.g. Dad's taller artwork) raise the headCap so the collider reaches
+    // the declared colliderHeadTop; everyone else keeps Joel's geometry.
+    // Local coords: feet anchor at +89, so cap top lands at 89 - y + 40.
+    const headCapY = colliderHeadTop > 0
+      ? Math.min(-76, 89 + 40 - colliderHeadTop / this.visualScale)
+      : -76;
+    const headCap = Bodies.circle(0, headCapY, 40, {
       label: `${id}:head`,
       restitution: 0.1,
       friction: 0.15,
@@ -487,9 +502,12 @@ export class Fighter {
       dashDirection: this.dashTimer > 0 ? this.dashDirection : 0,
       chilena: this.chilenaActive,
     });
+    // Pipeline-shrunk drawings (wide action poses) get their display-time
+    // enlargement; the capsule mirrors it via the contact frame's factor.
+    const frameBoost = this.frameScales?.[Number(this.sprite.frame.name)] ?? 1;
     this.visual.setScale(
-      this.baseSpriteScale.x * this.bigGuyScale * motion.scaleX,
-      this.baseSpriteScale.y * this.bigGuyScale * motion.scaleY,
+      this.baseSpriteScale.x * this.bigGuyScale * frameBoost * motion.scaleX,
+      this.baseSpriteScale.y * this.bigGuyScale * frameBoost * motion.scaleY,
     );
     this.visual.setAngle(this.chilenaActive ? this.chilenaAngle : motion.angle);
     // Ground registration belongs to the atlas. No vertical display offset:
@@ -533,10 +551,15 @@ export class Fighter {
   strikeCapsule() {
     const scale = this.bigGuyScale;
     const y = this.sprite.y + 28 * scale;
+    // The capsule follows the visible boot: from the body center to the
+    // character's measured boot tip (including the contact frame's display
+    // enlargement), with a slim radius. The old 106/44 pole reached roughly
+    // two ball-widths past the artwork.
+    const contactBoost = this.frameScales?.[CHARACTER_FRAMES.kickContact] ?? 1;
     return {
-      start: { x: this.sprite.x - this.facing * 8 * scale, y },
-      end: { x: this.sprite.x + this.facing * 106 * scale, y },
-      capsuleRadius: 44 * scale,
+      start: { x: this.sprite.x, y },
+      end: { x: this.sprite.x + this.facing * this.kickReach * contactBoost * scale, y },
+      capsuleRadius: PLAYER_TUNING.strikeCapsuleRadius * scale,
     };
   }
 

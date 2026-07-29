@@ -2,6 +2,7 @@ import Phaser from 'phaser';
 import { FIXED_STEP, GAME_HEIGHT, GAME_WIDTH } from '../../constants.js';
 import {
   getCharacter,
+  getCharacterFrameScale,
   getCharacterName,
   getCharacterVisualScale,
 } from '../../content/characters.js';
@@ -2294,9 +2295,10 @@ export class KickfallScene extends Phaser.Scene {
       landSquash: (this.landSquashTimer / LAND_SQUASH_SECONDS) ** 2,
       takeoffStretch: (this.takeoffStretchTimer / TAKEOFF_STRETCH_SECONDS) ** 2,
     });
+    const frameBoost = getCharacterFrameScale(this.character, Number(this.player.frame.name));
     this.playerVisual.setScale(
-      this.playerVisualBaseScale.x * motion.scaleX,
-      this.playerVisualBaseScale.y * motion.scaleY,
+      this.playerVisualBaseScale.x * frameBoost * motion.scaleX,
+      this.playerVisualBaseScale.y * frameBoost * motion.scaleY,
     );
     this.playerVisual.setAngle(motion.angle);
   }

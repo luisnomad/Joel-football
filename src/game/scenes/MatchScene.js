@@ -14,6 +14,7 @@ import { Fighter } from '../entities/Fighter.js';
 import { Goal } from '../entities/Goal.js';
 import {
   getCharacter,
+  getCharacterKickReach,
   getCharacterLabel,
   getCharacterName,
   getCharacterVisualScale,
@@ -40,6 +41,13 @@ import { createConfirmationOverlay } from '../ui/createConfirmationOverlay.js';
 import { resolveChilenaShot, shouldRedirectLobChilena } from '../pure/chilena.js';
 import { shouldResolvePlayerClash, sweepCircleAgainstBounds } from '../pure/gameplayPhysics.js';
 import { FOOTBALL_TOUCH_MOVEMENT_MODES } from '../developerOptions.js';
+
+/**
+ * Seconds left on the goal celebration timer when both players resettle to
+ * their kickoff spots, instead of staying frozen in their scoring pose
+ * through the wait and the following countdown.
+ */
+const GOAL_RESETTLE_AT_SECONDS = 0.8;
 
 const round = (value, places = 2) => {
   const factor = 10 ** places;
@@ -112,6 +120,9 @@ export class MatchScene extends Phaser.Scene {
       name: getCharacterName(this.playerCharacter, this.language),
       stats: this.playerCharacter.stats,
       visualScale: getCharacterVisualScale(this.playerCharacter),
+      kickReach: getCharacterKickReach(this.playerCharacter),
+      frameScales: this.playerCharacter.frameScales ?? null,
+      colliderHeadTop: this.playerCharacter.colliderHeadTop ?? 0,
     });
     this.rightPlayer = new Fighter(this, {
       id: 'vex',
@@ -122,6 +133,9 @@ export class MatchScene extends Phaser.Scene {
       name: getCharacterName(this.opponent, this.language),
       stats: this.opponent.stats,
       visualScale: getCharacterVisualScale(this.opponent),
+      kickReach: getCharacterKickReach(this.opponent),
+      frameScales: this.opponent.frameScales ?? null,
+      colliderHeadTop: this.opponent.colliderHeadTop ?? 0,
     });
     this.players = { left: this.leftPlayer, right: this.rightPlayer };
     this.ball = new Ball(this, GAME_WIDTH / 2, 336, this.profile.ballTypeId);
@@ -155,6 +169,7 @@ export class MatchScene extends Phaser.Scene {
     this.lastClashPoppedBall = false;
     this.hudSignature = null;
     this.goalLatch = false;
+    this.playersResettled = false;
     this.isPaused = false;
     this.pauseReason = null;
     this.helpOverlay = null;
@@ -708,6 +723,13 @@ export class MatchScene extends Phaser.Scene {
 
     if (this.phase === 'goal') {
       this.goalTimer -= dt;
+      if (!this.playersResettled && this.goalTimer <= GOAL_RESETTLE_AT_SECONDS) {
+        // Let the goal flash land, then walk both players back to kickoff so
+        // they are not frozen mid-action through the wait and the countdown.
+        this.playersResettled = true;
+        this.leftPlayer.reset(340);
+        this.rightPlayer.reset(940);
+      }
       this.leftPlayer.continueChilenaAnimation(dt);
       this.rightPlayer.continueChilenaAnimation(dt);
       this.updateEffects(dt);
@@ -1082,6 +1104,7 @@ export class MatchScene extends Phaser.Scene {
   registerGoal(scoringSide) {
     if (this.phase === 'goal' || this.phase === 'result') return;
     this.goalLatch = true;
+    this.playersResettled = false;
     this.score = addGoal(this.score, scoringSide);
     this.phase = 'goal';
     this.goalTimer = 1.65;
