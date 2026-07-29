@@ -274,6 +274,8 @@ coordinate from a tier above or below never captures or teleports the ball.
   accelerates after the jump apex so jumps remain short and responsive.
 - The compact board uses a smaller character collider and sprite, smaller
   balls, and thinner platforms so four tiers remain legible at 1280 × 720.
+  The collider scales with each character's visualScale so scaled-up
+  characters (Dad, Mum) keep their heads inside the body, matching the match.
 - Gate damage is a discrete valid-kick event rather than raw velocity damage,
   so a lower kick statistic does not require extra hits.
 - Board dimensions must be playable by the slowest and lowest-jumping
@@ -331,9 +333,10 @@ The authored campaign introduces one major pressure axis at a time:
 - The player collides with balls, tiers, and intact gates.
 - Kicking a ball toward each of the three gates breaks it and releases the
   queue.
-- A/D or Left/Right produces responsive movement with a time-based run cycle
-  held between 6 and 9 visual steps per second; velocity must not make the
-  character flicker rapidly through frames.
+- A/D or Left/Right produces responsive movement with a distance-driven run
+  cycle (KICKFALL_RUN_FRAME_DISTANCE travel per phase, about 10 visual steps
+  per second at full speed); feet only cycle while the character is genuinely
+  covering ground, so no foot sliding at low speed and no flicker at high speed.
 - Up/Down alone does not transfer; Space + Up/Down transfers exactly one tier,
   while Space alone remains a normal jump.
 - Jump input is buffered across imminent landings. If Space + Up/Down requests

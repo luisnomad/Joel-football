@@ -3496,3 +3496,42 @@ atlas package, roster integration, and release validation may now proceed.
 - Final verification passes: 177/177 unit tests, the complete deterministic
   Hockey browser journey with zero page/console errors, required standalone
   client smoke/state/screenshot review, production build, and diff hygiene.
+
+## 2026-07-29
+
+Animation, movement, and collision polish across the match and Kickfall, on
+the `poc/animation-polish` and `poc/strike-collision` branches.
+
+- Sprite animation overhaul: physics sprites are now invisible bodies with a
+  display-only mirror sprite per character, unlocking squash/stretch/lean
+  without touching the Matter collider. Secondary motion shipped: run plant
+  dips, dash lean, stun wobble, landing squash, takeoff stretch, kick
+  anticipation/contact accents; idle breathing exists but is disabled behind
+  IDLE_BREATH_ENABLED after review. The chilena rotates the mirror sprite
+  instead of a dedicated one.
+- Run cadence is distance-driven in both games (RUN_FRAME_DISTANCE 82 match,
+  KICKFALL_RUN_FRAME_DISTANCE 70 Kickfall), readable at top speed with no
+  foot sliding. Kick visuals play anticipation/contact/follow-through on a
+  0.32 s KICK_VISUAL_SECONDS timeline while strikes still connect instantly;
+  Kickfall player and boss share the staging.
+- Movement speed and force raised to 1.728x of the original base after three
+  playtest rounds.
+- Colliders scale with character visualScale around the feet anchor in the
+  match and Kickfall, fixing balls passing through the heads of scaled-up
+  characters. colliderHeadTop per character (Dad, Mum) extends headCap
+  coverage over their taller foreheads; acceleration stays uniform via
+  footprint-scaled move force.
+- Strike capsule follows the measured boot tip: per-character kickReach and
+  PLAYER_TUNING.strikeCapsuleRadius 24 replace the fixed 106/44 pole that
+  reached roughly two ball-widths past the artwork.
+- frameScales per character re-enlarge atlas-shrunk action frames at display
+  time (Dad/Mum kicks and chilena drawing) and pull Dad's oversized jump down.
+- Chilena trigger zone scales with character height; players resettle to
+  kickoff partway through the goal celebration instead of freezing in their
+  scoring pose.
+- The browser e2e harness was hardened along the way: one-frame input settle
+  in hold/touch helpers, deterministic pose checks, atomic goal/sweep
+  fixtures, and touchPulse injection for kick-boost mashing.
+- Verification: 181/181 unit tests and the full browser e2e suite green;
+  screenshot review in output/animation-poc/. Docs updated in
+  docs/CHARACTER_ANIMATION_SPIKE.md and docs/KICKFALL_SPEC.md.

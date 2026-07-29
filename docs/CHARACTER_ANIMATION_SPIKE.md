@@ -182,7 +182,43 @@ should be a segmented raster rig for one character, not an SVG auto-trace. A
 full rig becomes worthwhile only if the roadmap needs many more actions,
 costumes, or characters that can reuse the same skeleton.
 
+## Runtime follow-up, 2026-07-29
+
+The staged frames shipped above were only half the story; playtesting showed
+the runtime threw most of their value away. The following shipped on the
+`poc/animation-polish` / `poc/strike-collision` branches:
+
+- **Visual mirror sprites.** Scaling or rotating a Matter sprite reshapes its
+  collider (`Body.scale`/`Body.setAngle`), so the physics sprite is now
+  invisible and a display-only mirror sprite copies position, frame, and flip
+  every frame. All accent motion lives on the mirror; the collider is never
+  touched. The chilena rotates the mirror around the body position instead of
+  using a dedicated sprite.
+- **Secondary motion** (`secondaryMotionAt` in `src/game/pure/characterAnimation.js`):
+  run plant dips synced to the distance-driven cycle, dash lean, stun wobble,
+  landing squash, takeoff stretch, and kick anticipation/contact accents. Idle
+  breathing exists but is disabled behind `IDLE_BREATH_ENABLED` after review.
+- **Cadence.** The run loop is distance-driven everywhere: `RUN_FRAME_DISTANCE`
+  (match, about 15 phases/second at top speed) and `KICKFALL_RUN_FRAME_DISTANCE`
+  (Kickfall, about 10, replacing the time-based cycle that foot-slid).
+- **Kick timeline.** Gameplay kicks still connect immediately (a tested
+  contract), but the visuals run on a longer `KICK_VISUAL_SECONDS` timeline:
+  short anticipation, contact through the whole strike window, then a real
+  follow-through after the gameplay kick ends. Player and boss in Kickfall
+  share it via `kickVisualTimer`.
+- **Frame scale compensation.** Wide action poses were shrunk up to 20% by the
+  atlas margin enforcer (320 px cell cap), shrinking heads visibly on Dad and
+  Mum. `frameScales` per character re-enlarge those drawings at display time
+  (and pull Dad's oversized jump down) until the frames can be re-authored.
+
+Related geometry work from the same session lives in `characters.js`
+(`kickReach`, `colliderHeadTop`) and `Fighter.js`/`MatchScene.js`: colliders
+scale with `visualScale` around the feet anchor, the strike capsule follows
+the measured boot tip, the chilena trigger zone scales with character height,
+and players resettle to kickoff partway through the goal celebration.
+
 ## References
+
 
 - Phaser animation concepts: https://docs.phaser.io/phaser/concepts/animations
 - Phaser textures and atlases: https://docs.phaser.io/phaser/concepts/textures
