@@ -439,6 +439,15 @@ describe('chilena contract', () => {
     expect(canStartChilena({ fighter, ball: { x: 600, y: 560 }, kickPresses: 2 })).toBe(false);
   });
 
+  it('widens the trigger zone for taller characters', () => {
+    // Dad's center sits at feet-107 with a 288 px gameplay height; a ball
+    // 260 px above his center is beyond the standard 240 zone but inside his.
+    const dad = { x: 600, y: 529, height: 288, grounded: true, stunned: false, active: false };
+    const highBall = { x: 640, y: 269 };
+    expect(canStartChilena({ fighter: dad, ball: highBall, kickPresses: 2 })).toBe(true);
+    expect(canStartChilena({ fighter: { ...dad, height: 240 }, ball: highBall, kickPresses: 2 })).toBe(false);
+  });
+
   it('fires toward the rival goal and rewards a full meter', () => {
     const rightward = resolveChilenaShot({
       attackDirection: 1,

@@ -629,7 +629,9 @@ export class Fighter {
       fighter: {
         x: this.sprite.x,
         y: this.sprite.y,
-        height: CHARACTER_GAMEPLAY_HEIGHT,
+        // The trigger zone scales with the character: taller players (Dad,
+        // Mum) get a proportionally bigger window, matching their body.
+        height: CHARACTER_GAMEPLAY_HEIGHT * this.visualScale,
         grounded: this.grounded,
         stunned: this.stunned,
         active: this.chilenaActive,
