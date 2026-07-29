@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
   KICKFALL_CONFIG,
+  KICKFALL_FORCE_CONFIG,
   KICKFALL_LEVELS,
   auditKickfallCampaign,
   createKickfallPauseLayout,
@@ -11,15 +12,18 @@ import {
   getKickfallGateHealth,
   createKickfallProgress,
   isArmedGateHit,
+  isKickfallBallSupport,
   isKickfallKickContact,
   resolveKickfallChargeTransfer,
   resolveKickfallBossCounterWave,
   resolveKickfallMagnetPull,
+  getKickfallLandingGuideContact,
   resolveKickfallVerticalIntent,
   resolveKickfallOutcome,
   stepKickfallFallVelocity,
   stepKickfallJumpBuffer,
   stepKickfallRunCycle,
+  stepKickfallSurfaceRollVelocity,
 } from '../src/game/minigames/kickfall/kickfallRules.js';
 import {
   DEFAULT_KICKFALL_THEME_ID,
@@ -158,6 +162,24 @@ describe('Kickfall rules', () => {
     expect(isKickfallKickContact({ ...shared, facing: -1, ballX: 14 })).toBe(false);
   });
 
+  it('lets a player jump from the top of a ball without granting an air jump', () => {
+    const supported = {
+      playerX: 500,
+      playerY: 341,
+      playerVelocityY: 0,
+      playerHalfWidth: 22,
+      playerHalfHeight: 41,
+      ballX: 500,
+      ballY: 400,
+      ballRadius: 18,
+    };
+    expect(isKickfallBallSupport(supported)).toBe(true);
+    expect(isKickfallBallSupport({ ...supported, playerX: 550 })).toBe(false);
+    expect(isKickfallBallSupport({ ...supported, playerY: 300 })).toBe(false);
+    expect(isKickfallBallSupport({ ...supported, playerVelocityY: -4 })).toBe(false);
+    expect(isKickfallBallSupport({ ...supported, playerY: 371, ballY: 350 })).toBe(false);
+  });
+
   it('attenuates one live kick charge as it passes through a touching ball queue', () => {
     const transfer = resolveKickfallChargeTransfer({
       sourceX: 900,
@@ -177,7 +199,8 @@ describe('Kickfall rules', () => {
       sourceArmedUntil: 0,
       sourceImpactPower: 0,
       targetArmedUntil: 5,
-      targetImpactPower: 0.9,
+      targetImpactPower: 0.84,
+      targetForceHops: 1,
     });
     expect(transfer.targetVelocityX).toBeCloseTo(-10.08);
     expect(resolveKickfallChargeTransfer({
@@ -203,9 +226,13 @@ describe('Kickfall rules', () => {
         now: 4.5,
       }).targetImpactPower;
     }
-    expect(impactPower).toBeCloseTo(0.9 ** 6);
-    expect(impactPower).toBeGreaterThan(0.5);
+    expect(impactPower).toBeCloseTo(0.84 ** 6);
+    expect(impactPower).toBeGreaterThan(0.3);
     expect(impactPower).toBeLessThan(1);
+    expect(KICKFALL_FORCE_CONFIG.trapResistance).toEqual({
+      cleat: 1.1,
+      pocket: 1.5,
+    });
   });
 
   it('advances the run cycle at a readable time-based cadence', () => {
@@ -281,6 +308,29 @@ describe('Kickfall rules', () => {
     expect(tiers[2].angle).toBeLessThan(0);
   });
 
+  it('uses surface angle as acceleration so the steep receiver overpowers the shallow lane', () => {
+    const uphillLaneVelocity = stepKickfallSurfaceRollVelocity({
+      surfaceAngle: 0.026,
+      dt: 0.7,
+      maximumSpeed: 3.5,
+    });
+    const receiverVelocity = stepKickfallSurfaceRollVelocity({
+      velocityX: uphillLaneVelocity,
+      surfaceAngle: -Math.atan2(54, 168),
+      dt: 0.7,
+      maximumSpeed: 4.2,
+    });
+    expect(uphillLaneVelocity).toBeGreaterThan(0);
+    expect(uphillLaneVelocity).toBeLessThan(1.6);
+    expect(receiverVelocity).toBeLessThan(-3.5);
+    expect(stepKickfallSurfaceRollVelocity({
+      velocityX: -14,
+      surfaceAngle: -0.3,
+      dt: 1 / 60,
+      maximumSpeed: 4.2,
+    })).toBe(-14);
+  });
+
   it('adds mirrored receiving wedges to every non-top lane that can return a ball to its entry wall', () => {
     const tiers = createKickfallTiers({ tierModes: ['downhill', 'flat', 'flat', 'uphill'] });
     const guides = createKickfallLandingGuides(tiers);
@@ -310,6 +360,34 @@ describe('Kickfall rules', () => {
       width: 168,
       assistSpeed: 4.2,
     });
+  });
+
+  it('scopes receiver-ramp physics to balls actually touching that lane', () => {
+    const contact = getKickfallLandingGuideContact({
+      ballX: 1100,
+      ballY: 312,
+      ballRadius: 18,
+      flow: -1,
+      entryX: 1220,
+      width: 168,
+      height: 54,
+      surfaceY: 350,
+    });
+    expect(contact).toMatchObject({
+      progress: 120,
+      withinRamp: true,
+      touching: true,
+    });
+    expect(getKickfallLandingGuideContact({
+      ballX: 1100,
+      ballY: 467,
+      ballRadius: 18,
+      flow: -1,
+      entryX: 1220,
+      width: 168,
+      height: 54,
+      surfaceY: 350,
+    }).touching).toBe(false);
   });
 
   it('audits every authored stage as a complete reachable route', () => {

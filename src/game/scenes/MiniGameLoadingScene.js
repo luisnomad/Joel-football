@@ -1,6 +1,7 @@
 import Phaser from 'phaser';
 import { GAME_HEIGHT, GAME_WIDTH } from '../constants.js';
 import { t } from '../i18n.js';
+import { getMiniGameEntry, loadMiniGameScene } from '../minigames/minigameCatalog.js';
 import { playerProfileStore } from '../services/PlayerProfile.js';
 import { clearActiveScene, setActiveScene } from '../stateBridge.js';
 import { createButton } from '../ui/createButton.js';
@@ -13,7 +14,10 @@ export class MiniGameLoadingScene extends Phaser.Scene {
   init(data = {}) {
     this.profile = playerProfileStore.get();
     this.language = this.profile.language;
+    this.gameId = data.gameId ?? 'kickfall';
     this.requestedLevel = data.level;
+    this.sceneData = data.sceneData ?? {};
+    this.entry = getMiniGameEntry(this.gameId);
     this.status = 'code';
     this.error = null;
     this.choiceObjects = [];
@@ -28,7 +32,7 @@ export class MiniGameLoadingScene extends Phaser.Scene {
     graphics.fillStyle(0x43d8ef, 0.1).fillCircle(210, 160, 180);
     graphics.fillStyle(0xff5e7f, 0.08).fillCircle(1080, 590, 230);
 
-    this.add.text(GAME_WIDTH / 2, 275, 'KICKFALL', {
+    this.add.text(GAME_WIDTH / 2, 275, this.entry.title, {
       fontFamily: 'Arial Black, Arial Rounded MT Bold, sans-serif',
       fontSize: '68px',
       fontStyle: 'bold',
@@ -37,7 +41,7 @@ export class MiniGameLoadingScene extends Phaser.Scene {
       strokeThickness: 12,
       shadow: { color: '#42dff5', blur: 16, fill: true, offsetY: 5 },
     }).setOrigin(0.5);
-    this.statusText = this.add.text(GAME_WIDTH / 2, 360, t(this.language, 'kickfall.loadingCode'), {
+    this.statusText = this.add.text(GAME_WIDTH / 2, 360, t(this.language, this.entry.loadingKey), {
       fontFamily: 'Arial Rounded MT Bold, sans-serif',
       fontSize: '22px',
       fontStyle: 'bold',
@@ -46,15 +50,19 @@ export class MiniGameLoadingScene extends Phaser.Scene {
     this.spinner = this.add.arc(GAME_WIDTH / 2, 430, 30, 235, 350, false, 0xffd35c, 1);
     this.tweens.add({ targets: this.spinner, angle: 360, duration: 620, repeat: -1 });
 
-    this.loadKickfall();
+    this.loadRequestedGame();
   }
 
-  async loadKickfall() {
+  async loadRequestedGame() {
     try {
-      const { KickfallScene } = await import('../minigames/kickfall/KickfallScene.js');
+      const { entry, SceneClass } = await loadMiniGameScene(this.gameId);
       if (!this.sys.isActive()) return;
-      if (!this.game.scene.keys.Kickfall) this.game.scene.add('Kickfall', KickfallScene, false);
-      if (this.requestedLevel) {
+      if (!this.game.scene.keys[entry.sceneKey]) {
+        this.game.scene.add(entry.sceneKey, SceneClass, false);
+      }
+      if (this.gameId === 'discHockey') {
+        this.startLoadedGame(this.sceneData);
+      } else if (this.requestedLevel) {
         this.startKickfall(this.requestedLevel);
       } else if (this.profile.kickfall.highestUnlockedLevel > 1) {
         this.showResumeChoice();
@@ -66,8 +74,10 @@ export class MiniGameLoadingScene extends Phaser.Scene {
       this.status = 'error';
       this.error = error instanceof Error ? error.message : String(error);
       this.spinner.setVisible(false);
-      this.statusText.setText(t(this.language, 'kickfall.loadingError')).setColor('#ffb1bd');
-      this.input.keyboard.once('keydown-ESC', () => this.scene.start('Intro'));
+      this.statusText.setText(t(this.language, this.entry.errorKey)).setColor('#ffb1bd');
+      this.input.keyboard.once('keydown-ESC', () => (
+        this.scene.start('MiniGameSetup', { gameId: this.gameId })
+      ));
     }
   }
 
@@ -106,9 +116,18 @@ export class MiniGameLoadingScene extends Phaser.Scene {
     this.scene.start('Kickfall', { level });
   }
 
+  startLoadedGame(data = {}) {
+    if (!this.sys.isActive()) return;
+    this.status = 'assets';
+    this.statusText.setText(t(this.language, 'discHockey.loadingAssets'));
+    this.spinner.setVisible(true);
+    this.scene.start(this.entry.sceneKey, data);
+  }
+
   serializeState() {
     return {
-      mode: 'kickfall-loading',
+      mode: 'minigame-loading',
+      gameId: this.gameId,
       phase: this.status,
       error: this.error,
       savedProgress: this.profile?.kickfall ?? null,

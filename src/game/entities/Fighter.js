@@ -295,7 +295,11 @@ export class Fighter {
         y: 0,
       });
       const hyperSpeed = this.hyperTimer > 0 ? 1.25 : 1;
-      const maxSpeed = scaled(PLAYER_TUNING.maxSpeed, this.stats.speed) * (airborne ? 1.08 : 1) * hyperSpeed;
+      const moveIntensity = Math.abs(intent.move);
+      const maxSpeed = scaled(PLAYER_TUNING.maxSpeed, this.stats.speed)
+        * moveIntensity
+        * (airborne ? 1.08 : 1)
+        * hyperSpeed;
       this.sprite.setVelocityX(Phaser.Math.Clamp(this.sprite.body.velocity.x, -maxSpeed, maxSpeed));
     } else if (this.grounded) {
       this.sprite.setVelocityX(this.sprite.body.velocity.x * 0.82);

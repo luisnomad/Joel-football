@@ -1,5 +1,6 @@
 import { createControlIcon } from './createControlIcon.js';
 import { getWideStageUiScale } from '../layout/tabletStage.js';
+import { bindButtonInput } from './buttonInput.js';
 
 export const createIconButton = (scene, {
   x,
@@ -20,12 +21,11 @@ export const createIconButton = (scene, {
   const zone = scene.add.circle(x, y, radius, 0xffffff, 0).setDepth(depth + 0.4).setInteractive({ useHandCursor: true });
   const visuals = [shadow, surface, rim, symbol];
   const setScale = (scale) => visuals.forEach((item) => item.setScale(scale));
-  zone.on('pointerdown', () => setScale(0.9));
-  zone.on('pointerout', () => setScale(1));
-  zone.on('pointerup', () => {
-    setScale(1);
-    scene.game.events.emit('platform:haptic', 'light');
-    onPress?.();
+  bindButtonInput(scene, zone, {
+    onPress: () => setScale(0.9),
+    onRelease: () => setScale(1),
+    onOut: () => setScale(1),
+    onActivate: () => onPress?.(),
   });
   return {
     visuals,

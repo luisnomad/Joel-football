@@ -17,9 +17,17 @@ import { clearActiveScene, setActiveScene } from '../../stateBridge.js';
 import { createButton } from '../../ui/createButton.js';
 import { createConfirmationOverlay } from '../../ui/createConfirmationOverlay.js';
 import { createControlIcon } from '../../ui/createControlIcon.js';
-import { VirtualJoystick } from '../input/VirtualJoystick.js';
+import { VirtualJoystick } from '../../input/VirtualJoystick.js';
+import {
+  decayPressure,
+  resolveDifficultyPressureTuning,
+  resolveForceCombo,
+  resolveForceDamage,
+  resolvePressureImpact,
+} from '../../pure/forceSystem.js';
 import {
   KICKFALL_CONFIG,
+  KICKFALL_FORCE_CONFIG,
   KICKFALL_GATE_LAYOUT,
   KICKFALL_LEVELS,
   auditKickfallLevel,
@@ -31,7 +39,9 @@ import {
   getKickfallLevel,
   getKickfallGateHealth,
   isArmedGateHit,
+  isKickfallBallSupport,
   isKickfallKickContact,
+  getKickfallLandingGuideContact,
   resolveKickfallBossCounterWave,
   resolveKickfallChargeTransfer,
   resolveKickfallMagnetPull,
@@ -40,6 +50,7 @@ import {
   stepKickfallFallVelocity,
   stepKickfallJumpBuffer,
   stepKickfallRunCycle,
+  stepKickfallSurfaceRollVelocity,
 } from './kickfallRules.js';
 import { getKickfallTheme, getKickfallThemeAssets } from './kickfallThemes.js';
 
@@ -66,6 +77,14 @@ const KICK_FOOT_RADIUS = 8;
 const BALL_ROLL_SPEED = 7.2;
 const BALL_ROLL_RESPONSE = 0.1;
 const OBSTACLE_LANE_TOLERANCE = BALL_RADIUS * 1.5;
+const OBSTACLE_FLASH_SECONDS = 0.38;
+const BALL_ENTRY_WALL_HEIGHT = 104;
+const BALL_ENTRY_WALL_ANGLE = -11 * (Math.PI / 180);
+const BALL_ENTRY_WALL_BOTTOM_X = 175;
+const BALL_ENTRY_WALL_CENTER_X = (
+  BALL_ENTRY_WALL_BOTTOM_X
+  + Math.sin(BALL_ENTRY_WALL_ANGLE) * BALL_ENTRY_WALL_HEIGHT / 2
+);
 
 const round = (value, places = 1) => {
   const factor = 10 ** places;
@@ -78,6 +97,11 @@ const tierSurfaceY = (tier, x) => (
 );
 
 const playerCenterYOnTier = (tier, x) => tierSurfaceY(tier, x) - PLAYER_HEIGHT / 2 - 0.5;
+const KICKFALL_TIME_MULTIPLIER = Object.freeze({
+  easy: 1.25,
+  normal: 1,
+  hard: 0.85,
+});
 
 export class KickfallScene extends Phaser.Scene {
   constructor() {
@@ -88,6 +112,7 @@ export class KickfallScene extends Phaser.Scene {
   init(data = {}) {
     this.profile = playerProfileStore.get();
     this.language = this.profile.language;
+    this.difficulty = this.profile.difficultyByGame.kickfall;
     this.character = getCharacter(this.profile.playerCharacterId);
     this.rivalCharacter = getCharacter(this.profile.opponentId);
     this.level = getKickfallLevel(data.level ?? this.profile.kickfall.lastPlayedLevel);
@@ -172,7 +197,10 @@ export class KickfallScene extends Phaser.Scene {
     this.simulationSeconds = 0;
     this.accumulator = 0;
     this.progress = createKickfallProgress();
-    this.levelTimeRemaining = this.level.timerSeconds;
+    this.levelDurationSeconds = this.level.timerSeconds === null
+      ? null
+      : this.level.timerSeconds * KICKFALL_TIME_MULTIPLIER[this.difficulty];
+    this.levelTimeRemaining = this.levelDurationSeconds;
     this.countdown = KICKFALL_CONFIG.countdownSeconds;
     this.spawnTimer = 0;
     this.spawnBlocked = false;
@@ -189,6 +217,8 @@ export class KickfallScene extends Phaser.Scene {
     this.kickCooldown = 0;
     this.kickSerial = 0;
     this.lastKickedBallId = null;
+    this.lastKickForce = 0;
+    this.forceCombo = null;
     this.facing = 1;
     this.groundedUntil = 0;
     this.runCycle = 0;
@@ -211,7 +241,7 @@ export class KickfallScene extends Phaser.Scene {
     this.abandonPreviousPauseReason = null;
 
     this.matter.world.setGravity(0, 1.55);
-    arcadeAudio.setScene('match');
+    arcadeAudio.setScene('kickfall');
     this.createBackdrop();
     this.createWorld();
     this.createPlayer();
@@ -302,9 +332,9 @@ export class KickfallScene extends Phaser.Scene {
         .setAlpha(0.32 + Math.sin(seconds * 0.22) * 0.035);
     }
     if (this.themeLayers.moon) {
-      const progress = this.level.timerSeconds === null
+      const progress = this.levelDurationSeconds === null
         ? (1 - Math.cos((seconds / this.theme.motion.moonTravelSeconds) * Math.PI * 2)) / 2
-        : Phaser.Math.Clamp(1 - this.levelTimeRemaining / this.level.timerSeconds, 0, 1);
+        : Phaser.Math.Clamp(1 - this.levelTimeRemaining / this.levelDurationSeconds, 0, 1);
       this.themeLayers.moon
         .setPosition(
           Phaser.Math.Linear(1040, 250, progress),
@@ -340,10 +370,35 @@ export class KickfallScene extends Phaser.Scene {
     this.createBoundary(GAME_WIDTH - 24, GAME_HEIGHT / 2, 48, GAME_HEIGHT, CATEGORY.WORLD, [CATEGORY.PLAYER, CATEGORY.BALL]);
     this.createBoundary(GAME_WIDTH / 2, 8, GAME_WIDTH, 16, CATEGORY.WORLD, [CATEGORY.PLAYER, CATEGORY.BALL]);
     this.createBoundary(138, 674, 24, 96, CATEGORY.PLAYER_BOUNDARY, [CATEGORY.PLAYER]);
-    this.createBoundary(175, 130, 14, 104, CATEGORY.BALL_BOUNDARY, [CATEGORY.BALL]);
-    this.add.rectangle(175, 130, 10, 104, 0x6eeafa, 0.18)
+    const entryWallBody = this.createBoundary(
+      BALL_ENTRY_WALL_CENTER_X,
+      130,
+      14,
+      BALL_ENTRY_WALL_HEIGHT,
+      CATEGORY.BALL_BOUNDARY,
+      [CATEGORY.BALL],
+      BALL_ENTRY_WALL_ANGLE,
+    );
+    const entryWallVisual = this.add.rectangle(
+      BALL_ENTRY_WALL_CENTER_X,
+      130,
+      10,
+      BALL_ENTRY_WALL_HEIGHT,
+      0x6eeafa,
+      0.18,
+    )
+      .setRotation(BALL_ENTRY_WALL_ANGLE)
       .setStrokeStyle(2, 0xbaf8ff, 0.46)
       .setDepth(12);
+    this.ballEntryWall = {
+      body: entryWallBody,
+      visual: entryWallVisual,
+      angle: BALL_ENTRY_WALL_ANGLE,
+      topX: BALL_ENTRY_WALL_CENTER_X
+        + Math.sin(BALL_ENTRY_WALL_ANGLE) * BALL_ENTRY_WALL_HEIGHT / 2,
+      bottomX: BALL_ENTRY_WALL_CENTER_X
+        - Math.sin(BALL_ENTRY_WALL_ANGLE) * BALL_ENTRY_WALL_HEIGHT / 2,
+    };
 
     KICKFALL_GATE_LAYOUT.forEach((gateLayout) => {
       const tier = this.getTier(gateLayout.tierId);
@@ -372,6 +427,9 @@ export class KickfallScene extends Phaser.Scene {
         maxHealth: health,
         active: true,
         image,
+        lastImpactForce: 0,
+        lastDamage: 0,
+        lastForceHops: 0,
         healthPips: this.createGateHealthPips(gateLayout.x, floorY - gateLayout.height - 8, health),
       });
     });
@@ -467,11 +525,19 @@ export class KickfallScene extends Phaser.Scene {
     const tier = this.getTier(layout.tierId);
     const surfaceY = tierSurfaceY(tier, layout.x);
     const visualObjects = [];
+    let flashOverlay;
     if (layout.type === 'pocket') {
       const catchRail = this.add.image(layout.x, surfaceY + 11.5, this.theme.textureKeys.catchRail)
         .setDisplaySize(144, 36)
         .setRotation(tier.angle)
         .setDepth(18);
+      flashOverlay = this.add.image(layout.x, surfaceY + 11.5, this.theme.textureKeys.catchRail)
+        .setDisplaySize(144, 36)
+        .setRotation(tier.angle)
+        .setTintFill(0xff3d58)
+        .setBlendMode(Phaser.BlendModes.ADD)
+        .setAlpha(0)
+        .setDepth(18.7);
       const label = this.add.text(layout.x, surfaceY - 54, t(this.language, 'kickfall.obstaclePocket'), {
         fontFamily: 'Arial Rounded MT Bold, sans-serif',
         fontSize: '11px',
@@ -480,7 +546,7 @@ export class KickfallScene extends Phaser.Scene {
         stroke: '#071426',
         strokeThickness: 4,
       }).setOrigin(0.5).setDepth(19);
-      visualObjects.push(catchRail, label);
+      visualObjects.push(catchRail, flashOverlay, label);
     } else {
       const glow = this.add.ellipse(layout.x, surfaceY - 5, 88, 22, this.theme.palette.cleat, 0.12)
         .setRotation(tier.angle)
@@ -489,7 +555,14 @@ export class KickfallScene extends Phaser.Scene {
         .setDisplaySize(82, 29)
         .setRotation(tier.angle)
         .setDepth(18);
-      visualObjects.push(glow, bumper);
+      flashOverlay = this.add.image(layout.x, surfaceY - 12, this.theme.textureKeys.cleat)
+        .setDisplaySize(82, 29)
+        .setRotation(tier.angle)
+        .setTintFill(0xff3d58)
+        .setBlendMode(Phaser.BlendModes.ADD)
+        .setAlpha(0)
+        .setDepth(18.7);
+      visualObjects.push(glow, bumper, flashOverlay);
       visualObjects.push(this.add.text(layout.x, surfaceY - 50, t(this.language, 'kickfall.obstacleKick'), {
         fontFamily: 'Arial Rounded MT Bold, sans-serif',
         fontSize: '11px',
@@ -507,14 +580,25 @@ export class KickfallScene extends Phaser.Scene {
         : layout.x - tier.flow * (BALL_RADIUS + 15),
       holdY: surfaceY - BALL_RADIUS - 1,
       visualObjects,
+      flashOverlay,
+      flashBaseScaleX: flashOverlay.scaleX,
+      flashBaseScaleY: flashOverlay.scaleY,
+      flashSeconds: 0,
+      flashCount: 0,
+      pressure: 0,
+      lastPressureAt: Number.NEGATIVE_INFINITY,
+      lastImpactForce: 0,
+      lastImpactHops: 0,
+      lastPressureKickSerial: 0,
       releasedBalls: 0,
       stalledBallId: null,
     });
   }
 
-  createBoundary(x, y, width, height, category, collidesWith) {
+  createBoundary(x, y, width, height, category, collidesWith, angle = 0) {
     const boundary = this.matter.add.rectangle(x, y, width, height, {
       isStatic: true,
+      angle,
       label: category === CATEGORY.PLAYER_BOUNDARY ? 'kickfall-player-boundary' : 'kickfall-boundary',
     });
     boundary.collisionFilter.category = category;
@@ -668,13 +752,15 @@ export class KickfallScene extends Phaser.Scene {
     const horizontalOffset = Math.max(0, this.stageLayout.width - GAME_WIDTH) / 2;
     const bottomOffset = this.stageLayout.bottomOffset;
     const uiScale = getWideStageUiScale(this.stageLayout);
+    const joystickRadius = 118 * uiScale;
     this.movementJoystick = new VirtualJoystick(this, {
-      x: 160 + horizontalOffset,
-      y: 635 + bottomOffset,
-      radius: 82 * uiScale,
-      thumbRadius: 32 * uiScale,
-      interactionRadius: 110 * uiScale,
+      x: horizontalOffset + joystickRadius + 64,
+      y: GAME_HEIGHT + bottomOffset - joystickRadius - 8,
+      radius: joystickRadius,
+      thumbRadius: joystickRadius * 0.4,
+      interactionRadius: joystickRadius * 1.4,
       deadZone: 0.24,
+      axis: 'both',
       accent: 0x50d8ef,
       onChange: ({ left, right, up, down }) => {
         Object.assign(this.touch, { left, right, up, down });
@@ -1016,8 +1102,19 @@ export class KickfallScene extends Phaser.Scene {
       if (!playerIsA && !playerIsB) return;
       const other = playerIsA ? pair.bodyB : pair.bodyA;
       const label = other.label || other.parent?.label || '';
-      if (!label.startsWith('kickfall-platform:')) return;
-      if (this.player.y <= other.bounds.min.y + 24 && this.player.body.velocity.y >= -1.2) {
+      if (label.startsWith('kickfall-ball:')) {
+        const ballId = Number(label.split(':')[1]);
+        const ball = this.balls.find((candidate) => candidate.id === ballId);
+        if (this.isPlayerSupportedByBall(ball)) {
+          this.groundedUntil = this.simulationSeconds + 0.11;
+        }
+        return;
+      }
+      if (
+        label.startsWith('kickfall-platform:')
+        && this.player.y <= other.bounds.min.y + 24
+        && this.player.body.velocity.y >= -1.2
+      ) {
         this.groundedUntil = this.simulationSeconds + 0.11;
         this.currentTierId = label.split(':')[1] || this.currentTierId;
       }
@@ -1045,6 +1142,12 @@ export class KickfallScene extends Phaser.Scene {
       || this.phase === 'defeat'
     ) return;
     this.simulationSeconds += dt;
+    if (
+      this.forceCombo
+      && this.simulationSeconds - this.forceCombo.at > KICKFALL_FORCE_CONFIG.comboWindowSeconds
+    ) {
+      this.forceCombo = null;
+    }
     this.updateThemeMotion();
     this.kickTimer = Math.max(0, this.kickTimer - dt);
     this.kickCooldown = Math.max(0, this.kickCooldown - dt);
@@ -1294,37 +1397,64 @@ export class KickfallScene extends Phaser.Scene {
     this.kickCooldown = KICK_COOLDOWN;
     this.kickSerial += 1;
     this.lastKickedBallId = null;
+    const supportBall = this.getPlayerBallSupport();
     const candidates = this.balls
       .map((ball) => ({
         ball,
         distance: Math.hypot(ball.body.x - this.player.x, ball.body.y - this.player.y),
+        directContact: isKickfallKickContact({
+          playerX: this.player.x,
+          playerY: this.player.y,
+          facing: this.facing,
+          ballX: ball.body.x,
+          ballY: ball.body.y,
+          ballRadius: ball.radius,
+          footForwardOffset: KICK_FOOT_FORWARD_OFFSET,
+          footVerticalOffset: KICK_FOOT_VERTICAL_OFFSET,
+          footRadius: KICK_FOOT_RADIUS,
+        }),
       }))
-      .filter(({ ball }) => isKickfallKickContact({
-        playerX: this.player.x,
-        playerY: this.player.y,
-        facing: this.facing,
-        ballX: ball.body.x,
-        ballY: ball.body.y,
-        ballRadius: ball.radius,
-        footForwardOffset: KICK_FOOT_FORWARD_OFFSET,
-        footVerticalOffset: KICK_FOOT_VERTICAL_OFFSET,
-        footRadius: KICK_FOOT_RADIUS,
-      }))
+      .filter(({ ball, directContact }) => directContact || ball === supportBall)
       .sort((a, b) => Number(Boolean(b.ball.stalledObstacleId))
         - Number(Boolean(a.ball.stalledObstacleId))
+        || Number(b.directContact) - Number(a.directContact)
         || a.distance - b.distance);
     const target = candidates[0]?.ball;
     if (!target) return false;
+    const targetTierId = this.tierForBall(target)?.id ?? this.currentTierId;
+    const contextId = `${targetTierId}:${this.facing}`;
+    const combo = resolveForceCombo({
+      contextId,
+      previousContextId: this.forceCombo?.contextId,
+      previousAt: this.forceCombo?.at,
+      previousStage: this.forceCombo?.stage,
+      now: this.simulationSeconds,
+      windowSeconds: KICKFALL_FORCE_CONFIG.comboWindowSeconds,
+      multipliers: KICKFALL_FORCE_CONFIG.comboMultipliers,
+    });
+    this.forceCombo = combo;
+    const approachRatio = Phaser.Math.Clamp(
+      (this.player.body.velocity.x * this.facing)
+        / KICKFALL_FORCE_CONFIG.approachSpeedForMaximumBonus,
+      0,
+      1,
+    );
+    const approachMultiplier = 1
+      + approachRatio * KICKFALL_FORCE_CONFIG.maximumApproachBonus;
+    const kickForce = this.character.stats.kick * combo.multiplier * approachMultiplier;
     const kickScale = 0.9 + this.character.stats.kick * 0.1;
     if (target.body.body.isStatic) target.body.setStatic(false);
     target.body.setVelocity(this.facing * 14.2 * kickScale, -2.5);
     target.body.setAngularVelocity(this.facing * 0.22);
     target.armedUntil = this.simulationSeconds + KICKFALL_CONFIG.armedSeconds;
-    target.impactPower = 1;
+    target.impactPower = kickForce;
+    target.forceHops = 0;
+    target.directKick = true;
     target.kickSerial = this.kickSerial;
     target.damagedGateIds = [];
     target.damagedBoss = false;
     this.lastKickedBallId = target.id;
+    this.lastKickForce = kickForce;
     arcadeAudio.kick(false);
     this.spawnImpact(target.body.x, target.body.y, 0xffd26d, 8);
     this.cameras.main.shake(90, 0.003);
@@ -1371,6 +1501,8 @@ export class KickfallScene extends Phaser.Scene {
       spawnedAt: this.simulationSeconds,
       armedUntil: 0,
       impactPower: 0,
+      forceHops: 0,
+      directKick: false,
       kickSerial: 0,
       damagedGateIds: [],
       damagedBoss: false,
@@ -1386,11 +1518,34 @@ export class KickfallScene extends Phaser.Scene {
     return ball;
   }
 
-  stepBalls() {
+  stepBalls(dt) {
     const drained = [];
     this.balls.forEach((ball) => {
       const tier = this.tierForBall(ball);
+      const uphillReceiver = tier?.mode === 'uphill'
+        ? this.landingGuides.find((guide) => (
+          guide.tierId === tier.id
+          && getKickfallLandingGuideContact({
+            ...guide,
+            ballX: ball.body.x,
+            ballY: ball.body.y,
+            ballRadius: ball.radius,
+          }).touching
+        ))
+        : null;
       if (
+        tier?.mode === 'uphill'
+        && ball.bossCounterUntil <= this.simulationSeconds
+      ) {
+        const velocityX = stepKickfallSurfaceRollVelocity({
+          velocityX: ball.body.body.velocity.x,
+          surfaceAngle: uphillReceiver?.angle ?? tier.angle,
+          dt,
+          maximumSpeed: uphillReceiver?.assistSpeed
+            ?? BALL_ROLL_SPEED * Math.abs(tier.rollAssist),
+        });
+        ball.body.setVelocityX(velocityX);
+      } else if (
         tier
         && tier.rollAssist !== 0
         && ball.bossCounterUntil <= this.simulationSeconds
@@ -1426,16 +1581,14 @@ export class KickfallScene extends Phaser.Scene {
     this.landingGuides.forEach((guide) => {
       this.balls.forEach((ball) => {
         if (ball.passedLandingGuideIds.includes(guide.id)) return;
-        const progress = (ball.body.x - guide.entryX) * guide.flow;
+        const contact = getKickfallLandingGuideContact({
+          ...guide,
+          ballX: ball.body.x,
+          ballY: ball.body.y,
+          ballRadius: ball.radius,
+        });
+        const { progress, rampSurfaceY, touching: touchingRamp } = contact;
         const captured = ball.landingGuideId === guide.id;
-        const clampedProgress = Phaser.Math.Clamp(progress, 0, guide.width);
-        const rampSurfaceY = guide.surfaceY
-          - guide.height * (1 - clampedProgress / guide.width);
-        const withinRamp = progress >= -BALL_RADIUS
-          && progress <= guide.width + BALL_RADIUS;
-        const touchingRamp = withinRamp
-          && ball.body.y + BALL_RADIUS >= rampSurfaceY - 10
-          && ball.body.y <= rampSurfaceY + BALL_RADIUS;
 
         if (!captured && !touchingRamp) return;
 
@@ -1462,9 +1615,104 @@ export class KickfallScene extends Phaser.Scene {
     });
   }
 
+  getObstaclePressureTuning(obstacle) {
+    return resolveDifficultyPressureTuning({
+      difficulty: this.difficulty,
+      baseResistance: KICKFALL_FORCE_CONFIG.trapResistance[obstacle.type]
+        ?? KICKFALL_FORCE_CONFIG.trapResistance.cleat,
+      baseDecayPerSecond: KICKFALL_FORCE_CONFIG.pressureDecayPerSecond,
+    });
+  }
+
+  stepObstaclePressure(obstacle, dt) {
+    const tuning = this.getObstaclePressureTuning(obstacle);
+    obstacle.pressure = decayPressure({
+      pressure: obstacle.pressure,
+      dt,
+      secondsSinceImpact: this.simulationSeconds - obstacle.lastPressureAt,
+      graceSeconds: KICKFALL_FORCE_CONFIG.pressureGraceSeconds,
+      decayPerSecond: tuning.decayPerSecond,
+    });
+  }
+
+  releaseBallFromObstacle(ball, obstacle, {
+    velocityX = ball.body.body.velocity.x,
+    velocityY = ball.body.body.velocity.y,
+    armedUntil = ball.armedUntil,
+    impactPower = ball.impactPower,
+    forceHops = ball.forceHops,
+    kickSerial = ball.kickSerial,
+  } = {}) {
+    if (!ball.passedObstacleIds.includes(obstacle.id)) {
+      ball.passedObstacleIds.push(obstacle.id);
+    }
+    ball.stalledObstacleId = null;
+    this.clearBallMagnetCapture(ball);
+    obstacle.stalledBallId = null;
+    obstacle.pressure = 0;
+    obstacle.releasedBalls += 1;
+    this.progress.obstacleClears += 1;
+    if (ball.body.body.isStatic) ball.body.setStatic(false);
+    ball.body.setVelocity(velocityX, velocityY);
+    ball.body.setAngularVelocity(obstacle.flow * 0.2);
+    ball.armedUntil = armedUntil;
+    ball.impactPower = impactPower;
+    ball.forceHops = forceHops;
+    ball.directKick = forceHops === 0;
+    ball.kickSerial = kickSerial;
+    this.spawnImpact(
+      ball.body.x,
+      ball.body.y,
+      obstacle.type === 'pocket' ? 0x61edf2 : 0xffcf55,
+      6,
+    );
+  }
+
+  applyObstaclePressure(ball, obstacle, {
+    force = ball.impactPower,
+    direct = ball.directKick && ball.forceHops === 0,
+    velocityX = ball.body.body.velocity.x,
+    velocityY = ball.body.body.velocity.y,
+    armedUntil = ball.armedUntil,
+    forceHops = ball.forceHops,
+    kickSerial = ball.kickSerial,
+  } = {}) {
+    if (kickSerial > 0 && obstacle.lastPressureKickSerial === kickSerial) return false;
+    const tuning = this.getObstaclePressureTuning(obstacle);
+    const result = resolvePressureImpact({
+      pressure: obstacle.pressure,
+      incomingForce: force,
+      resistance: tuning.resistance,
+      direct,
+    });
+    obstacle.pressure = result.pressure;
+    obstacle.lastPressureAt = this.simulationSeconds;
+    obstacle.lastImpactForce = result.appliedForce;
+    obstacle.lastImpactHops = Math.max(0, Math.floor(Number(forceHops) || 0));
+    obstacle.lastPressureKickSerial = kickSerial;
+    this.flashObstacle(obstacle.id, result.appliedForce / tuning.resistance);
+    if (!result.released) {
+      ball.armedUntil = 0;
+      ball.impactPower = 0;
+      ball.directKick = false;
+      return false;
+    }
+    this.releaseBallFromObstacle(ball, obstacle, {
+      velocityX,
+      velocityY,
+      armedUntil,
+      impactPower: force,
+      forceHops,
+      kickSerial,
+    });
+    return true;
+  }
+
   stepObstacles(dt) {
     if (!this.obstacles.length) return;
     this.obstacles.forEach((obstacle) => {
+      this.stepObstaclePressure(obstacle, dt);
+      this.stepObstacleFlash(obstacle, dt);
       if (obstacle.stalledBallId !== null
         && !this.balls.some((ball) => ball.id === obstacle.stalledBallId)) {
         obstacle.stalledBallId = null;
@@ -1484,14 +1732,7 @@ export class KickfallScene extends Phaser.Scene {
           && ball.body.body.velocity.x * obstacle.flow >= 4
           && (insideCapture || captureOwned);
         if (kickedThrough) {
-          ball.passedObstacleIds.push(obstacle.id);
-          ball.stalledObstacleId = null;
-          this.clearBallMagnetCapture(ball);
-          obstacle.stalledBallId = null;
-          obstacle.releasedBalls += 1;
-          this.progress.obstacleClears += 1;
-          this.spawnImpact(ball.body.x, ball.body.y, obstacle.type === 'pocket' ? 0x61edf2 : 0xffcf55, 6);
-          return;
+          if (this.applyObstaclePressure(ball, obstacle)) return;
         }
         if (obstacle.type === 'pocket' && captureOwned) {
           obstacle.stalledBallId = ball.id;
@@ -1519,6 +1760,47 @@ export class KickfallScene extends Phaser.Scene {
         if (!ball.body.body.isStatic) ball.body.setStatic(true);
       });
     });
+  }
+
+  flashObstacle(obstacleId, intensity = 1) {
+    const obstacle = this.obstacles.find((candidate) => candidate.id === obstacleId);
+    if (!obstacle?.flashOverlay) return false;
+    const strength = Phaser.Math.Clamp(Number(intensity) || 0, 0.25, 1);
+    obstacle.flashSeconds = OBSTACLE_FLASH_SECONDS;
+    obstacle.flashCount += 1;
+    obstacle.flashOverlay
+      .setAlpha(0.42 + strength * 0.4)
+      .setScale(
+        obstacle.flashBaseScaleX * (1.025 + strength * 0.035),
+        obstacle.flashBaseScaleY * (1.025 + strength * 0.035),
+      );
+    this.spawnImpact(obstacle.holdX, obstacle.holdY, 0xff526d, 3 + Math.ceil(strength * 3));
+    return true;
+  }
+
+  stepObstacleFlash(obstacle, dt) {
+    if (!obstacle.flashOverlay) return;
+    obstacle.flashSeconds = Math.max(0, obstacle.flashSeconds - dt);
+    const tuning = this.getObstaclePressureTuning(obstacle);
+    const pressureRatio = Phaser.Math.Clamp(obstacle.pressure / tuning.resistance, 0, 1);
+    if (obstacle.flashSeconds <= 0) {
+      obstacle.flashOverlay
+        .setAlpha(pressureRatio * 0.26)
+        .setScale(
+          obstacle.flashBaseScaleX * (1 + pressureRatio * 0.018),
+          obstacle.flashBaseScaleY * (1 + pressureRatio * 0.018),
+        );
+      return;
+    }
+    const progress = 1 - obstacle.flashSeconds / OBSTACLE_FLASH_SECONDS;
+    const pulse = Math.abs(Math.cos(progress * Math.PI * 3));
+    const strength = (0.42 + pulse * 0.58) * (1 - progress * 0.28);
+    obstacle.flashOverlay
+      .setAlpha(Math.max(pressureRatio * 0.3, 0.24 + strength * 0.62))
+      .setScale(
+        obstacle.flashBaseScaleX * (1 + pressureRatio * 0.018 + strength * 0.055),
+        obstacle.flashBaseScaleY * (1 + pressureRatio * 0.018 + strength * 0.055),
+      );
   }
 
   beginPocketCapture(ball, obstacle) {
@@ -1636,7 +1918,6 @@ export class KickfallScene extends Phaser.Scene {
         const target = this.balls
           .filter((candidate) => (
             candidate !== source
-            && !candidate.stalledObstacleId
             && this.tierForBall(candidate)?.id === sourceTier.id
             && (candidate.body.x - source.body.x) * direction > 0
           ))
@@ -1653,14 +1934,39 @@ export class KickfallScene extends Phaser.Scene {
           targetVx: target.body.body.velocity.x,
           targetArmedUntil: target.armedUntil,
           now: this.simulationSeconds,
-          contactDistance: source.radius + target.radius + 4,
+          contactDistance: source.radius + target.radius + KICKFALL_FORCE_CONFIG.maximumGap,
+          sourceForceHops: source.forceHops,
         });
         if (!result) return;
+        const kickSerial = source.kickSerial;
         source.armedUntil = result.sourceArmedUntil;
         source.impactPower = result.sourceImpactPower;
+        source.directKick = false;
+        if (target.stalledObstacleId) {
+          const obstacle = this.obstacles.find(
+            (candidate) => candidate.id === target.stalledObstacleId,
+          );
+          if (obstacle) {
+            target.forceHops = result.targetForceHops;
+            target.kickSerial = kickSerial;
+            this.applyObstaclePressure(target, obstacle, {
+              force: result.targetImpactPower,
+              direct: false,
+              velocityX: result.targetVelocityX,
+              velocityY: -1.8,
+              armedUntil: result.targetArmedUntil,
+              forceHops: result.targetForceHops,
+              kickSerial,
+            });
+            transferred = true;
+            return;
+          }
+        }
         target.armedUntil = result.targetArmedUntil;
         target.impactPower = result.targetImpactPower;
-        target.kickSerial = source.kickSerial;
+        target.forceHops = result.targetForceHops;
+        target.directKick = false;
+        target.kickSerial = kickSerial;
         target.damagedGateIds = [];
         target.damagedBoss = false;
         if (target.body.body.isStatic) target.body.setStatic(false);
@@ -1685,14 +1991,25 @@ export class KickfallScene extends Phaser.Scene {
           damagedGateIds: ball.damagedGateIds,
         })) return;
         ball.damagedGateIds.push(gate.id);
-        const impactPower = Phaser.Math.Clamp(
-          Number.isFinite(ball.impactPower) ? ball.impactPower : 1,
-          0,
-          1,
-        );
-        gate.health = Math.max(0, gate.health - impactPower);
+        const tuning = resolveDifficultyPressureTuning({
+          difficulty: this.difficulty,
+          baseResistance: KICKFALL_FORCE_CONFIG.gateResistance,
+          baseDecayPerSecond: 0,
+        });
+        const impactPower = Math.max(0, Number(ball.impactPower) || 0);
+        const damage = resolveForceDamage({
+          incomingForce: impactPower,
+          resistance: tuning.resistance,
+          minimumForce: KICKFALL_FORCE_CONFIG.minimumForce,
+          maximumDamage: 1,
+        });
+        gate.health = Math.max(0, gate.health - damage);
+        gate.lastImpactForce = impactPower;
+        gate.lastDamage = damage;
+        gate.lastForceHops = ball.forceHops;
         ball.armedUntil = 0;
         ball.impactPower = 0;
+        ball.directKick = false;
         gate.healthPips.forEach((pip, index) => pip.setAlpha(index < Math.ceil(gate.health) ? 0.95 : 0.16));
         if (gate.health <= 0) {
           this.breakGate(gate);
@@ -1760,6 +2077,8 @@ export class KickfallScene extends Phaser.Scene {
           ball.bossCounterUntil = this.simulationSeconds + counter.suppressAssistSeconds;
           ball.armedUntil = 0;
           ball.impactPower = 0;
+          ball.forceHops = 0;
+          ball.directKick = false;
           ball.damagedGateIds = [];
           ball.damagedBoss = false;
         });
@@ -1814,17 +2133,37 @@ export class KickfallScene extends Phaser.Scene {
     const { x, y } = gate;
     gate.image.destroy();
     gate.healthPips.forEach((pip) => pip.destroy());
-    this.spawnBrickBurst(x, y, gate.height);
+    this.spawnGateExplosion(x, y, gate.height);
     arcadeAudio.impact();
     this.game.events.emit('platform:haptic', 'heavy');
-    this.cameras.main.shake(220, 0.009);
-    this.announcementText.setText(t(this.language, 'kickfall.gateBroken')).setColor('#ffdb75');
-    this.goBannerSeconds = 0.55;
+    this.cameras.main.flash(55, 255, 205, 95, false);
+    this.cameras.main.shake(280, 0.013);
+    this.announcementText.setText('');
+    this.goBannerSeconds = 0;
     return true;
+  }
+
+  isPlayerSupportedByBall(ball) {
+    if (!this.player?.body || !ball?.body?.body) return false;
+    return isKickfallBallSupport({
+      playerX: this.player.x,
+      playerY: this.player.y,
+      playerVelocityY: this.player.body.velocity.y,
+      playerHalfWidth: PLAYER_WIDTH / 2,
+      playerHalfHeight: PLAYER_HEIGHT / 2,
+      ballX: ball.body.x,
+      ballY: ball.body.y,
+      ballRadius: ball.radius,
+    });
+  }
+
+  getPlayerBallSupport() {
+    return this.balls.find((ball) => this.isPlayerSupportedByBall(ball)) ?? null;
   }
 
   isPlayerGrounded() {
     if (this.simulationSeconds <= this.groundedUntil) return true;
+    if (this.getPlayerBallSupport()) return true;
     const tier = this.getTier(this.currentTierId);
     if (!tier || this.player.x < tier.left - 8 || this.player.x > tier.left + tier.width + 8) return false;
     const surfaceY = tierSurfaceY(tier, this.player.x);
@@ -1871,6 +2210,7 @@ export class KickfallScene extends Phaser.Scene {
       const speed = Phaser.Math.FloatBetween(38, 128);
       const item = this.add.circle(x, y, Phaser.Math.Between(2, 5), color, 0.9).setDepth(48);
       this.effects.push({
+        kind: 'impact',
         item,
         vx: Math.cos(angle) * speed,
         vy: Math.sin(angle) * speed,
@@ -1886,7 +2226,7 @@ export class KickfallScene extends Phaser.Scene {
     const textureKey = this.theme.textureKeys.gate;
     const textureSource = this.textures.get(textureKey).getSourceImage();
     const cosmicCrop = this.themeId === 'cosmic';
-    for (let index = 0; index < 16; index += 1) {
+    for (let index = 0; index < 26; index += 1) {
       const row = index % 5;
       const column = index % 2;
       const item = this.add.image(
@@ -1907,15 +2247,135 @@ export class KickfallScene extends Phaser.Scene {
         .setDisplaySize(Phaser.Math.Between(12, 21), Phaser.Math.Between(9, 16))
         .setDepth(48);
       this.effects.push({
+        kind: 'gate-debris',
         item,
-        vx: Phaser.Math.FloatBetween(-150, 150),
-        vy: Phaser.Math.FloatBetween(-210, -45),
-        life: Phaser.Math.FloatBetween(0.45, 0.82),
-        maxLife: 0.82,
+        vx: Phaser.Math.FloatBetween(-230, 230),
+        vy: Phaser.Math.FloatBetween(-285, -35),
+        life: Phaser.Math.FloatBetween(0.62, 1.02),
+        maxLife: 1.02,
         gravity: 420,
-        spin: Phaser.Math.FloatBetween(-420, 420),
+        spin: Phaser.Math.FloatBetween(-560, 560),
       });
     }
+  }
+
+  spawnGateExplosion(x, y, height) {
+    this.spawnBrickBurst(x, y, height);
+
+    const flash = this.add.circle(x, y, 48, 0xfff1a8, 0.96)
+      .setBlendMode(Phaser.BlendModes.ADD)
+      .setDepth(53);
+    this.effects.push({
+      kind: 'explosion-flash',
+      item: flash,
+      vx: 0,
+      vy: 0,
+      life: 0.2,
+      maxLife: 0.2,
+      gravity: 0,
+      spin: 0,
+      baseScaleX: flash.scaleX,
+      baseScaleY: flash.scaleY,
+      scaleRate: 1.25,
+    });
+
+    [0, 1].forEach((ringIndex) => {
+      const ring = this.add.circle(x, y, 30 + ringIndex * 8, 0xffd35f, 0)
+        .setStrokeStyle(
+          ringIndex === 0 ? 3 : 2,
+          ringIndex === 0 ? 0xffed88 : 0xff8c42,
+          ringIndex === 0 ? 0.25 : 0.16,
+        )
+        .setBlendMode(Phaser.BlendModes.ADD)
+        .setDepth(51 - ringIndex);
+      this.effects.push({
+        kind: 'shockwave',
+        item: ring,
+        vx: 0,
+        vy: 0,
+        life: 0.42 + ringIndex * 0.12,
+        maxLife: 0.42 + ringIndex * 0.12,
+        gravity: 0,
+        spin: 0,
+        baseScaleX: ring.scaleX,
+        baseScaleY: ring.scaleY,
+        scaleRate: 2.45 - ringIndex * 0.3,
+      });
+    });
+
+    for (let index = 0; index < 28; index += 1) {
+      const angle = Phaser.Math.FloatBetween(0, Math.PI * 2);
+      const speed = Phaser.Math.FloatBetween(150, 390);
+      const spark = this.add.rectangle(
+        x + Phaser.Math.Between(-12, 12),
+        y + Phaser.Math.Between(-Math.floor(height * 0.28), Math.floor(height * 0.28)),
+        Phaser.Math.Between(3, 6),
+        Phaser.Math.Between(9, 18),
+        index % 3 === 0 ? 0xffffff : index % 2 === 0 ? 0xffe36e : 0xff7b3d,
+        0.95,
+      )
+        .setRotation(angle + Math.PI / 2)
+        .setBlendMode(Phaser.BlendModes.ADD)
+        .setDepth(52);
+      this.effects.push({
+        kind: 'spark',
+        item: spark,
+        vx: Math.cos(angle) * speed,
+        vy: Math.sin(angle) * speed - Phaser.Math.FloatBetween(25, 105),
+        life: Phaser.Math.FloatBetween(0.34, 0.62),
+        maxLife: 0.62,
+        gravity: 330,
+        spin: Phaser.Math.FloatBetween(-760, 760),
+      });
+    }
+
+    for (let index = 0; index < 11; index += 1) {
+      const smoke = this.add.circle(
+        x + Phaser.Math.Between(-28, 28),
+        y + Phaser.Math.Between(-Math.floor(height * 0.3), Math.floor(height * 0.3)),
+        Phaser.Math.Between(9, 17),
+        index % 2 === 0 ? 0x5a3855 : 0x342740,
+        0.78,
+      ).setDepth(47);
+      this.effects.push({
+        kind: 'smoke',
+        item: smoke,
+        vx: Phaser.Math.FloatBetween(-90, 90),
+        vy: Phaser.Math.FloatBetween(-150, -54),
+        life: Phaser.Math.FloatBetween(0.62, 0.96),
+        maxLife: 0.96,
+        gravity: -18,
+        spin: 0,
+        baseScaleX: smoke.scaleX,
+        baseScaleY: smoke.scaleY,
+        scaleRate: Phaser.Math.FloatBetween(0.7, 1.35),
+      });
+    }
+
+    const boom = this.add.text(x + 18, y + Math.max(62, height * 0.62), 'BOOM!', {
+      fontFamily: 'Arial Black, Arial Rounded MT Bold, sans-serif',
+      fontSize: '38px',
+      fontStyle: 'bold',
+      color: '#fff59a',
+      stroke: '#b51f3e',
+      strokeThickness: 9,
+    })
+      .setOrigin(0.5)
+      .setAngle(Phaser.Math.Between(-7, 7))
+      .setDepth(55);
+    this.effects.push({
+      kind: 'boom-text',
+      item: boom,
+      vx: Phaser.Math.FloatBetween(-12, 12),
+      vy: -54,
+      life: 0.68,
+      maxLife: 0.68,
+      gravity: 40,
+      spin: 0,
+      baseScaleX: boom.scaleX,
+      baseScaleY: boom.scaleY,
+      scaleRate: 0.48,
+    });
   }
 
   updateEffects(dt) {
@@ -1929,6 +2389,13 @@ export class KickfallScene extends Phaser.Scene {
       effect.item.x += effect.vx * dt;
       effect.item.y += effect.vy * dt;
       effect.item.angle += effect.spin * dt;
+      if (effect.scaleRate) {
+        const progress = 1 - effect.life / effect.maxLife;
+        effect.item.setScale(
+          effect.baseScaleX * (1 + effect.scaleRate * progress),
+          effect.baseScaleY * (1 + effect.scaleRate * progress),
+        );
+      }
       effect.item.setAlpha(Math.min(1, effect.life / Math.max(0.01, effect.maxLife * 0.45)));
       return true;
     });
@@ -2044,7 +2511,7 @@ export class KickfallScene extends Phaser.Scene {
     this.pauseReason = null;
     this.matter.world.resume();
     arcadeAudio.click();
-    this.scene.start('Intro');
+    this.scene.start('MiniGameSetup', { gameId: 'kickfall' });
   }
 
   handlePlatformBack() {
@@ -2082,8 +2549,15 @@ export class KickfallScene extends Phaser.Scene {
       prepareFlowBall: (tierId = 'top') => this.prepareFlowBall(tierId),
       prepareLandingGuideDrop: (tierId = 'top') => this.prepareLandingGuideDrop(tierId),
       prepareLandingGuidePlayerDrop: (tierId = 'upper') => this.prepareLandingGuidePlayerDrop(tierId),
+      prepareReceiverPileEscape: (tierId = 'upper') => this.prepareReceiverPileEscape(tierId),
+      prepareReceiverGravityPile: (tierId = 'upper', count = 7) => (
+        this.prepareReceiverGravityPile(tierId, count)
+      ),
       prepareBufferedJump: (tierId = 'upper') => this.prepareBufferedJump(tierId),
       prepareObstacleKick: (obstacleId) => this.prepareObstacleKick(obstacleId),
+      prepareObstacleQueue: (obstacleId, count = 4) => (
+        this.prepareObstacleQueue(obstacleId, count)
+      ),
       prepareGateKick: (gateId = 'gate-a') => this.prepareGateKick(gateId),
       prepareGateQueue: (gateId = 'gate-a', count = 6) => this.prepareGateQueue(gateId, count),
       prepareBossHit: () => this.prepareBossHit(),
@@ -2114,8 +2588,19 @@ export class KickfallScene extends Phaser.Scene {
       ball.body.destroy();
     });
     this.balls = [];
+    this.forceCombo = null;
+    this.lastKickForce = 0;
     this.obstacles.forEach((obstacle) => {
       obstacle.stalledBallId = null;
+      obstacle.pressure = 0;
+      obstacle.lastPressureAt = Number.NEGATIVE_INFINITY;
+      obstacle.lastImpactForce = 0;
+      obstacle.lastImpactHops = 0;
+      obstacle.lastPressureKickSerial = 0;
+      obstacle.flashSeconds = 0;
+      obstacle.flashOverlay
+        ?.setAlpha(0)
+        .setScale(obstacle.flashBaseScaleX, obstacle.flashBaseScaleY);
     });
   }
 
@@ -2195,6 +2680,46 @@ export class KickfallScene extends Phaser.Scene {
     this.groundedUntil = this.simulationSeconds + 1;
     this.kickCooldown = 0;
     return ball.id;
+  }
+
+  prepareObstacleQueue(obstacleId, count = 4) {
+    const obstacle = this.obstacles.find((candidate) => candidate.id === obstacleId);
+    if (!obstacle) return false;
+    this.clearBalls();
+    this.phase = 'playing';
+    this.spawnTimer = this.level.spawnIntervalSeconds;
+    this.announcementText.setText('');
+    const tier = this.getTier(obstacle.tierId);
+    const safeCount = Phaser.Math.Clamp(Math.floor(Number(count) || 0), 2, 10);
+    const spacing = BALL_RADIUS * 2 + 2;
+    const balls = Array.from({ length: safeCount }, (_, index) => {
+      const x = obstacle.holdX - obstacle.flow * spacing * index;
+      const y = tierSurfaceY(tier, x) - BALL_RADIUS - 1;
+      const ball = this.spawnBall({ x, y, vx: 0, vy: 0 });
+      ball.spawnedAt = this.simulationSeconds;
+      return ball;
+    });
+    const captive = balls[0];
+    captive.body.setPosition(obstacle.holdX, obstacle.holdY);
+    captive.stalledObstacleId = obstacle.id;
+    obstacle.stalledBallId = captive.id;
+    if (obstacle.type === 'pocket') {
+      this.holdPocketBall(captive, obstacle);
+    } else {
+      captive.body.setVelocity(0, 0);
+      captive.body.setAngularVelocity(0);
+      captive.body.setStatic(true);
+    }
+    const rearBall = balls[balls.length - 1];
+    const playerX = rearBall.body.x - obstacle.flow * 46;
+    this.player.setPosition(playerX, playerCenterYOnTier(tier, playerX));
+    this.player.setVelocity(0, 0);
+    this.currentTierId = tier.id;
+    this.tierTransfer = null;
+    this.setFacing(obstacle.flow);
+    this.groundedUntil = this.simulationSeconds + 1;
+    this.kickCooldown = 0;
+    return balls.map((ball) => ball.id);
   }
 
   prepareBossHit() {
@@ -2286,6 +2811,89 @@ export class KickfallScene extends Phaser.Scene {
     return { startY, expectedLandingY };
   }
 
+  prepareReceiverPileEscape(tierId = 'upper') {
+    const guide = this.landingGuides.find((candidate) => candidate.tierId === tierId);
+    if (!guide) return false;
+    this.clearBalls();
+    this.phase = 'playing';
+    this.spawnTimer = this.level.spawnIntervalSeconds;
+    this.announcementText.setText('');
+    const tier = this.getTier(guide.tierId);
+    const balls = Array.from({ length: 5 }, (_, index) => {
+      const progress = 0.12 + index * 0.19;
+      const x = Phaser.Math.Linear(guide.entryX, guide.exitX, progress);
+      const rampY = Phaser.Math.Linear(guide.surfaceY - guide.height, guide.surfaceY, progress);
+      const ball = this.spawnBall({
+        x,
+        y: rampY - BALL_RADIUS - 2,
+        vx: 0,
+        vy: 0,
+      });
+      ball.spawnedAt = this.simulationSeconds;
+      return ball;
+    });
+    const supportBall = balls[2];
+    this.player.setSensor(false);
+    this.player.setStatic(false);
+    this.player.setFixedRotation();
+    this.player.setPosition(
+      supportBall.body.x,
+      supportBall.body.y - BALL_RADIUS - PLAYER_HEIGHT / 2,
+    );
+    this.player.setVelocity(0, 0);
+    this.currentTierId = tier.id;
+    this.tierTransfer = null;
+    this.setFacing(tier.flow);
+    this.groundedUntil = 0;
+    this.jumpBufferSeconds = 0;
+    this.kickCooldown = 0;
+    return {
+      supportBallId: supportBall.id,
+      ballIds: balls.map((ball) => ball.id),
+      startY: this.player.y,
+    };
+  }
+
+  prepareReceiverGravityPile(tierId = 'upper', count = 7) {
+    const guide = this.landingGuides.find(
+      (candidate) => candidate.tierId === tierId && candidate.mode === 'uphill',
+    );
+    if (!guide) return false;
+    this.clearBalls();
+    this.phase = 'playing';
+    this.spawnTimer = 999;
+    this.announcementText.setText('');
+    const tier = this.getTier(guide.tierId);
+    const safeCount = Phaser.Math.Clamp(Math.floor(Number(count) || 0), 3, 10);
+    const spacing = BALL_RADIUS * 2 + 3;
+    const balls = Array.from({ length: safeCount }, (_, index) => {
+      const x = guide.exitX + guide.flow * (BALL_RADIUS + 5 + index * spacing);
+      const ball = this.spawnBall({
+        x,
+        y: tierSurfaceY(tier, x) - BALL_RADIUS - 1,
+        vx: 0,
+        vy: 0,
+      });
+      ball.spawnedAt = this.simulationSeconds;
+      ball.passedLandingGuideIds.push(guide.id);
+      return ball;
+    });
+    const playerX = tierCenterX(tier);
+    this.player.setPosition(playerX, playerCenterYOnTier(tier, playerX));
+    this.player.setVelocity(0, 0);
+    this.currentTierId = tier.id;
+    this.tierTransfer = null;
+    this.groundedUntil = this.simulationSeconds + 1;
+    return {
+      ballIds: balls.map((ball) => ball.id),
+      guideId: guide.id,
+      entryX: guide.entryX,
+      exitX: guide.exitX,
+      width: guide.width,
+      flow: guide.flow,
+    };
+  }
+
   prepareBufferedJump(tierId = 'upper') {
     const tier = this.getTier(tierId) ?? this.getTier('upper');
     this.clearBalls();
@@ -2334,11 +2942,22 @@ export class KickfallScene extends Phaser.Scene {
       };
     }
     const now = this.simulationSeconds;
+    const ballSupport = this.getPlayerBallSupport();
     return {
       mode: this.isPaused ? 'paused' : this.phase,
       pauseReason: this.pauseReason,
       modal: this.abandonConfirmation?.kind ?? null,
       minigame: 'kickfall',
+      difficulty: this.difficulty,
+      forceSystem: {
+        transmissionRetention: KICKFALL_CONFIG.chargeTransferRetention,
+        minimumForce: KICKFALL_FORCE_CONFIG.minimumForce,
+        comboWindowSeconds: KICKFALL_FORCE_CONFIG.comboWindowSeconds,
+        comboStage: this.forceCombo?.stage ?? 0,
+        comboMultiplier: this.forceCombo?.multiplier ?? 1,
+        contextId: this.forceCombo?.contextId ?? null,
+        lastKickForce: round(this.lastKickForce, 2),
+      },
       theme: {
         id: this.themeId,
         name: this.theme.name,
@@ -2356,6 +2975,7 @@ export class KickfallScene extends Phaser.Scene {
         },
       },
       coordinateSystem: 'origin top-left; +x right; +y down; logical gameplay canvas 1280x720',
+      audio: arcadeAudio.diagnostics(),
       selectedCharacter: {
         id: this.character.id,
         name: getCharacterName(this.character, this.language),
@@ -2376,8 +2996,8 @@ export class KickfallScene extends Phaser.Scene {
       },
       campaign: playerProfileStore.get().kickfall,
       timer: {
-        enabled: this.level.timerSeconds !== null,
-        totalSeconds: this.level.timerSeconds,
+        enabled: this.levelDurationSeconds !== null,
+        totalSeconds: this.levelDurationSeconds,
         remainingSeconds: this.levelTimeRemaining === null ? null : round(this.levelTimeRemaining, 2),
       },
       defeatReason: this.phase === 'defeat' ? this.defeatReason : null,
@@ -2404,6 +3024,8 @@ export class KickfallScene extends Phaser.Scene {
         ),
         kickCooldown: round(this.kickCooldown, 2),
         lastKickedBallId: this.lastKickedBallId,
+        lastKickForce: round(this.lastKickForce, 2),
+        supportingBallId: ballSupport?.id ?? null,
       } : null,
       progress: {
         ...this.progress,
@@ -2432,6 +3054,9 @@ export class KickfallScene extends Phaser.Scene {
         health: gate.health,
         maxHealth: gate.maxHealth,
         active: gate.active,
+        lastImpactForce: round(gate.lastImpactForce, 2),
+        lastDamage: round(gate.lastDamage, 2),
+        lastForceHops: gate.lastForceHops,
       })) ?? [],
       lanes: this.tiers?.map((tier) => ({
         id: tier.id,
@@ -2440,14 +3065,39 @@ export class KickfallScene extends Phaser.Scene {
         angle: round(tier.angle, 3),
         rollAssist: tier.rollAssist,
       })) ?? [],
-      obstacles: this.obstacles?.map((obstacle) => ({
-        id: obstacle.id,
-        type: obstacle.type,
-        tierId: obstacle.tierId,
-        x: obstacle.x,
-        releasedBalls: obstacle.releasedBalls,
-        stalledBallId: obstacle.stalledBallId,
-      })) ?? [],
+      entryWall: this.ballEntryWall ? {
+        angleDegrees: round(Phaser.Math.RadToDeg(this.ballEntryWall.angle), 1),
+        topX: round(this.ballEntryWall.topX, 1),
+        bottomX: round(this.ballEntryWall.bottomX, 1),
+      } : null,
+      obstacles: this.obstacles?.map((obstacle) => {
+        const tuning = this.getObstaclePressureTuning(obstacle);
+        return {
+          id: obstacle.id,
+          type: obstacle.type,
+          tierId: obstacle.tierId,
+          x: obstacle.x,
+          resistance: tuning.resistance,
+          pressure: round(obstacle.pressure, 2),
+          pressureRatio: round(obstacle.pressure / tuning.resistance, 2),
+          lastImpactForce: round(obstacle.lastImpactForce, 2),
+          lastImpactHops: obstacle.lastImpactHops,
+          releasedBalls: obstacle.releasedBalls,
+          stalledBallId: obstacle.stalledBallId,
+          flashSeconds: round(obstacle.flashSeconds, 2),
+          flashCount: obstacle.flashCount,
+          flashAlpha: round(obstacle.flashOverlay?.alpha ?? 0, 2),
+        };
+      }) ?? [],
+      visualEffects: {
+        active: this.effects?.length ?? 0,
+        gateDebris: this.effects?.filter((effect) => effect.kind === 'gate-debris').length ?? 0,
+        explosionFlashes: this.effects?.filter((effect) => effect.kind === 'explosion-flash').length ?? 0,
+        shockwaves: this.effects?.filter((effect) => effect.kind === 'shockwave').length ?? 0,
+        sparks: this.effects?.filter((effect) => effect.kind === 'spark').length ?? 0,
+        smoke: this.effects?.filter((effect) => effect.kind === 'smoke').length ?? 0,
+        boomText: this.effects?.filter((effect) => effect.kind === 'boom-text').length ?? 0,
+      },
       landingGuides: this.landingGuides?.map((guide) => ({
         id: guide.id,
         tierId: guide.tierId,
@@ -2466,6 +3116,8 @@ export class KickfallScene extends Phaser.Scene {
         vy: round(ball.body.body.velocity.y, 2),
         armedSeconds: round(Math.max(0, ball.armedUntil - now), 2),
         impactPower: round(ball.impactPower, 2),
+        forceHops: ball.forceHops,
+        directKick: ball.directKick,
         damagedBoss: ball.damagedBoss,
         bossCounterSeconds: round(Math.max(0, ball.bossCounterUntil - now), 2),
         stalledObstacleId: ball.stalledObstacleId,

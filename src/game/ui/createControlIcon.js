@@ -87,6 +87,53 @@ export const createControlIcon = (scene, {
       { x: s * 0.28, y: -s * 0.1 },
       { x: s * 0.05, y: -s * 0.1 },
     ], true);
+  } else if (icon === 'football') {
+    graphics.lineStyle(Math.max(2, s * 0.07), color, 0.98);
+    graphics.strokeCircle(0, 0, s * 0.39);
+    graphics.fillStyle(color, 1).fillPoints([
+      { x: 0, y: -s * 0.16 },
+      { x: s * 0.15, y: -s * 0.05 },
+      { x: s * 0.09, y: s * 0.14 },
+      { x: -s * 0.09, y: s * 0.14 },
+      { x: -s * 0.15, y: -s * 0.05 },
+    ], true);
+    for (let index = 0; index < 5; index += 1) {
+      const angle = -Math.PI / 2 + (index * Math.PI * 2) / 5;
+      graphics.lineBetween(
+        Math.cos(angle) * s * 0.17,
+        Math.sin(angle) * s * 0.17,
+        Math.cos(angle) * s * 0.37,
+        Math.sin(angle) * s * 0.37,
+      );
+    }
+  } else if (icon === 'minigames') {
+    graphics.fillRoundedRect(-s * 0.42, s * 0.04, s * 0.84, s * 0.28, s * 0.08);
+    graphics.fillRoundedRect(-s * 0.07, -s * 0.24, s * 0.14, s * 0.35, s * 0.06);
+    graphics.fillCircle(0, -s * 0.31, s * 0.15);
+    graphics.fillCircle(s * 0.23, s * 0.17, s * 0.055);
+    graphics.lineStyle(Math.max(2, s * 0.065), color, 1);
+    graphics.lineBetween(-s * 0.28, s * 0.17, -s * 0.12, s * 0.17);
+    graphics.lineBetween(-s * 0.2, s * 0.09, -s * 0.2, s * 0.25);
+  } else if (icon === 'kickfall') {
+    drawBall(graphics, 0, -s * 0.16, s * 0.21);
+    graphics.lineStyle(Math.max(2, s * 0.055), color, 0.72);
+    graphics.lineBetween(-s * 0.3, -s * 0.05, -s * 0.16, s * 0.23);
+    graphics.lineBetween(0, s * 0.09, 0, s * 0.39);
+    graphics.lineBetween(s * 0.3, -s * 0.05, s * 0.16, s * 0.23);
+    graphics.fillTriangle(-s * 0.1, s * 0.29, s * 0.1, s * 0.29, 0, s * 0.45);
+  } else if (icon === 'settings') {
+    graphics.lineStyle(Math.max(2, s * 0.085), color, 1);
+    graphics.strokeCircle(0, 0, s * 0.22);
+    graphics.strokeCircle(0, 0, s * 0.42);
+    for (let index = 0; index < 8; index += 1) {
+      const angle = index * Math.PI / 4;
+      graphics.lineBetween(
+        Math.cos(angle) * s * 0.39,
+        Math.sin(angle) * s * 0.39,
+        Math.cos(angle) * s * 0.5,
+        Math.sin(angle) * s * 0.5,
+      );
+    }
   } else if (icon === 'pause') {
     graphics.fillRoundedRect(-s * 0.28, -s * 0.38, s * 0.18, s * 0.76, s * 0.04);
     graphics.fillRoundedRect(s * 0.1, -s * 0.38, s * 0.18, s * 0.76, s * 0.04);

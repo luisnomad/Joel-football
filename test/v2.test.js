@@ -18,6 +18,7 @@ import {
   sanitizeProfile,
   sanitizeAudioSettings,
   sanitizeKickfallProgress,
+  setGameDifficulty,
   setProfileAudio,
   setProfileArenaTheme,
   setProfileBallType,
@@ -33,7 +34,13 @@ import { SUPERPOWERS, applySuperShot, getSuperpower } from '../src/game/content/
 import { createPlayerProfileStore, detectDeviceLanguage } from '../src/game/services/PlayerProfile.js';
 import { fitTextSize } from '../src/game/ui/textFit.js';
 import { createAudioAssetCache } from '../src/game/services/AudioAssetCache.js';
-import { AUDIO_ASSET_URLS, MUSIC_TRACKS, WHISTLE_EFFECT_URL } from '../src/game/services/ArcadeAudio.js';
+import {
+  AUDIO_ASSET_URLS,
+  AUDIO_SCENE_POLICIES,
+  MUSIC_TRACKS,
+  WHISTLE_EFFECT_URL,
+  resolveAudioScenePolicy,
+} from '../src/game/services/ArcadeAudio.js';
 import { CHARACTERS, cycleCharacter, getCharacter, sanitizeLineup } from '../src/game/content/characters.js';
 import {
   ARENA_THEMES,
@@ -48,11 +55,28 @@ import {
   createBigGuyState,
   stepBigGuy,
 } from '../src/game/pure/bigGuy.js';
+import {
+  DEFAULT_FOOTBALL_TOUCH_MOVEMENT_MODE,
+  FOOTBALL_TOUCH_MOVEMENT_MODES,
+  resolveFootballTouchMovementMode,
+} from '../src/game/developerOptions.js';
 
 const sequenceRandom = (...values) => {
   let index = 0;
   return () => values[index++ % values.length];
 };
+
+describe('developer-only Football touch movement mode', () => {
+  it('defaults safely to arrows and enables the experimental joystick only explicitly', () => {
+    expect(Object.values(FOOTBALL_TOUCH_MOVEMENT_MODES)).toContain(
+      DEFAULT_FOOTBALL_TOUCH_MOVEMENT_MODE,
+    );
+    expect(resolveFootballTouchMovementMode()).toBe(FOOTBALL_TOUCH_MOVEMENT_MODES.ARROWS);
+    expect(resolveFootballTouchMovementMode('arrows')).toBe(FOOTBALL_TOUCH_MOVEMENT_MODES.ARROWS);
+    expect(resolveFootballTouchMovementMode('something-else')).toBe(FOOTBALL_TOUCH_MOVEMENT_MODES.ARROWS);
+    expect(resolveFootballTouchMovementMode('joystick')).toBe(FOOTBALL_TOUCH_MOVEMENT_MODES.JOYSTICK);
+  });
+});
 
 describe('math challenge generation', () => {
   it('selects all four operation families uniformly from the random sample', () => {
@@ -321,14 +345,55 @@ describe('persistent audio settings', () => {
     expect(AUDIO_ASSET_URLS).toContain(WHISTLE_EFFECT_URL);
     expect(AUDIO_ASSET_URLS.some((url) => url.includes('bg_audience_goal'))).toBe(false);
   });
+
+  it('shares music across games and uses crowd ambience in arena matches', () => {
+    expect(AUDIO_SCENE_POLICIES).toEqual({
+      menu: { music: true, audience: false },
+      football: { music: true, audience: true },
+      kickfall: { music: true, audience: false },
+      discHockey: { music: true, audience: true },
+    });
+    expect(resolveAudioScenePolicy('football')).toEqual({
+      sceneMode: 'football',
+      music: true,
+      audience: true,
+    });
+    expect(resolveAudioScenePolicy('kickfall')).toEqual({
+      sceneMode: 'kickfall',
+      music: true,
+      audience: false,
+    });
+    expect(resolveAudioScenePolicy('discHockey')).toEqual({
+      sceneMode: 'discHockey',
+      music: true,
+      audience: true,
+    });
+    expect(resolveAudioScenePolicy('unknown')).toEqual({
+      sceneMode: 'menu',
+      music: true,
+      audience: false,
+    });
+  });
 });
 
 describe('persistent difficulty', () => {
-  it('defaults to Normal, sanitizes invalid values, and persists Easy/Hard', () => {
-    expect(createDefaultProfile().difficulty).toBe('normal');
-    expect(sanitizeProfile({ difficulty: 'impossible' }).difficulty).toBe('normal');
-    expect(setProfileDifficulty(createDefaultProfile(), 'easy').difficulty).toBe('easy');
-    expect(setProfileDifficulty(createDefaultProfile(), 'hard').difficulty).toBe('hard');
+  it('stores independent per-game settings while migrating the legacy Football value', () => {
+    expect(createDefaultProfile().difficultyByGame).toEqual({
+      football: 'normal',
+      kickfall: 'normal',
+      discHockey: 'normal',
+    });
+    expect(sanitizeProfile({ difficulty: 'hard' }).difficultyByGame).toEqual({
+      football: 'hard',
+      kickfall: 'normal',
+      discHockey: 'normal',
+    });
+    expect(setProfileDifficulty(createDefaultProfile(), 'easy').difficultyByGame.football).toBe('easy');
+    expect(setGameDifficulty(createDefaultProfile(), 'kickfall', 'hard').difficultyByGame).toEqual({
+      football: 'normal',
+      kickfall: 'hard',
+      discHockey: 'normal',
+    });
   });
 });
 
@@ -434,7 +499,11 @@ describe('local player profile storage', () => {
     const refreshedSession = createPlayerProfileStore(storage);
     const restored = refreshedSession.get();
     expect(restored.language).toBe('es');
-    expect(restored.difficulty).toBe('hard');
+    expect(restored.difficultyByGame).toEqual({
+      football: 'hard',
+      kickfall: 'normal',
+      discHockey: 'normal',
+    });
     expect(restored.playerCharacterId).toBe('lucia');
     expect(restored.opponentId).toBe('joel');
     expect(restored.powers.hyper).toBe(2);
@@ -465,6 +534,23 @@ describe('bilingual copy', () => {
     expect(t('xx', 'intro.powerLab')).toBe('POWER LAB');
     expect(t('es', 'missing.key')).toBe('missing.key');
     expect(t('es', 'intro.touchSystem').split('\n')).toHaveLength(2);
+    expect(t('es', 'miniGames.kickfallSubtitle')).toBe('DESPEJA EL CAMINO A LOS BALONES');
+    expect(t('en', 'kickfallSetup.objective')).toBe(
+      'Race the clock! Break through gates and free every trapped ball before time runs out.',
+    );
+    expect(t('es', 'kickfallSetup.objective')).toBe(
+      '¡Corre contra el reloj! Rompe los muros y libera todos los balones atrapados antes de que se acabe el tiempo.',
+    );
+    for (const language of ['en', 'es']) {
+      for (const key of [
+        'miniGames.kickfallSubtitle',
+        'kickfallSetup.objective',
+        'kickfallSetup.difficulty.hard',
+        'kickfall.loadingCode',
+      ]) {
+        expect(t(language, key)).not.toMatch(/factory|ballworks|fábrica/i);
+      }
+    }
   });
 });
 

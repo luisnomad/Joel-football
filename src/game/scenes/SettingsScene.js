@@ -49,19 +49,9 @@ export class SettingsScene extends Phaser.Scene {
     this.createLanguageButton(595, 'EN', 'en');
     this.createLanguageButton(685, 'ES', 'es');
 
-    this.add.text(640, 232, t(this.language, 'settings.difficulty'), this.textStyle(16, '#a8c5df')).setOrigin(0.5);
-    this.createDifficultyButton(535, 'easy');
-    this.createDifficultyButton(640, 'normal');
-    this.createDifficultyButton(745, 'hard');
-    this.add.text(640, 310, t(this.language, 'settings.difficultyHelp'), {
-      fontFamily: 'Trebuchet MS, sans-serif',
-      fontSize: '14px',
-      color: '#a9bdd8',
-    }).setOrigin(0.5);
-
     this.createAudioRow({
       key: 'music',
-      y: 395,
+      y: 315,
       label: t(this.language, 'settings.music'),
       help: t(this.language, 'settings.musicHelp'),
       value: this.profile.audio.musicVolume,
@@ -70,7 +60,7 @@ export class SettingsScene extends Phaser.Scene {
     });
     this.createAudioRow({
       key: 'effects',
-      y: 525,
+      y: 485,
       label: t(this.language, 'settings.effects'),
       help: t(this.language, 'settings.effectsHelp'),
       value: this.profile.audio.effectsVolume,
@@ -112,24 +102,6 @@ export class SettingsScene extends Phaser.Scene {
       onPress: () => {
         if (this.language === language) return;
         playerProfileStore.setLanguage(language);
-        arcadeAudio.click();
-        this.scene.restart();
-      },
-    });
-  }
-
-  createDifficultyButton(x, difficulty) {
-    const active = this.profile.difficulty === difficulty;
-    createButton(this, {
-      x,
-      y: 270,
-      width: 96,
-      height: 46,
-      label: t(this.language, `settings.${difficulty}`),
-      color: active ? 0xf29d38 : 0x1a395c,
-      onPress: () => {
-        if (this.profile.difficulty === difficulty) return;
-        playerProfileStore.setDifficulty(difficulty);
         arcadeAudio.click();
         this.scene.restart();
       },
@@ -207,7 +179,7 @@ export class SettingsScene extends Phaser.Scene {
     return {
       mode: 'settings',
       language: this.language,
-      difficulty: profile.difficulty,
+      difficultyByGame: profile.difficultyByGame,
       coordinateSystem: `origin top-left; +x right; +y down; logical canvas ${this.stageLayout.width}x${this.stageLayout.height}; gameplay region 1280x720`,
       stageLayout: this.stageLayout,
       settingsLayout: {
@@ -231,7 +203,7 @@ export class SettingsScene extends Phaser.Scene {
           enabled: this.effectsMuteButton?.zone?.input?.enabled === true,
         },
       },
-      actions: ['set English', 'set Spanish', 'set difficulty Easy', 'set difficulty Normal', 'set difficulty Hard', 'set music volume', 'mute music', 'set effects volume', 'mute effects', 'back'],
+      actions: ['set English', 'set Spanish', 'set music volume', 'mute music', 'set effects volume', 'mute effects', 'back'],
     };
   }
 

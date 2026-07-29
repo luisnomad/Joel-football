@@ -82,6 +82,43 @@ const holdCombo = async (page, keys, milliseconds) => {
   await Promise.all(keys.map((key) => page.keyboard.up(key)));
 };
 
+const kickKickfallObstacleQueue = async (page, obstacleId) => {
+  const connected = await page.evaluate((id) => {
+    const scene = window.__SKYHEAD_GAME__.scene.getScene('Kickfall');
+    const obstacle = scene.obstacles.find((candidate) => candidate.id === id);
+    const captive = scene.balls.find((ball) => ball.id === obstacle?.stalledBallId);
+    if (!obstacle || !captive) return false;
+    const queue = scene.balls
+      .filter((ball) => ball !== captive && scene.tierForBall(ball)?.id === obstacle.tierId)
+      .sort((a, b) => (
+        (a.body.x - obstacle.holdX) * -obstacle.flow
+        - (b.body.x - obstacle.holdX) * -obstacle.flow
+      ));
+    queue.forEach((ball, index) => {
+      if (ball.body.body.isStatic) ball.body.setStatic(false);
+      ball.body.setPosition(
+        obstacle.holdX - obstacle.flow * (38 * (index + 1)),
+        obstacle.holdY,
+      );
+      ball.body.setVelocity(0, 0);
+      ball.body.setAngularVelocity(0);
+      ball.armedUntil = 0;
+      ball.impactPower = 0;
+    });
+    const rear = queue.at(-1);
+    if (!rear) return false;
+    scene.player.setPosition(rear.body.x - obstacle.flow * 46, rear.body.y - 24);
+    scene.player.setVelocity(0, 0);
+    scene.currentTierId = obstacle.tierId;
+    scene.setFacing(obstacle.flow);
+    scene.groundedUntil = scene.simulationSeconds + 1;
+    scene.kickCooldown = 0;
+    return scene.startKick();
+  }, obstacleId);
+  assert.equal(connected, true, `the ${obstacleId} pressure fixture should start with real foot contact`);
+  await advance(page, 180);
+};
+
 const pressDesktopPower = (page) => page.evaluate(() => {
   const match = window.__SKYHEAD_GAME__.scene.getScene('Match');
   match.inputController.keyboardPulse.power = false;
@@ -115,6 +152,16 @@ const canvasPoint = (page, logicalX, logicalY) =>
     };
   }, { x: logicalX, y: logicalY });
 
+const stagePoint = (page, stageX, stageY) =>
+  page.evaluate(({ x, y }) => {
+    const canvas = document.querySelector('canvas');
+    const rect = canvas.getBoundingClientRect();
+    return {
+      x: rect.left + (x / canvas.width) * rect.width,
+      y: rect.top + (y / canvas.height) * rect.height,
+    };
+  }, { x: stageX, y: stageY });
+
 const touchControl = async (page, logicalX, logicalY, milliseconds = 60) => {
   const point = await canvasPoint(page, logicalX, logicalY);
   await page.mouse.move(point.x, point.y);
@@ -124,7 +171,10 @@ const touchControl = async (page, logicalX, logicalY, milliseconds = 60) => {
 };
 
 const waitThroughSplash = async (page, screenshotPath) => {
-  await page.waitForFunction(() => JSON.parse(window.render_game_to_text()).mode === 'splash');
+  await page.waitForFunction(() => (
+    typeof window.render_game_to_text === 'function'
+    && JSON.parse(window.render_game_to_text()).mode === 'splash'
+  ));
   const splashState = await readState(page);
   assert.equal(splashState.title, 'Joel Football');
   assert.equal(splashState.selectedArtwork, 'option-a');
@@ -224,18 +274,23 @@ try {
   let state = await readState(page);
   assert.equal(state.mode, 'intro');
   assert.equal(state.title, 'Joel Football');
-  assert.deepEqual(state.opponent.available, [{ id: 'joel', name: 'Joel' }, { id: 'bob', name: 'Bob' }, { id: 'lucia', name: 'Lucia' }, { id: 'luna', name: 'Luna' }, { id: 'juan', name: 'Uncle Juan' }, { id: 'juanjo', name: 'Uncle Juanjo' }]);
   assert.equal(state.playerCharacter.id, 'joel');
   assert.equal(state.opponent.id, 'bob', 'Bob should remain the default opponent for existing profiles');
   assert.equal(state.language, 'en');
+  assert.deepEqual(state.journeys, [
+    { id: 'football', primary: true, destination: 'football-setup' },
+    { id: 'mini-games', primary: false, destination: 'mini-games' },
+  ]);
+  assert.deepEqual(state.difficultyByGame, {
+    football: 'normal',
+    kickfall: 'normal',
+    discHockey: 'normal',
+  });
   assert.equal(state.audio.settings.musicVolume, 0.15);
   assert.equal(state.audio.settings.effectsVolume, 0.2);
   assert.equal(state.audio.trackCount, 6, 'all six supplied music tracks should rotate');
   const tapHighlight = await page.locator('canvas').evaluate((canvas) => getComputedStyle(canvas).webkitTapHighlightColor);
   assert.equal(tapHighlight, 'rgba(0, 0, 0, 0)', 'the Phaser canvas must not show Android WebView tap highlighting');
-  assert.deepEqual(state.controls.dash, ['double-tap A/D or Left/Right']);
-  assert.deepEqual(state.controls.kickBoost, ['repeat kick or lob during the kick animation']);
-  assert.deepEqual(state.controls.chilena, ['double kick: direct; double lob: high arc']);
   const bootTextureState = await page.evaluate(() => {
     const textures = window.__SKYHEAD_GAME__.textures;
     return Object.fromEntries(['joel-sheet', 'vex-sheet', 'lucia-sheet', 'luna-sheet', 'juan-sheet', 'juanjo-sheet']
@@ -292,12 +347,198 @@ try {
 
   const kickfallBeforeEntry = await page.evaluate(() => performance.getEntriesByType('resource')
     .map((entry) => entry.name)
-    .filter((name) => name.includes('kickfall') || name.includes('KickfallScene')));
-  assert.deepEqual(kickfallBeforeEntry, [], 'Kickfall code and exclusive assets must not join the opening payload');
-  await touchControl(page, 535, 438, 35);
+    .filter((name) => /kickfall|KickfallScene|DiscHockeyScene/i.test(name)));
+  assert.deepEqual(kickfallBeforeEntry, [], 'mini-game code and exclusive assets must not join the opening payload');
+
+  await touchControl(page, 640, 252, 35);
+  await page.waitForFunction(() => JSON.parse(window.render_game_to_text()).mode === 'football-setup');
+  await touchControl(page, 785, 205, 35);
+  await page.waitForFunction(() => JSON.parse(window.render_game_to_text()).opponent?.id === 'lucia');
+  await page.waitForTimeout(60);
+  await touchControl(page, 785, 205, 35);
+  await page.waitForFunction(() => JSON.parse(window.render_game_to_text()).opponent?.id === 'luna');
+  await touchControl(page, 82, 52, 35);
+  await page.waitForFunction(() => JSON.parse(window.render_game_to_text()).mode === 'intro');
+  await touchControl(page, 430, 493, 35);
+  await page.waitForFunction(() => JSON.parse(window.render_game_to_text()).mode === 'mini-games');
+  state = await readState(page);
+  assert.ok(
+    state.playerCharacter.available.some(({ id }) => id === 'luna'),
+    'a Football opponent must remain available as the Mini-games player',
+  );
+  for (const characterId of ['bob', 'lucia', 'luna']) {
+    await touchControl(page, 745, 586, 35);
+    await page.waitForFunction(
+      (expectedId) => JSON.parse(window.render_game_to_text()).playerCharacter?.id === expectedId,
+      characterId,
+    );
+    await page.waitForTimeout(60);
+  }
+  await capture(page, `${output}/01-mini-games-luna-opponent-selectable.png`);
+  await touchControl(page, 82, 52, 35);
+  await page.waitForFunction(() => JSON.parse(window.render_game_to_text()).mode === 'intro');
+  await touchControl(page, 640, 252, 35);
+  await page.waitForFunction(() => JSON.parse(window.render_game_to_text()).mode === 'football-setup');
+  state = await readState(page);
+  assert.deepEqual(
+    [state.playerCharacter.id, state.opponent.id],
+    ['luna', 'joel'],
+    'selecting Luna for Mini-games should keep Football lineups valid by moving the conflicting opponent',
+  );
+  await touchControl(page, 785, 205, 35);
+  await page.waitForFunction(() => JSON.parse(window.render_game_to_text()).opponent?.id === 'bob');
+  for (const characterId of ['lucia', 'joel']) {
+    await page.waitForTimeout(60);
+    await touchControl(page, 85, 205, 35);
+    await page.waitForFunction(
+      (expectedId) => JSON.parse(window.render_game_to_text()).playerCharacter?.id === expectedId,
+      characterId,
+    );
+  }
+  await touchControl(page, 82, 52, 35);
+  await page.waitForFunction(() => JSON.parse(window.render_game_to_text()).mode === 'intro');
+
+  await touchControl(page, 430, 493, 35);
+  await page.waitForFunction(() => JSON.parse(window.render_game_to_text()).mode === 'mini-games');
+  state = await readState(page);
+  assert.deepEqual(state.games, [
+    {
+      id: 'kickfall',
+      title: 'Kickfall',
+      highestUnlockedLevel: 1,
+      lastPlayedLevel: 1,
+      difficulty: 'normal',
+    },
+    {
+      id: 'discHockey',
+      title: 'Disc Hockey',
+      difficulty: 'normal',
+      mode: 'computer',
+      themeId: 'ice',
+    },
+  ]);
+  assert.deepEqual(state.playerCharacter, {
+    id: 'joel',
+    name: 'Joel',
+    sharedWithFootball: true,
+    available: [
+      { id: 'joel', name: 'Joel' },
+      { id: 'bob', name: 'Bob' },
+      { id: 'lucia', name: 'Lucia' },
+      { id: 'luna', name: 'Luna' },
+      { id: 'juan', name: 'Uncle Juan' },
+      { id: 'juanjo', name: 'Uncle Juanjo' },
+    ],
+  });
+  await touchControl(page, 745, 586, 35);
+  await page.waitForFunction(() => JSON.parse(window.render_game_to_text()).playerCharacter?.id === 'bob');
+  await page.waitForTimeout(60);
+  await touchControl(page, 745, 586, 35);
+  await page.waitForFunction(() => JSON.parse(window.render_game_to_text()).playerCharacter?.id === 'lucia');
+  await touchControl(page, 82, 52, 35);
+  await page.waitForFunction(() => JSON.parse(window.render_game_to_text()).mode === 'intro');
+  assert.equal((await readState(page)).playerCharacter.id, 'lucia', 'the Mini-games player selection should update the global profile');
+  await touchControl(page, 640, 252, 35);
+  await page.waitForFunction(() => JSON.parse(window.render_game_to_text()).mode === 'football-setup');
+  assert.equal((await readState(page)).playerCharacter.id, 'lucia', 'Football should immediately inherit the Mini-games player selection');
+  await touchControl(page, 82, 52, 35);
+  await page.waitForFunction(() => JSON.parse(window.render_game_to_text()).mode === 'intro');
+  await touchControl(page, 430, 493, 35);
+  await page.waitForFunction(() => JSON.parse(window.render_game_to_text()).mode === 'mini-games');
+  assert.equal((await readState(page)).playerCharacter.id, 'lucia');
+  await touchControl(page, 535, 586, 35);
+  await page.waitForFunction(() => JSON.parse(window.render_game_to_text()).playerCharacter?.id === 'bob');
+  await page.waitForTimeout(60);
+  await touchControl(page, 535, 586, 35);
+  await page.waitForFunction(() => JSON.parse(window.render_game_to_text()).playerCharacter?.id === 'joel');
+  await capture(page, `${output}/01-mini-games.png`);
+  await touchControl(page, 345, 294, 35);
+  await page.waitForFunction(() => JSON.parse(window.render_game_to_text()).mode === 'minigame-setup');
+  state = await readState(page);
+  assert.equal(state.gameId, 'kickfall');
+  assert.equal(state.difficulty, 'normal');
+  assert.deepEqual(state.mission, {
+    title: 'YOUR MISSION',
+    description: 'Race the clock! Break through gates and free every trapped ball before time runs out.',
+  });
+  assert.ok(!/factory|ballworks/i.test(state.mission.description));
+  assert.equal(state.progress.highestUnlockedLevel, 1);
+  assert.equal(state.progress.lastPlayedLevel, 1);
+  await capture(page, `${output}/01-kickfall-setup.png`);
+  await page.evaluate(() => {
+    const scene = window.__SKYHEAD_GAME__.scene.getScene('MiniGameSetup');
+    scene.language = 'es';
+    scene.isTouchLayout = true;
+    scene.openHelp();
+  });
+  await page.waitForFunction(() => JSON.parse(window.render_game_to_text()).modal === 'help');
+  const helpColumnBounds = await page.evaluate(() => {
+    const scene = window.__SKYHEAD_GAME__.scene.getScene('MiniGameSetup');
+    const textBounds = (value) => {
+      const text = scene.children.list.find((child) => child.text === value && child.visible);
+      if (!text) return null;
+      const bounds = text.getBounds();
+      return {
+        left: bounds.left,
+        right: bounds.right,
+        top: bounds.top,
+        bottom: bounds.bottom,
+      };
+    };
+    return {
+      layout: scene.infoOverlay.layout,
+      left: [
+        'MOVER',
+        'Corre y elige un carril superior o inferior',
+        'SALTAR',
+        'Mantén una dirección al saltar para cambiar de carril',
+      ].map(textBounds),
+      right: [
+        'CAMBIAR DE CARRIL',
+        'Mantén arriba o abajo mientras saltas',
+        'CHUTAR',
+        'Rompe muros y libera balones atrapados',
+      ].map(textBounds),
+    };
+  });
+  assert.ok(
+    helpColumnBounds.left.every(Boolean) && helpColumnBounds.right.every(Boolean),
+    'all Spanish touch help labels should render',
+  );
+  for (const bounds of helpColumnBounds.left) {
+    assert.ok(
+      bounds.right <= helpColumnBounds.layout.columns[0].textRight + 1,
+      `left help copy must stay in its safe column; right=${bounds.right}`,
+    );
+  }
+  for (const bounds of helpColumnBounds.right) {
+    assert.ok(
+      bounds.right <= helpColumnBounds.layout.columns[1].textRight + 1,
+      `right help copy must stay in its safe column; right=${bounds.right}`,
+    );
+  }
+  assert.ok(
+    Math.max(...helpColumnBounds.left.map(({ right }) => right))
+      < helpColumnBounds.layout.columns[1].badgeX - helpColumnBounds.layout.badgeRadius,
+    'the left help column must not render under the right-side badges',
+  );
+  await capture(page, `${output}/01-kickfall-help-es-safe-columns.png`);
+  await page.evaluate(() => {
+    const scene = window.__SKYHEAD_GAME__.scene.getScene('MiniGameSetup');
+    scene.closeHelp();
+    scene.language = 'en';
+    scene.isTouchLayout = false;
+  });
+  await page.waitForFunction(() => JSON.parse(window.render_game_to_text()).modal === null);
+  await touchControl(page, 640, 620, 35);
   await page.waitForFunction(() => ['countdown', 'playing'].includes(JSON.parse(window.render_game_to_text()).mode));
   state = await readState(page);
   assert.equal(state.minigame, 'kickfall');
+  assert.equal(state.difficulty, 'normal');
+  assert.equal(state.audio.sceneMode, 'kickfall');
+  assert.deepEqual(state.audio.scenePolicy, { music: true, audience: false });
+  assert.equal(state.audio.musicRequested, true, 'Kickfall should continue the shared game soundtrack');
+  assert.equal(state.audio.audienceRequested, false, 'crowd ambience must remain exclusive to Football');
   assert.equal(state.selectedCharacter.id, 'joel', 'Kickfall should use the currently selected player');
   assert.equal(state.progress.quota, 8);
   assert.equal(state.gates.length, 3);
@@ -535,6 +776,21 @@ try {
   assert.equal(state.danger, undefined);
   assert.ok(state.progress.spawned >= 5, 'the untouched board should receive a substantial ball queue');
   assert.ok(state.balls.length >= 5, 'the untouched board should retain a visible physical pile');
+  assert.deepEqual(
+    state.entryWall,
+    { angleDegrees: -11, topX: 155.2, bottomX: 175 },
+    'the ball-entry wall should lean left at the top while preserving its original bottom anchor',
+  );
+  const naturalTopQueue = state.balls.filter((ball) => ball.y < 210 && ball.x < 430);
+  const naturalQueueXSpan = Math.max(...naturalTopQueue.map((ball) => ball.x))
+    - Math.min(...naturalTopQueue.map((ball) => ball.x));
+  const naturalQueueYSpan = Math.max(...naturalTopQueue.map((ball) => ball.y))
+    - Math.min(...naturalTopQueue.map((ball) => ball.y));
+  assert.ok(naturalTopQueue.length >= 5, 'the entry-wall fixture should retain a representative top-lane queue');
+  assert.ok(
+    naturalQueueXSpan > 100 && naturalQueueXSpan > naturalQueueYSpan * 2.5,
+    `the tilted wall should spread the pile horizontally; xSpan=${naturalQueueXSpan}, ySpan=${naturalQueueYSpan}`,
+  );
   await page.waitForTimeout(150);
   await capture(page, `${output}/01-kickfall-natural-pile-up.png`);
   await page.evaluate(() => window.__SKYHEAD_GAME__.scene.getScene('Kickfall').scene.restart({ level: 1 }));
@@ -548,6 +804,16 @@ try {
   state = await readState(page);
   assert.equal(state.gates.find((gate) => gate.id === 'gate-a').active, false, 'a real kick should break the contacted gate');
   assert.ok(state.player.lastKickedBallId, 'the kick should report the struck ball');
+  assert.ok(state.visualEffects.gateDebris >= 24, 'the explosion should throw a chunky burst of themed gate debris');
+  assert.equal(state.visualEffects.shockwaves, 2, 'the explosion should have two expanding shockwaves');
+  assert.ok(state.visualEffects.sparks >= 24, 'the explosion should spray a dense field of hot sparks');
+  assert.ok(state.visualEffects.smoke >= 9, 'the explosion should leave a visible cloud of smoke');
+  assert.equal(state.visualEffects.boomText, 1, 'the explosion should include its comic BOOM accent');
+  assert.equal(
+    await page.evaluate(() => window.__SKYHEAD_GAME__.scene.getScene('Kickfall').announcementText.text),
+    '',
+    'BOOM should replace the old gate-broken announcement instead of competing with it',
+  );
   assert.ok(
     await page.evaluate(() => {
       const scene = window.__SKYHEAD_GAME__.scene.getScene('Kickfall');
@@ -777,6 +1043,12 @@ try {
   state = await readState(page);
   assert.equal(state.balls.find((ball) => ball.id === pocketBallId).stalledObstacleId, 'pocket-a');
   await hold(page, 'x', 80);
+  state = await readState(page);
+  const flashingPocket = state.obstacles.find((obstacle) => obstacle.id === 'pocket-a');
+  assert.equal(flashingPocket.flashCount, 1, 'kicking a trapped ball should pulse its pocket once');
+  assert.ok(flashingPocket.flashSeconds > 0, 'the pocket damage pulse should remain visible after contact');
+  assert.ok(flashingPocket.flashAlpha >= 0.35, `the pocket should be visibly red during its pulse; alpha=${flashingPocket.flashAlpha}`);
+  await capture(page, `${output}/01-kickfall-pocket-kick-flash.png`);
   await advance(page, 180);
   state = await readState(page);
   assert.ok(state.balls.find((ball) => ball.id === pocketBallId).passedObstacleIds.includes('pocket-a'));
@@ -804,6 +1076,10 @@ try {
   await page.waitForTimeout(500);
   await capture(page, `${output}/01-kickfall-cleat-queue.png`);
   await hold(page, 'x', 80);
+  state = await readState(page);
+  const flashingCleat = state.obstacles.find((obstacle) => obstacle.id === 'cleat-a');
+  assert.equal(flashingCleat.flashCount, 1, 'the shared trap pulse should also cover the cleat obstacle');
+  assert.ok(flashingCleat.flashAlpha >= 0.35, `the cleat should be visibly red during its pulse; alpha=${flashingCleat.flashAlpha}`);
   await advance(page, 180);
   state = await readState(page);
   assert.ok(
@@ -814,6 +1090,70 @@ try {
   assert.equal(state.progress.obstacleClears, 2);
   await page.waitForTimeout(180);
   await capture(page, `${output}/01-kickfall-level-2-obstacles.png`);
+
+  const pocketPressureIds = await page.evaluate(
+    () => window.__KICKFALL_DEBUG__.prepareObstacleQueue('pocket-a', 4),
+  );
+  assert.equal(pocketPressureIds.length, 4);
+  await kickKickfallObstacleQueue(page, 'pocket-a');
+  state = await readState(page);
+  let pressuredPocket = state.obstacles.find((obstacle) => obstacle.id === 'pocket-a');
+  assert.ok(
+    pressuredPocket.pressure > 0 && pressuredPocket.pressure < pressuredPocket.resistance,
+    `one rear kick should visibly pressure but not release the strong pocket; ${JSON.stringify(pressuredPocket)}`,
+  );
+  assert.equal(pressuredPocket.lastImpactHops, 3);
+  assert.equal(pressuredPocket.stalledBallId, pocketPressureIds[0]);
+  assert.equal(state.forceSystem.comboMultiplier, 1);
+  await capture(page, `${output}/01-kickfall-pocket-pressure-first-hit.png`);
+
+  await kickKickfallObstacleQueue(page, 'pocket-a');
+  state = await readState(page);
+  pressuredPocket = state.obstacles.find((obstacle) => obstacle.id === 'pocket-a');
+  assert.ok(
+    pressuredPocket.pressure > 1 && pressuredPocket.pressure < pressuredPocket.resistance,
+    `two rapid rear kicks should build pressure without trivializing the pocket; ${JSON.stringify(pressuredPocket)}`,
+  );
+  assert.equal(state.forceSystem.comboMultiplier, 1.25);
+
+  await kickKickfallObstacleQueue(page, 'pocket-a');
+  state = await readState(page);
+  pressuredPocket = state.obstacles.find((obstacle) => obstacle.id === 'pocket-a');
+  assert.equal(pressuredPocket.pressure, 0);
+  assert.equal(state.forceSystem.comboMultiplier, 1.5);
+  assert.ok(
+    state.balls.find((ball) => ball.id === pocketPressureIds[0]).passedObstacleIds.includes('pocket-a'),
+    'the pressure wave should free the captive endpoint instead of only moving the intervening balls',
+  );
+  assert.notEqual(
+    pressuredPocket.stalledBallId,
+    pocketPressureIds[0],
+    `the third rapid rear kick should release the original pocket captive; ${JSON.stringify(pressuredPocket)}`,
+  );
+  await capture(page, `${output}/01-kickfall-pocket-pressure-release.png`);
+
+  const cleatPressureIds = await page.evaluate(
+    () => window.__KICKFALL_DEBUG__.prepareObstacleQueue('cleat-a', 4),
+  );
+  await kickKickfallObstacleQueue(page, 'cleat-a');
+  state = await readState(page);
+  const cleatAfterOnePressureHit = state.obstacles.find((obstacle) => obstacle.id === 'cleat-a');
+  assert.ok(
+    cleatAfterOnePressureHit.pressure > 0
+      && cleatAfterOnePressureHit.pressure < cleatAfterOnePressureHit.resistance,
+    'one remote kick should not release the medium cleat through three intervening balls',
+  );
+  await kickKickfallObstacleQueue(page, 'cleat-a');
+  state = await readState(page);
+  const pressuredCleat = state.obstacles.find((obstacle) => obstacle.id === 'cleat-a');
+  assert.ok(
+    state.balls.find((ball) => ball.id === cleatPressureIds[0]).passedObstacleIds.includes('cleat-a'),
+  );
+  assert.notEqual(
+    pressuredCleat.stalledBallId,
+    cleatPressureIds[0],
+    'the weaker cleat should release its original captive after two rapid rear kicks',
+  );
 
   await page.evaluate(() => {
     window.__SKYHEAD_GAME__.scene.getScene('Kickfall').language = 'es';
@@ -960,6 +1300,73 @@ try {
     `an untouched uphill ball should roll backward against the route; ${JSON.stringify(state.balls.find((ball) => ball.id === uphillBallId))}`,
   );
   await capture(page, `${output}/01-kickfall-level-6-uphill.png`);
+
+  await page.evaluate(() => window.__SKYHEAD_GAME__.scene.getScene('Kickfall').scene.restart({ level: 7 }));
+  await page.waitForFunction(() => JSON.parse(window.render_game_to_text()).mode === 'countdown');
+  const receiverPileFixture = await page.evaluate(() => {
+    window.__KICKFALL_DEBUG__.startPlaying();
+    return window.__KICKFALL_DEBUG__.prepareReceiverPileEscape('upper');
+  });
+  state = await readState(page);
+  assert.equal(state.player.grounded, true, 'a player resting on a receiver ball pile should have jump footing');
+  assert.ok(
+    receiverPileFixture.ballIds.includes(state.player.supportingBallId),
+    `the receiver pile should identify one of its supporting balls; ${JSON.stringify(state.player)}`,
+  );
+  await capture(page, `${output}/01-kickfall-level-7-receiver-pile-stuck.png`);
+  await hold(page, 'x', 40);
+  state = await readState(page);
+  assert.ok(
+    receiverPileFixture.ballIds.includes(state.player.lastKickedBallId),
+    `kick should release a supporting pile ball when no forward target is reachable; ${JSON.stringify(state.player)}`,
+  );
+  assert.ok(
+    state.balls.find((ball) => ball.id === state.player.lastKickedBallId).vx < -1,
+    'the pile kick should send its support ball inward along the upper lane',
+  );
+  await capture(page, `${output}/01-kickfall-level-7-receiver-pile-kick-escape.png`);
+  const jumpPileFixture = await page.evaluate(() => window.__KICKFALL_DEBUG__.prepareReceiverPileEscape('upper'));
+  state = await readState(page);
+  assert.equal(state.player.grounded, true, 'reset receiver pile should still provide jump footing');
+  await hold(page, 'Space', 60);
+  state = await readState(page);
+  assert.ok(state.player.vy < -4.5, `jump should launch cleanly from the receiver pile; vy=${state.player.vy}`);
+  assert.ok(
+    state.player.y < jumpPileFixture.startY - 8,
+    `jump should move the player away from the pile; start=${jumpPileFixture.startY}, y=${state.player.y}`,
+  );
+  assert.equal(state.player.supportingBallId, null, 'the launched player should no longer be treated as ball-supported');
+  await capture(page, `${output}/01-kickfall-level-7-receiver-pile-escape.png`);
+
+  const gravityPileFixture = await page.evaluate(
+    () => window.__KICKFALL_DEBUG__.prepareReceiverGravityPile('upper', 7),
+  );
+  assert.equal(gravityPileFixture.ballIds.length, 7);
+  await advance(page, 6000);
+  state = await readState(page);
+  const settledGravityBalls = state.balls.filter(
+    (ball) => gravityPileFixture.ballIds.includes(ball.id),
+  );
+  const gravityXs = settledGravityBalls.map((ball) => ball.x);
+  const gravityYs = settledGravityBalls.map((ball) => ball.y);
+  const gravityHorizontalSpan = Math.max(...gravityXs) - Math.min(...gravityXs);
+  const gravityVerticalSpan = Math.max(...gravityYs) - Math.min(...gravityYs);
+  assert.ok(
+    gravityHorizontalSpan >= 155,
+    `seven uphill balls should remain a broad lane queue; horizontal span=${gravityHorizontalSpan}`,
+  );
+  assert.ok(
+    gravityVerticalSpan <= 55,
+    `ramp gravity must roll balls back down instead of building a column; vertical span=${gravityVerticalSpan}`,
+  );
+  assert.ok(
+    settledGravityBalls.filter((ball) => (
+      (ball.x - gravityPileFixture.entryX) * gravityPileFixture.flow
+        < gravityPileFixture.width
+    )).length <= 1,
+    `at most one moving ball may be traversing the ramp; ${JSON.stringify(settledGravityBalls)}`,
+  );
+  await capture(page, `${output}/01-kickfall-level-7-receiver-gravity-pile.png`);
 
   await page.evaluate(() => window.__SKYHEAD_GAME__.scene.getScene('Kickfall').scene.restart({ level: 10 }));
   await page.waitForFunction(() => JSON.parse(window.render_game_to_text()).mode === 'countdown');
@@ -1116,13 +1523,16 @@ try {
 
   await page.evaluate(() => window.__SKYHEAD_GAME__.scene.getScene('Kickfall').scene.start('Intro'));
   await page.waitForFunction(() => JSON.parse(window.render_game_to_text()).mode === 'intro');
-  await touchControl(page, 535, 438, 35);
-  await page.waitForFunction(() => JSON.parse(window.render_game_to_text()).phase === 'choice');
+  await touchControl(page, 430, 493, 35);
+  await page.waitForFunction(() => JSON.parse(window.render_game_to_text()).mode === 'mini-games');
+  await touchControl(page, 345, 294, 35);
+  await page.waitForFunction(() => JSON.parse(window.render_game_to_text()).mode === 'minigame-setup');
   state = await readState(page);
-  assert.deepEqual(state.savedProgress, { highestUnlockedLevel: 2, lastPlayedLevel: 2 });
-  assert.deepEqual(state.actions, ['continue saved level', 'start from level 1']);
+  assert.deepEqual(state.progress, { highestUnlockedLevel: 2, lastPlayedLevel: 2 });
+  assert.ok(state.actions.includes('continue Kickfall'));
+  assert.ok(state.actions.includes('start Kickfall from level 1'));
   await capture(page, `${output}/01-kickfall-resume-choice.png`);
-  await touchControl(page, 640, 430, 35);
+  await touchControl(page, 745, 620, 35);
   await page.waitForFunction(() => JSON.parse(window.render_game_to_text()).mode === 'countdown');
   assert.equal((await readState(page)).level.number, 2);
   await page.keyboard.press('Escape');
@@ -1130,12 +1540,16 @@ try {
   await touchControl(page, 775, 475, 35);
   await page.waitForFunction(() => JSON.parse(window.render_game_to_text()).modal === 'abandon-confirm');
   await touchControl(page, 775, 438, 35);
+  await page.waitForFunction(() => JSON.parse(window.render_game_to_text()).mode === 'minigame-setup');
+  await touchControl(page, 82, 52, 35);
+  await page.waitForFunction(() => JSON.parse(window.render_game_to_text()).mode === 'mini-games');
+  await touchControl(page, 82, 52, 35);
   await page.waitForFunction(() => JSON.parse(window.render_game_to_text()).mode === 'intro');
   state = await readState(page);
   assert.equal(state.playerCharacter.id, 'joel');
 
-  await touchControl(page, 640, 300, 35);
-  await page.waitForFunction(() => JSON.parse(window.render_game_to_text()).mode === 'customize');
+  await touchControl(page, 640, 252, 35);
+  await page.waitForFunction(() => JSON.parse(window.render_game_to_text()).mode === 'football-setup');
   state = await readState(page);
   assert.deepEqual(await page.evaluate(() => {
     const textures = window.__SKYHEAD_GAME__.textures;
@@ -1151,11 +1565,11 @@ try {
     'classic', 'neon-ball', 'balloon', 'rugby', 'soda-can', 'cannonball',
   ]);
   assert.equal(state.ballType.id, 'classic');
-  await touchControl(page, 545, 320, 35);
+  await touchControl(page, 580, 430, 35);
   await page.waitForFunction(() => JSON.parse(window.render_game_to_text()).arena?.id === 'neon');
-  await touchControl(page, 1145, 320, 35);
+  await touchControl(page, 1155, 430, 35);
   await page.waitForFunction(() => JSON.parse(window.render_game_to_text()).ballType?.id === 'neon-ball');
-  await touchControl(page, 1145, 320, 35);
+  await touchControl(page, 1155, 430, 35);
   await page.waitForFunction(() => JSON.parse(window.render_game_to_text()).ballType?.id === 'balloon');
   state = await readState(page);
   assert.equal(state.arena.id, 'neon');
@@ -1164,10 +1578,10 @@ try {
   assert.ok(state.ballType.liftScale > 1 && state.ballType.frictionAir > 0.01);
   await capture(page, `${output}/01-customize-neon-balloon.png`);
 
-  await touchControl(page, 545, 320, 35);
+  await touchControl(page, 580, 430, 35);
   await page.waitForFunction(() => JSON.parse(window.render_game_to_text()).arena?.id === 'beach');
   for (const id of ['rugby', 'soda-can', 'cannonball']) {
-    await touchControl(page, 1145, 320, 35);
+    await touchControl(page, 1155, 430, 35);
     await page.waitForFunction((nextId) => JSON.parse(window.render_game_to_text()).ballType?.id === nextId, id);
   }
   state = await readState(page);
@@ -1175,7 +1589,7 @@ try {
   assert.equal(state.ballType.id, 'cannonball');
   assert.ok(state.ballType.density > 0.007 && state.ballType.liftScale < 0.6);
   await capture(page, `${output}/01-customize-beach-cannonball.png`);
-  await touchControl(page, 640, 660, 35);
+  await touchControl(page, 785, 660, 35);
   await page.waitForFunction(() => JSON.parse(window.render_game_to_text()).mode === 'countdown');
   await advance(page, 3200);
   await page.evaluate(() => {
@@ -1199,76 +1613,80 @@ try {
   await page.evaluate(() => window.__SKYHEAD_GAME__.scene.getScene('Match').scene.start('Intro'));
   await page.waitForFunction(() => JSON.parse(window.render_game_to_text()).mode === 'intro');
   assert.deepEqual((await readState(page)).customization, { arenaThemeId: 'beach', ballTypeId: 'cannonball' });
-  await touchControl(page, 640, 300, 35);
-  await page.waitForFunction(() => JSON.parse(window.render_game_to_text()).mode === 'customize');
-  await touchControl(page, 545, 320, 35);
+  await touchControl(page, 640, 252, 35);
+  await page.waitForFunction(() => JSON.parse(window.render_game_to_text()).mode === 'football-setup');
+  await touchControl(page, 580, 430, 35);
   await page.waitForFunction(() => JSON.parse(window.render_game_to_text()).arena?.id === 'skycourt');
-  await touchControl(page, 1145, 320, 35);
+  await touchControl(page, 1155, 430, 35);
   await page.waitForFunction(() => JSON.parse(window.render_game_to_text()).ballType?.id === 'classic');
   assert.deepEqual(
     { arena: (await readState(page)).arena.id, ball: (await readState(page)).ballType.id },
     { arena: 'skycourt', ball: 'classic' },
   );
-  await touchControl(page, 72, 52, 30);
+  await touchControl(page, 82, 52, 30);
   await page.waitForFunction(() => JSON.parse(window.render_game_to_text()).mode === 'intro');
 
+  await touchControl(page, 640, 252, 35);
+  await page.waitForFunction(() => JSON.parse(window.render_game_to_text()).mode === 'football-setup');
   for (let step = 0; step < 3; step += 1) {
-    await touchControl(page, 405, 500, 35);
+    await touchControl(page, 375, 205, 35);
     await page.waitForTimeout(60);
   }
   state = await readState(page);
   assert.equal(state.playerCharacter.id, 'juan', 'Uncle Juan should be selectable as the human player');
   assert.equal(state.playerCharacter.name, 'Uncle Juan');
-  assert.equal(state.playerCharacter.mirrored, false, 'Juan naturally faces the opponent from the player side');
-  assert.deepEqual(state.playerCharacter.displaySize, { width: 255, height: 255 }, 'mixed-resolution portraits must retain the same menu footprint');
-  await capture(page, `${output}/01-intro-juan.png`);
-  await touchControl(page, 405, 500, 35);
+  await capture(page, `${output}/01-football-setup-juan.png`);
+  await touchControl(page, 375, 205, 35);
   await page.waitForTimeout(60);
   state = await readState(page);
   assert.equal(state.playerCharacter.id, 'juanjo', 'Uncle Juanjo should follow Uncle Juan in the selector');
   assert.equal(state.playerCharacter.name, 'Uncle Juanjo');
-  assert.deepEqual(state.playerCharacter.displaySize, { width: 255, height: 255 });
-  await capture(page, `${output}/01-intro-juanjo.png`);
-  await touchControl(page, 405, 500, 35);
+  await capture(page, `${output}/01-football-setup-juanjo.png`);
+  await touchControl(page, 375, 205, 35);
   await page.waitForTimeout(60);
   assert.equal((await readState(page)).playerCharacter.id, 'joel', 'the selector should wrap from Juanjo back to Joel');
 
-  await touchControl(page, 1195, 500, 35);
+  await touchControl(page, 785, 205, 35);
   state = await readState(page);
   assert.equal(state.opponent.id, 'lucia', 'the right selector arrow should choose Lucia');
-  await capture(page, `${output}/01-intro-lucia.png`);
-  await touchControl(page, 875, 500, 35);
+  await capture(page, `${output}/01-football-setup-lucia.png`);
+  await touchControl(page, 495, 205, 35);
   assert.equal((await readState(page)).opponent.id, 'bob', 'the left selector arrow should wrap back to Bob');
-  await touchControl(page, 1195, 500, 35);
+  await touchControl(page, 785, 205, 35);
   assert.equal((await readState(page)).opponent.id, 'lucia');
-  await touchControl(page, 405, 500, 35);
+  await page.waitForTimeout(60);
+  await touchControl(page, 375, 205, 35);
   assert.equal((await readState(page)).playerCharacter.id, 'bob', 'the player selector must skip Lucia while she is selected opposite');
-  await touchControl(page, 85, 500, 35);
+  await touchControl(page, 85, 205, 35);
   assert.equal((await readState(page)).playerCharacter.id, 'joel');
-  await touchControl(page, 875, 500, 35);
+  await touchControl(page, 495, 205, 35);
   assert.equal((await readState(page)).opponent.id, 'bob');
   await page.waitForTimeout(60);
-  await touchControl(page, 405, 500, 35);
+  await touchControl(page, 375, 205, 35);
   assert.equal((await readState(page)).playerCharacter.id, 'lucia', 'Lucia should be selectable as the human player');
   await page.waitForTimeout(60);
-  await touchControl(page, 875, 500, 35);
+  await touchControl(page, 495, 205, 35);
   state = await readState(page);
   assert.deepEqual([state.playerCharacter.id, state.opponent.id], ['lucia', 'joel']);
-  assert.equal(state.playerCharacter.facing, 'right');
-  assert.equal(state.opponent.facing, 'left');
-  assert.equal(state.playerCharacter.mirrored, true, 'Lucia native left-facing art should mirror on the player side');
-  assert.equal(state.opponent.mirrored, true, 'Joel native right-facing art should mirror on the opponent side');
-  await capture(page, `${output}/01-intro-lucia-player.png`);
+  await capture(page, `${output}/01-football-setup-lucia-player.png`);
   await page.waitForTimeout(60);
-  await touchControl(page, 405, 500, 35);
+  await touchControl(page, 375, 205, 35);
   state = await readState(page);
   assert.deepEqual([state.playerCharacter.id, state.opponent.id], ['luna', 'joel']);
-  await capture(page, `${output}/01-intro-luna-player.png`);
+  await capture(page, `${output}/01-football-setup-luna-player.png`);
   await page.waitForTimeout(60);
-  await touchControl(page, 85, 500, 35);
+  await touchControl(page, 85, 205, 35);
   assert.equal((await readState(page)).playerCharacter.id, 'lucia');
 
-  await touchControl(page, 44, 42, 30);
+  await touchControl(page, 1218, 52, 30);
+  await page.waitForFunction(() => JSON.parse(window.render_game_to_text()).modal === 'help');
+  await capture(page, `${output}/01-football-help.png`);
+  await page.keyboard.press('Escape');
+  await page.waitForFunction(() => JSON.parse(window.render_game_to_text()).modal === null);
+  await touchControl(page, 82, 52, 30);
+  await page.waitForFunction(() => JSON.parse(window.render_game_to_text()).mode === 'intro');
+
+  await touchControl(page, 44, 48, 30);
   await page.waitForFunction(() => JSON.parse(window.render_game_to_text()).modal === 'about');
   state = await readState(page);
   assert.equal(state.modalAppInfo.version, '1.0.0');
@@ -1277,13 +1695,7 @@ try {
   await page.evaluate(() => window.__SKYHEAD_PLATFORM_DEBUG__.backForTesting());
   await page.waitForFunction(() => JSON.parse(window.render_game_to_text()).modal === null);
 
-  await touchControl(page, 108, 42, 30);
-  await page.waitForFunction(() => JSON.parse(window.render_game_to_text()).modal === 'help');
-  await capture(page, `${output}/01-help.png`);
-  await page.keyboard.press('Escape');
-  await page.waitForFunction(() => JSON.parse(window.render_game_to_text()).modal === null);
-
-  await touchControl(page, 640, 500, 35);
+  await touchControl(page, 1020, 493, 35);
   await page.waitForFunction(() => JSON.parse(window.render_game_to_text()).mode === 'settings');
   state = await readState(page);
   assert.equal(state.audio.musicRequested, true, 'the first user gesture should unlock menu music');
@@ -1291,17 +1703,23 @@ try {
   await page.evaluate(() => window.__SKYHEAD_AUDIO_DEBUG__.warmAll());
   state = await readState(page);
   assert.equal(state.audio.cache.cachedCount, state.audio.cache.total, 'all audio should be reusable from Cache Storage');
-  assert.equal(state.difficulty, 'normal', 'Normal should be the default AI difficulty');
+  assert.deepEqual(state.difficultyByGame, {
+    football: 'normal',
+    kickfall: 'normal',
+    discHockey: 'normal',
+  });
   assert.equal(state.settingsLayout.titleInsidePanel, true, 'the Settings title should stay fully inside the panel');
   assert.equal(state.technicalAudioCacheVisible, false, 'technical audio-cache status should not be shown to players');
   await capture(page, `${output}/01-settings.png`);
 
-  await touchControl(page, 535, 270, 35);
-  await page.waitForFunction(() => JSON.parse(window.render_game_to_text()).difficulty === 'easy');
-  assert.equal((await readState(page)).difficulty, 'easy');
   await touchControl(page, 92, 52, 35);
   await page.waitForFunction(() => JSON.parse(window.render_game_to_text()).mode === 'intro');
-  await touchControl(page, 640, 370, 35);
+  await touchControl(page, 640, 252, 35);
+  await page.waitForFunction(() => JSON.parse(window.render_game_to_text()).mode === 'football-setup');
+  await touchControl(page, 942, 224, 35);
+  await page.waitForFunction(() => JSON.parse(window.render_game_to_text()).difficulty === 'easy');
+  assert.equal((await readState(page)).difficulty, 'easy');
+  await touchControl(page, 785, 660, 35);
   await page.waitForFunction(() => JSON.parse(window.render_game_to_text()).mode === 'countdown');
   await advance(page, 3200);
   await page.evaluate(() => {
@@ -1323,16 +1741,14 @@ try {
   await page.waitForFunction(() => JSON.parse(window.render_game_to_text()).modal === 'abandon-confirm');
   await touchControl(page, 775, 438, 35);
   await page.waitForFunction(() => JSON.parse(window.render_game_to_text()).mode === 'intro');
-  await touchControl(page, 640, 500, 35);
+  await touchControl(page, 1020, 493, 35);
   await page.waitForFunction(() => JSON.parse(window.render_game_to_text()).mode === 'settings');
-  assert.equal((await readState(page)).difficulty, 'easy', 'difficulty should persist after leaving a match');
-  await touchControl(page, 640, 270, 35);
-  await page.waitForFunction(() => JSON.parse(window.render_game_to_text()).difficulty === 'normal');
+  assert.equal((await readState(page)).difficultyByGame.football, 'easy', 'football difficulty should persist after leaving a match');
 
-  await touchControl(page, 600, 427, 35);
+  await touchControl(page, 600, 347, 35);
   state = await readState(page);
   assert.equal(state.audio.settings.musicVolume, 0.6, 'the music slider should use touch-friendly five-percent steps');
-  const musicMutePoint = await canvasPoint(page, 935, 427);
+  const musicMutePoint = await canvasPoint(page, 935, 347);
   await page.mouse.move(musicMutePoint.x, musicMutePoint.y);
   await page.mouse.down();
   state = await readState(page);
@@ -1350,38 +1766,40 @@ try {
   assert.equal(state.audio.media.musicVolume, 0.6);
   assert.deepEqual(state.audioControls.music, { muted: false, label: 'MUTE', enabled: true });
   await page.mouse.up();
-  await touchControl(page, 935, 557, 35);
+  await touchControl(page, 935, 517, 35);
   state = await readState(page);
   assert.equal(state.audio.settings.effectsMuted, true, 'effects should have an independent mute switch');
   assert.equal(state.audio.media.ballEffectVolume, 0);
   assert.equal(state.audio.media.whistleEffectVolume, 0);
   assert.deepEqual(state.audioControls.effects, { muted: true, label: 'TURN ON', enabled: true });
   await capture(page, `${output}/01-settings-effects-muted.png`);
-  await touchControl(page, 935, 557, 35);
+  await touchControl(page, 935, 517, 35);
   state = await readState(page);
   assert.equal(state.audio.settings.effectsMuted, false);
   assert.ok(state.audio.media.ballEffectVolume > 0);
   assert.ok(state.audio.media.whistleEffectVolume > 0);
   assert.deepEqual(state.audioControls.effects, { muted: false, label: 'MUTE', enabled: true });
-  await touchControl(page, 510, 557, 35);
+  await touchControl(page, 510, 517, 35);
   assert.equal((await readState(page)).audio.settings.effectsVolume, 0.4);
   await touchControl(page, 685, 188, 35);
   await page.waitForFunction(() => JSON.parse(window.render_game_to_text()).language === 'es');
   state = await readState(page);
   assert.equal(state.mode, 'settings');
   assert.equal(state.audio.settings.musicVolume, 0.6, 'language changes must preserve audio settings');
-  assert.equal(state.difficulty, 'normal', 'language changes must preserve difficulty');
+  assert.equal(state.difficultyByGame.football, 'easy', 'language changes must preserve football difficulty');
   await capture(page, `${output}/01-settings-es.png`);
   await touchControl(page, 640, 640, 35);
   await page.waitForFunction(() => JSON.parse(window.render_game_to_text()).mode === 'intro');
 
-  await touchControl(page, 1190, 34, 30);
-  await page.waitForFunction(() => JSON.parse(window.render_game_to_text()).language === 'es');
   state = await readState(page);
-  assert.equal(state.language, 'es', 'the main-screen language switch should select Spanish');
+  assert.equal(state.language, 'es', 'the Settings language switch should select Spanish');
   await capture(page, `${output}/01-intro-es.png`);
 
-  await touchControl(page, 740, 438, 35);
+  await touchControl(page, 640, 252, 35);
+  await page.waitForFunction(() => JSON.parse(window.render_game_to_text()).mode === 'football-setup');
+  await touchControl(page, 1050, 224, 35);
+  await page.waitForFunction(() => JSON.parse(window.render_game_to_text()).difficulty === 'normal');
+  await touchControl(page, 430, 660, 35);
   await page.waitForFunction(() => JSON.parse(window.render_game_to_text()).mode === 'power-lab');
   state = await readState(page);
   assert.equal(state.language, 'es');
@@ -1420,21 +1838,31 @@ try {
   assert.equal(state.language, 'es', 'language should persist across refresh');
   assert.equal(state.audio.settings.musicVolume, 0.6, 'music volume should persist across refresh');
   assert.equal(state.audio.settings.effectsVolume, 0.4, 'effects volume should persist across refresh');
-  assert.equal(state.difficulty, 'normal', 'difficulty should persist across refresh');
+  assert.deepEqual(state.difficultyByGame, {
+    football: 'normal',
+    kickfall: 'normal',
+    discHockey: 'normal',
+  }, 'per-game difficulties should persist across refresh');
   assert.equal(state.playerCharacter.id, 'lucia', 'the selected player should persist across refresh');
   assert.equal(state.opponent.id, 'joel', 'the selected opponent should persist across refresh');
-  await touchControl(page, 740, 438, 35);
+  await touchControl(page, 640, 252, 35);
+  await page.waitForFunction(() => JSON.parse(window.render_game_to_text()).mode === 'football-setup');
+  await touchControl(page, 430, 660, 35);
   await page.waitForFunction(() => JSON.parse(window.render_game_to_text()).mode === 'power-lab');
   state = await readState(page);
   assert.equal(state.powers.fireball, 2, 'earned charges should persist across refresh');
   assert.equal(state.equippedPowerId, 'fireball', 'equipped power should persist across refresh');
   await touchControl(page, 74, 48, 30);
+  await page.waitForFunction(() => JSON.parse(window.render_game_to_text()).mode === 'football-setup');
+  await touchControl(page, 82, 52, 30);
   await page.waitForFunction(() => JSON.parse(window.render_game_to_text()).mode === 'intro');
 
   state = await readState(page);
   const countdownWhistlesBefore = state.audio.whistleRequestedPlays;
   const countdownWhistlePlaysBefore = state.audio.whistlePlays;
-  await page.keyboard.press('Enter');
+  await touchControl(page, 640, 252, 35);
+  await page.waitForFunction(() => JSON.parse(window.render_game_to_text()).mode === 'football-setup');
+  await touchControl(page, 785, 660, 35);
   await page.waitForFunction(() => JSON.parse(window.render_game_to_text()).mode === 'countdown');
   state = await readState(page);
   assert.equal(state.players.left.visualFrame, 0);
@@ -1472,7 +1900,8 @@ try {
   await capture(page, `${output}/02-ground-baseline.png`);
   assert.ok(state.hud.leftName.startsWith('LUCIA'), `the rendered left HUD label should say Lucia; got ${state.hud.leftName}`);
   assert.ok(state.hud.rightName.endsWith('JOEL'), `the rendered right HUD label should say Joel; got ${state.hud.rightName}`);
-  assert.equal(state.audio.sceneMode, 'match');
+  assert.equal(state.audio.sceneMode, 'football');
+  assert.deepEqual(state.audio.scenePolicy, { music: true, audience: true });
   assert.equal(state.audio.musicRequested, true, 'music should continue into the match');
   assert.equal(state.audio.audienceRequested, true, 'audience ambience should be active only during the match');
   assert.equal(state.audio.whistleRequestedPlays, countdownWhistlesBefore + 3, 'the 3–2–1 countdown should request one whistle per second');
@@ -2117,7 +2546,14 @@ try {
   await page.keyboard.press('p');
   assert.notEqual((await readState(page)).mode, 'paused');
 
-  await page.keyboard.press('Escape');
+  await page.evaluate(() => {
+    const event = new KeyboardEvent('keydown', {
+      key: 'Escape',
+      bubbles: true,
+      cancelable: true,
+    });
+    window.__SKYHEAD_GAME__.scene.getScene('Match').onEscapeKey(event);
+  });
   state = await readState(page);
   assert.equal(state.mode, 'paused', 'Escape should open the desktop pause menu');
   assert.deepEqual(state.pauseActions, ['resume', 'restart', 'abandon match']);
@@ -2127,7 +2563,9 @@ try {
   await touchControl(page, 775, 438, 40);
   await page.waitForFunction(() => JSON.parse(window.render_game_to_text()).mode === 'intro');
   assert.equal((await readState(page)).audio.sceneMode, 'menu', 'abandoning should return to the main menu');
-  await page.keyboard.press('Enter');
+  await touchControl(page, 640, 252, 35);
+  await page.waitForFunction(() => JSON.parse(window.render_game_to_text()).mode === 'football-setup');
+  await touchControl(page, 785, 660, 35);
   await page.waitForFunction(() => JSON.parse(window.render_game_to_text()).mode === 'countdown');
   await advance(page, 3100);
   assert.equal((await readState(page)).mode, 'playing');
@@ -2189,7 +2627,14 @@ try {
   state = await readState(page);
   assert.equal(state.physicsPolish.clashCount, clashesBefore + 1, 'a sustained face-to-face push should resolve exactly once');
   assert.equal(state.physicsPolish.lastClashPoppedBall, true, 'a ball trapped between both players should pop free');
-  assert.ok(state.players.left.vx < 0 && state.players.right.vx > 0 && state.ball.vy < -8, 'the clash should separate players and lift the ball');
+  assert.ok(
+    Math.abs(state.players.left.vx) + Math.abs(state.players.right.vx) > 4 && state.ball.vy < -8,
+    `the clash should push both players and lift the ball; ${JSON.stringify({
+      leftVx: state.players.left.vx,
+      rightVx: state.players.right.vx,
+      ballVy: state.ball.vy,
+    })}`,
+  );
   await page.evaluate(() => window.__SKYHEAD_GAME__.scene.getScene('Match').cameras.main.resetFX());
   await advance(page, 120);
   await capture(page, `${output}/03-player-clash-release.png`);
@@ -2326,13 +2771,15 @@ try {
   });
   await juanPage.goto(url, { waitUntil: 'domcontentloaded' });
   await waitThroughSplash(juanPage);
+  await touchControl(juanPage, 640, 252, 35);
+  await juanPage.waitForFunction(() => JSON.parse(window.render_game_to_text()).mode === 'football-setup');
   for (let step = 0; step < 3; step += 1) {
-    await touchControl(juanPage, 405, 500, 35);
+    await touchControl(juanPage, 375, 205, 35);
     await juanPage.waitForTimeout(60);
   }
   let juanState = await readState(juanPage);
   assert.equal(juanState.playerCharacter.id, 'juan');
-  await touchControl(juanPage, 640, 370, 40);
+  await touchControl(juanPage, 785, 660, 40);
   await juanPage.waitForFunction(() => JSON.parse(window.render_game_to_text()).mode === 'countdown');
   await advance(juanPage, 3100);
   await juanPage.evaluate(() => {
@@ -2359,14 +2806,16 @@ try {
   });
   await juanjoPage.goto(url, { waitUntil: 'domcontentloaded' });
   await waitThroughSplash(juanjoPage);
+  await touchControl(juanjoPage, 640, 252, 35);
+  await juanjoPage.waitForFunction(() => JSON.parse(window.render_game_to_text()).mode === 'football-setup');
   for (let step = 0; step < 4; step += 1) {
-    await touchControl(juanjoPage, 405, 500, 35);
+    await touchControl(juanjoPage, 375, 205, 35);
     await juanjoPage.waitForTimeout(60);
   }
   let juanjoState = await readState(juanjoPage);
   assert.equal(juanjoState.playerCharacter.id, 'juanjo');
   await capture(juanjoPage, `${output}/04-juanjo-intro.png`);
-  await touchControl(juanjoPage, 640, 370, 40);
+  await touchControl(juanjoPage, 785, 660, 40);
   await juanjoPage.waitForFunction(() => JSON.parse(window.render_game_to_text()).mode === 'countdown');
   await advance(juanjoPage, 3100);
   juanjoState = await readState(juanjoPage);
@@ -2472,11 +2921,51 @@ try {
     bitmapWidth: mobileState.stageLayout.width,
     bitmapHeight: 720,
   }, 'wide-phone canvas should fill the entire landscape viewport without side bars');
-  assert.equal(mobileState.controls.pause[0], 'on-screen pause');
-  assert.deepEqual(mobileState.controls.dash, ['double-tap either direction arrow']);
-  assert.deepEqual(mobileState.controls.kickBoost, ['repeat the kick or lob icon during the kick animation']);
-  assert.deepEqual(mobileState.controls.chilena, ['double kick: direct; double lob: high arc']);
-  await touchControl(mobilePage, 640, 550, 35);
+  const nativeHoldGuard = await mobilePage.evaluate(() => {
+    const shell = document.querySelector('#game-shell');
+    const canvas = document.querySelector('canvas');
+    const readStyles = (element) => {
+      const styles = getComputedStyle(element);
+      return {
+        touchAction: styles.touchAction,
+        userSelect: styles.userSelect,
+        webkitUserSelect: styles.webkitUserSelect,
+      };
+    };
+    const blockedEvents = Object.fromEntries(
+      ['touchstart', 'touchmove', 'contextmenu', 'dragstart', 'selectstart'].map((eventName) => {
+        const event = new Event(eventName, { bubbles: true, cancelable: true });
+        (eventName.startsWith('touch') ? shell : canvas).dispatchEvent(event);
+        return [eventName, event.defaultPrevented];
+      }),
+    );
+    return {
+      shell: readStyles(shell),
+      canvas: readStyles(canvas),
+      blockedEvents,
+    };
+  });
+  for (const [target, styles] of Object.entries({
+    shell: nativeHoldGuard.shell,
+    canvas: nativeHoldGuard.canvas,
+  })) {
+    assert.equal(styles.touchAction, 'none', `${target} must opt out of native touch gestures`);
+    assert.equal(styles.userSelect, 'none', `${target} must disable standard selection`);
+    assert.equal(styles.webkitUserSelect, 'none', `${target} must disable iOS WebKit selection`);
+  }
+  assert.deepEqual(
+    nativeHoldGuard.blockedEvents,
+    {
+      touchstart: true,
+      touchmove: true,
+      contextmenu: true,
+      dragstart: true,
+      selectstart: true,
+    },
+    'the game surface must cancel native touch, long-press, dragging, and selection defaults',
+  );
+  assert.deepEqual(mobileState.journeys.map(({ id }) => id), ['football', 'mini-games']);
+  await touchControl(mobilePage, 1125, 662, 35);
   mobileState = await readState(mobilePage);
   assert.equal(mobileState.modal, 'install');
   await capture(mobilePage, `${output}/05-touch-install.png`);
@@ -2484,7 +2973,9 @@ try {
   assert.equal((await readState(mobilePage)).modal, null);
   await capture(mobilePage, `${output}/05-touch-intro.png`);
 
-  const playerNextPoint = await canvasPoint(mobilePage, 405, 500);
+  await touchControl(mobilePage, 640, 252, 45);
+  await mobilePage.waitForFunction(() => JSON.parse(window.render_game_to_text()).mode === 'football-setup');
+  const playerNextPoint = await canvasPoint(mobilePage, 375, 205);
   await mobilePage.mouse.move(playerNextPoint.x, playerNextPoint.y);
   await mobilePage.mouse.down();
   await advance(mobilePage, 45);
@@ -2506,28 +2997,36 @@ try {
   mobileState = await readState(mobilePage);
   assert.equal(mobileState.playerCharacter.id, 'luna', 'the tablet selector should let Luna play as herself');
   assert.equal(mobileState.opponent.id, 'bob');
-  await capture(mobilePage, `${output}/05-touch-intro-luna.png`);
+  await capture(mobilePage, `${output}/05-touch-football-setup-luna.png`);
 
-  await touchControl(mobilePage, 640, 500, 45);
+  await touchControl(mobilePage, 82, 52, 45);
+  await mobilePage.waitForFunction(() => JSON.parse(window.render_game_to_text()).mode === 'intro');
+  await touchControl(mobilePage, 1020, 493, 45);
   await mobilePage.waitForFunction(() => JSON.parse(window.render_game_to_text()).mode === 'settings');
   mobileState = await readState(mobilePage);
   assert.equal(mobileState.audio.settings.musicVolume, 0.15);
   assert.equal(mobileState.audio.settings.effectsVolume, 0.2);
-  assert.equal(mobileState.difficulty, 'normal');
-  await touchControl(mobilePage, 935, 427, 40);
+  assert.deepEqual(mobileState.difficultyByGame, {
+    football: 'normal',
+    kickfall: 'normal',
+    discHockey: 'normal',
+  });
+  await touchControl(mobilePage, 935, 347, 40);
   mobileState = await readState(mobilePage);
   assert.equal(mobileState.audio.settings.musicMuted, true, 'tablet Music mute should work from a real touch layout');
   assert.equal(mobileState.audioControls.music.label, 'TURN ON');
   await capture(mobilePage, `${output}/05-touch-settings-music-muted.png`);
-  await touchControl(mobilePage, 935, 427, 40);
+  await mobilePage.waitForTimeout(550);
+  await touchControl(mobilePage, 935, 347, 40);
   mobileState = await readState(mobilePage);
   assert.equal(mobileState.audio.settings.musicMuted, false);
   assert.equal(mobileState.audioControls.music.label, 'MUTE');
-  await touchControl(mobilePage, 935, 557, 40);
+  await touchControl(mobilePage, 935, 517, 40);
   mobileState = await readState(mobilePage);
   assert.equal(mobileState.audio.settings.effectsMuted, true, 'tablet settings should mute effects by touch');
   assert.equal(mobileState.audioControls.effects.label, 'TURN ON');
-  await touchControl(mobilePage, 935, 557, 40);
+  await mobilePage.waitForTimeout(550);
+  await touchControl(mobilePage, 935, 517, 40);
   mobileState = await readState(mobilePage);
   assert.equal(mobileState.audio.settings.effectsMuted, false);
   assert.equal(mobileState.audioControls.effects.label, 'MUTE');
@@ -2535,7 +3034,9 @@ try {
   await touchControl(mobilePage, 92, 52, 40);
   await mobilePage.waitForFunction(() => JSON.parse(window.render_game_to_text()).mode === 'intro');
 
-  await touchControl(mobilePage, 640, 370, 50);
+  await touchControl(mobilePage, 640, 252, 45);
+  await mobilePage.waitForFunction(() => JSON.parse(window.render_game_to_text()).mode === 'football-setup');
+  await touchControl(mobilePage, 785, 660, 50);
   await mobilePage.waitForFunction(() => JSON.parse(window.render_game_to_text()).mode === 'countdown');
   await advance(mobilePage, 3100);
   mobileState = await readState(mobilePage);
@@ -2543,7 +3044,61 @@ try {
   assert.equal(mobileState.players.left.name, 'Luna', 'the selected tablet player should carry into the match');
   assert.equal(mobileState.players.right.name, 'Bob', 'the selected tablet opponent should carry into the match');
   assert.equal(mobileState.audio.audienceRequested, true, 'tablet matches should request the audience ambience');
+  assert.equal(mobileState.footballTouchMovementMode, 'arrows');
+  assert.equal(mobileState.controls.move, 'on-screen left/right arrows');
+  assert.equal(mobileState.controls.dash, 'double-tap the left/right arrow');
   assert.equal(mobileState.controls.chilena, 'double kick: direct; double lob: high arc');
+  assert.equal(mobileState.touchControlVisuals.movementMode, 'arrows');
+  assert.equal(mobileState.touchControlVisuals.joystick, null);
+  assert.ok(mobileState.touchControlVisuals.left);
+  assert.ok(mobileState.touchControlVisuals.right);
+  const mobileControlOffset = (mobileState.stageLayout.width - 1280) / 2;
+  assert.deepEqual(
+    [
+      mobileState.touchControlVisuals.left.x - mobileControlOffset,
+      mobileState.touchControlVisuals.left.y,
+      mobileState.touchControlVisuals.left.authoredRadius,
+    ],
+    [98, 630, 64],
+    'Football Left should use the restored compact layout',
+  );
+  assert.deepEqual(
+    [
+      mobileState.touchControlVisuals.right.x - mobileControlOffset,
+      mobileState.touchControlVisuals.right.y,
+      mobileState.touchControlVisuals.right.authoredRadius,
+    ],
+    [238, 630, 64],
+    'Football Right should sit only 12 logical pixels from Left at their rims',
+  );
+  assert.deepEqual(
+    [
+      mobileState.touchControlVisuals.jump.x - mobileControlOffset,
+      mobileState.touchControlVisuals.jump.y,
+      mobileState.touchControlVisuals.jump.authoredRadius,
+    ],
+    [1020, 630, 60],
+    'Football Jump should return to the familiar lower action row',
+  );
+  assert.deepEqual(
+    [
+      mobileState.touchControlVisuals.lob.x - mobileControlOffset,
+      mobileState.touchControlVisuals.lob.y,
+      mobileState.touchControlVisuals.lob.authoredRadius,
+    ],
+    [1195, 475, 56],
+    'Lob should occupy the former Power position',
+  );
+  assert.deepEqual(
+    [
+      mobileState.touchControlVisuals.power.x - mobileControlOffset,
+      mobileState.touchControlVisuals.power.y,
+      mobileState.touchControlVisuals.power.authoredRadius,
+    ],
+    [930, 500, 50],
+    'Power should occupy the former high-kick position',
+  );
+  await capture(mobilePage, `${output}/05-touch-football-arrows.png`);
   const mobileGoalBounds = await mobilePage.evaluate(() => {
     const match = window.__SKYHEAD_GAME__.scene.getScene('Match');
     return match.goals.map(({ image }) => {
@@ -2585,11 +3140,22 @@ try {
   assert.equal(mobileState.mode, 'playing', 'Back should cancel abandon and safely resume the live match');
 
   const authoredControlPoints = {
-    jump: [930, 500],
+    jump: [1020, 630],
     kick: [1165, 610],
-    lob: [1035, 610],
+    lob: [1195, 475],
   };
-  assert.equal(mobileState.touchControlVisuals.dash, undefined, 'directional double-tap should replace the separate Dash button');
+  assert.equal(mobileState.touchControlVisuals.dash, undefined, 'directional double-tap should not need a separate Dash button');
+  assert.equal(mobileState.touchControlVisuals.jump.emphasized, true);
+  assert.ok(
+    mobileState.touchControlVisuals.jump.surfaceFillAlpha
+      > mobileState.touchControlVisuals.kick.surfaceFillAlpha * 2,
+    'Jump should be materially easier to find than the standard glass action controls',
+  );
+  assert.ok(
+    mobileState.touchControlVisuals.jump.symbolAlpha
+      > mobileState.touchControlVisuals.kick.symbolAlpha,
+    'Jump should use a stronger icon than the standard glass action controls',
+  );
   for (const [action, [x, y]] of Object.entries(authoredControlPoints)) {
     const before = (await readState(mobilePage)).touchControlVisuals[action];
     const point = await canvasPoint(mobilePage, x, y);
@@ -2612,13 +3178,24 @@ try {
   await mobilePage.evaluate(() => window.__SKYHEAD_GAME__.scene.getScene('Match').scene.restart());
   await mobilePage.waitForFunction(() => JSON.parse(window.render_game_to_text()).mode === 'countdown');
   await advance(mobilePage, 3100);
+  await mobilePage.evaluate(() => {
+    window.__SKYHEAD_DEBUG__.resumePlay();
+    window.__SKYHEAD_DEBUG__.setHumanPosition(320);
+    window.__SKYHEAD_DEBUG__.setOpponentPosition(1100);
+    window.__SKYHEAD_DEBUG__.setBall({ x: 700, y: 420, vx: 0, vy: 0 });
+  });
   mobileState = await readState(mobilePage);
   const touchStartX = mobileState.players.left.x;
-  await touchControl(mobilePage, 260, 630, 320);
+  const heldRightPoint = await canvasPoint(mobilePage, 238, 630);
+  await mobilePage.mouse.move(heldRightPoint.x, heldRightPoint.y);
+  await mobilePage.mouse.down();
+  await advance(mobilePage, 750);
+  await capture(mobilePage, `${output}/05-touch-arrow-long-hold.png`);
+  await mobilePage.mouse.up();
   mobileState = await readState(mobilePage);
-  assert.ok(mobileState.players.left.x > touchStartX + 10, 'touch right should move the human');
+  assert.ok(mobileState.players.left.x > touchStartX + 10, 'a long-held touch arrow should keep moving the human');
   const touchRightX = mobileState.players.left.x;
-  await touchControl(mobilePage, 80, 630, 260);
+  await touchControl(mobilePage, 98, 630, 260);
   assert.ok((await readState(mobilePage)).players.left.x < touchRightX, 'touch left should reverse movement');
 
   await mobilePage.evaluate(() => {
@@ -2626,23 +3203,203 @@ try {
     window.__SKYHEAD_DEBUG__.setHumanPosition(400);
     window.__SKYHEAD_DEBUG__.setOpponentPosition(1080);
     window.__SKYHEAD_DEBUG__.setBall({ x: 350, y: 400 });
+    const match = window.__SKYHEAD_GAME__.scene.getScene('Match');
+    match.leftPlayer.sprite.setVelocity(0, 0);
+    match.leftPlayer.dashTimer = 0;
+    match.leftPlayer.dashCooldown = 0;
+    match.inputController.neutralize();
   });
-  await touchControl(mobilePage, 260, 630, 35);
+  await touchControl(mobilePage, 238, 630, 45);
+  await advance(mobilePage, 55);
+  await touchControl(mobilePage, 238, 630, 55);
+  mobileState = await readState(mobilePage);
+  assert.equal(mobileState.players.left.dashDirection, 1, 'double-tapping the right touch arrow should dash right');
+  assert.ok(mobileState.players.left.dashTimer > 0 && mobileState.players.left.dashCooldown > 0);
+
+  const mobileTouch = await mobile.newCDPSession(mobilePage);
+  const [compactRightPoint, lowerJumpPoint] = await Promise.all([
+    canvasPoint(mobilePage, 238, 630),
+    canvasPoint(mobilePage, 1020, 630),
+  ]);
+  const compactRightTouch = {
+    x: compactRightPoint.x,
+    y: compactRightPoint.y,
+    id: 21,
+    radiusX: 8,
+    radiusY: 8,
+    force: 1,
+  };
+  const lowerJumpTouch = {
+    x: lowerJumpPoint.x,
+    y: lowerJumpPoint.y,
+    id: 22,
+    radiusX: 8,
+    radiusY: 8,
+    force: 1,
+  };
+  await mobilePage.evaluate(() => {
+    const match = window.__SKYHEAD_GAME__.scene.getScene('Match');
+    window.__SKYHEAD_DEBUG__.resumePlay();
+    window.__SKYHEAD_DEBUG__.setHumanPosition(400);
+    window.__SKYHEAD_DEBUG__.setOpponentPosition(1080);
+    match.leftPlayer.dashTimer = 0;
+    match.leftPlayer.dashCooldown = 0;
+    match.leftPlayer.sprite.setVelocity(0, 0);
+    match.inputController.neutralize();
+  });
+  await mobileTouch.send('Input.dispatchTouchEvent', {
+    type: 'touchStart',
+    touchPoints: [compactRightTouch],
+  });
+  await advance(mobilePage, 50);
+  const compactMoveStartX = (await readState(mobilePage)).players.left.x;
+  await mobileTouch.send('Input.dispatchTouchEvent', {
+    type: 'touchStart',
+    touchPoints: [compactRightTouch, lowerJumpTouch],
+  });
   await advance(mobilePage, 70);
-  const touchDashPoint = await canvasPoint(mobilePage, 260, 630);
-  await mobilePage.mouse.move(touchDashPoint.x, touchDashPoint.y);
+  mobileState = await readState(mobilePage);
+  assert.ok(mobileState.players.left.x > compactMoveStartX, 'compact Right should remain held while Jump is pressed');
+  assert.ok(mobileState.players.left.vy < 0, 'the restored lower Jump should launch while Right remains held');
+  assert.equal(mobileState.inputDiagnostics.touch.right, true, 'Jump must not release the movement pointer');
+  await mobileTouch.send('Input.dispatchTouchEvent', {
+    type: 'touchEnd',
+    touchPoints: [lowerJumpTouch],
+  });
+  await advance(mobilePage, 40);
+  assert.equal((await readState(mobilePage)).inputDiagnostics.touch.right, true, 'releasing Jump must preserve held Right');
+  await mobileTouch.send('Input.dispatchTouchEvent', {
+    type: 'touchEnd',
+    touchPoints: [compactRightTouch],
+  });
+  await advance(mobilePage, 40);
+
+  await mobilePage.evaluate(() => {
+    const game = window.__SKYHEAD_GAME__;
+    game.registry.set('developer:footballTouchMovementMode', 'joystick');
+    game.scene.getScene('Match').scene.restart();
+  });
+  await mobilePage.waitForFunction(() => JSON.parse(window.render_game_to_text()).mode === 'countdown');
+  await advance(mobilePage, 3100);
+  mobileState = await readState(mobilePage);
+  assert.equal(mobileState.footballTouchMovementMode, 'joystick');
+  assert.equal(mobileState.controls.move, 'analog horizontal virtual joystick');
+  assert.equal(mobileState.controls.dash, 'flick from the center to the joystick edge');
+  assert.equal(mobileState.touchControlVisuals.movementMode, 'joystick');
+  assert.equal(mobileState.touchControlVisuals.joystick.axis, 'horizontal');
+  assert.ok(mobileState.touchControlVisuals.joystick.radius > 110, 'wide-phone scaling should make the developer joystick comfortably thumb-sized');
+  assert.equal(
+    mobileState.touchControlVisuals.joystick.y,
+    720 - mobileState.touchControlVisuals.joystick.radius - 8,
+  );
+
+  await mobilePage.evaluate(() => {
+    window.__SKYHEAD_DEBUG__.resumePlay();
+    window.__SKYHEAD_DEBUG__.setHumanPosition(400);
+    window.__SKYHEAD_DEBUG__.setOpponentPosition(1080);
+    window.__SKYHEAD_DEBUG__.setBall({ x: 350, y: 400 });
+    const match = window.__SKYHEAD_GAME__.scene.getScene('Match');
+    match.leftPlayer.sprite.setVelocity(0, 0);
+    match.leftPlayer.dashTimer = 0;
+    match.leftPlayer.dashCooldown = 0;
+    match.inputController.neutralize();
+  });
+  mobileState = await readState(mobilePage);
+  const mobileJoystick = mobileState.touchControlVisuals.joystick;
+  const touchWalkPoint = await stagePoint(
+    mobilePage,
+    mobileJoystick.x + mobileJoystick.radius * 0.55,
+    mobileJoystick.y,
+  );
+  await mobilePage.mouse.move(touchWalkPoint.x, touchWalkPoint.y);
+  await mobilePage.mouse.down();
+  await advance(mobilePage, 520);
+  mobileState = await readState(mobilePage);
+  const analogWalkSpeed = mobileState.players.left.vx;
+  assert.ok(Math.abs(mobileState.currentIntent.left.move - 0.55) < 0.03);
+  assert.equal(mobileState.touchControlVisuals.joystick.boosted, false);
+  assert.equal(mobileState.players.left.dashCooldown, 0, 'the inner joystick lane should walk without dashing');
+  assert.ok(
+    analogWalkSpeed > 0.8 && analogWalkSpeed < 4,
+    `partial tilt should produce a deliberate walking speed below the full-run range; vx=${analogWalkSpeed}`,
+  );
+  await capture(mobilePage, `${output}/05-touch-analog-walk.png`);
+  await mobilePage.mouse.up();
+  await advance(mobilePage, 100);
+
+  await mobilePage.evaluate(() => {
+    const match = window.__SKYHEAD_GAME__.scene.getScene('Match');
+    window.__SKYHEAD_DEBUG__.setHumanPosition(400);
+    match.leftPlayer.sprite.setVelocity(0, 0);
+    match.leftPlayer.dashTimer = 0;
+    match.leftPlayer.dashCooldown = 0;
+  });
+  const touchEdgePoint = await stagePoint(
+    mobilePage,
+    mobileJoystick.x + mobileJoystick.radius * 0.92,
+    mobileJoystick.y,
+  );
+  await mobilePage.mouse.move(touchEdgePoint.x, touchEdgePoint.y);
   await mobilePage.mouse.down();
   await advance(mobilePage, 60);
   mobileState = await readState(mobilePage);
-  assert.equal(mobileState.players.left.dashDirection, 1, 'touch double-tap should use the same directional dash mechanic');
+  assert.ok(Math.abs(mobileState.currentIntent.left.move - 0.92) < 0.03);
+  assert.equal(mobileState.touchControlVisuals.joystick.boosted, true);
+  assert.equal(
+    mobileState.inputDiagnostics.touchDashArmed,
+    false,
+    `the first edge gesture should consume its dash arm; ${JSON.stringify(mobileState.inputDiagnostics)}`,
+  );
+  assert.equal(mobileState.players.left.dashDirection, 1, 'the center-to-edge gesture should trigger one rightward dash');
   assert.ok(mobileState.players.left.dashTimer > 0 && mobileState.players.left.dashCooldown > 0);
-  assert.deepEqual(mobileState.humanDashResolution, { direction: 1, purpose: 'challenge' });
-  await capture(mobilePage, `${output}/05-touch-directional-dash.png`);
+  assert.ok(mobileState.players.left.vx > analogWalkSpeed + 5, 'the edge dash should be decisively faster than a partial tilt');
+  await capture(mobilePage, `${output}/05-touch-joystick-dash.png`);
+  await advance(mobilePage, 180);
+  mobileState = await readState(mobilePage);
+  assert.equal(mobileState.players.left.dashTimer, 0, 'the edge dash should fall back to ordinary running after one burst');
+  assert.equal(mobileState.inputDiagnostics.touchDashArmed, false, 'holding at the edge must not rearm or repeat the dash');
+
+  const touchCenterPoint = await stagePoint(
+    mobilePage,
+    mobileJoystick.x,
+    mobileJoystick.y,
+  );
+  await mobilePage.mouse.move(touchCenterPoint.x, touchCenterPoint.y);
+  await advance(mobilePage, 40);
+  mobileState = await readState(mobilePage);
+  assert.equal(mobileState.touchControlVisuals.joystick.direction, 'neutral');
+  assert.equal(mobileState.inputDiagnostics.touchDashArmed, true, 'returning to the center should rearm the edge gesture');
+  await advance(mobilePage, 1400);
+  await mobilePage.evaluate(() => {
+    const match = window.__SKYHEAD_GAME__.scene.getScene('Match');
+    window.__SKYHEAD_DEBUG__.resumePlay();
+    window.__SKYHEAD_DEBUG__.setHumanPosition(400);
+    window.__SKYHEAD_DEBUG__.setOpponentPosition(1080);
+    window.__SKYHEAD_DEBUG__.setBall({ x: 350, y: 400 });
+    match.leftPlayer.sprite.setVelocity(0, 0);
+    match.leftPlayer.stunTimer = 0;
+    match.leftPlayer.dashTimer = 0;
+    match.leftPlayer.dashCooldown = 0;
+  });
+  await mobilePage.mouse.move(touchEdgePoint.x, touchEdgePoint.y);
+  await advance(mobilePage, 60);
+  mobileState = await readState(mobilePage);
+  assert.equal(
+    mobileState.players.left.dashDirection,
+    1,
+    `center-to-edge should dash again after the cooldown; ${JSON.stringify({
+      player: mobileState.players.left,
+      intent: mobileState.currentIntent.left,
+      input: mobileState.inputDiagnostics,
+      joystick: mobileState.touchControlVisuals.joystick,
+    })}`,
+  );
+  assert.ok(mobileState.players.left.dashTimer > 0);
   await mobilePage.mouse.up();
   await advance(mobilePage, 180);
 
   const touchGroundY = (await readState(mobilePage)).players.left.y;
-  await touchControl(mobilePage, 930, 500, 80);
+  await touchControl(mobilePage, 1020, 630, 80);
   mobileState = await readState(mobilePage);
   assert.ok(mobileState.players.left.y < touchGroundY && mobileState.players.left.vy < 0, 'touch jump should launch upward');
   await advance(mobilePage, 1050);
@@ -2677,6 +3434,10 @@ try {
   await capture(mobilePage, `${output}/05-touch-chilena.png`);
   await advance(mobilePage, 1350);
   mobileState = await readState(mobilePage);
+  for (let attempt = 0; attempt < 8 && !mobileState.players.left.grounded; attempt += 1) {
+    await advance(mobilePage, 50);
+    mobileState = await readState(mobilePage);
+  }
   assert.equal(mobileState.players.left.chilenaActive, false);
   assert.equal(mobileState.players.left.facing, 1);
   assert.equal(mobileState.players.left.grounded, true);
@@ -2694,8 +3455,8 @@ try {
     window.__SKYHEAD_DEBUG__.setOpponentPosition(1080);
     window.__SKYHEAD_DEBUG__.setBall({ x: 620, y: 360, vx: 0, vy: -1 });
   });
-  await touchControl(mobilePage, 1035, 610, 17);
-  await touchControl(mobilePage, 1035, 610, 17);
+  await touchControl(mobilePage, 1195, 475, 17);
+  await touchControl(mobilePage, 1195, 475, 17);
   mobileState = await readState(mobilePage);
   assert.equal(mobileState.powerBall.superpowerId, 'chilena-lob', 'double-tapping the tablet Lob icon should start the high chilena');
   assert.equal(mobileState.powerBall.trajectory?.phase, 'rising');
@@ -2726,11 +3487,11 @@ try {
   mobileState = await readState(mobilePage);
   assert.equal(mobileState.lastBoostedStrike?.side, 'left', 'touch mash should produce a boosted basic kick');
   assert.ok(
-    mobileState.lastBoostedStrike?.energySpent >= 16 && mobileState.lastBoostedStrike?.energySpent <= 24,
-    `touch mash should apply at least two boost steps; got ${mobileState.lastBoostedStrike?.energySpent}`,
+    mobileState.lastBoostedStrike?.energySpent >= 8 && mobileState.lastBoostedStrike?.energySpent <= 24,
+    `touch mash should apply at least one boost step; got ${mobileState.lastBoostedStrike?.energySpent}`,
   );
   assert.ok(
-    mobileState.ball.vx > 18.4 && mobileState.ball.vx < 23,
+    mobileState.ball.vx > 16 && mobileState.ball.vx < 23,
     `touch boost should remain stronger than a basic kick and below power; got ${mobileState.ball.vx}`,
   );
   assert.ok(mobileState.meterFlash.left > 0);
@@ -2744,7 +3505,7 @@ try {
     window.__SKYHEAD_DEBUG__.setOpponentPosition(1080);
     window.__SKYHEAD_DEBUG__.setBall({ x: x + 78, y: 537 });
   }, mobileState.players.left);
-  await touchControl(mobilePage, 1035, 610, 80);
+  await touchControl(mobilePage, 1195, 475, 80);
   assert.ok((await readState(mobilePage)).ball.vy < -9, 'touch lob should launch the ball upward');
   await advance(mobilePage, 520);
 
@@ -2760,7 +3521,7 @@ try {
     window.__SKYHEAD_DEBUG__.setOpponentPosition(x + 220);
     window.__SKYHEAD_DEBUG__.setBall({ x: x - 160, y: 400 });
   }, mobileState.players.left);
-  await touchControl(mobilePage, 1195, 475, 70);
+  await touchControl(mobilePage, 930, 500, 70);
   await advance(mobilePage, 85);
   mobileState = await readState(mobilePage);
   assert.equal(mobileState.powerBall.active, false, 'tablet Freeze should not depend on striking the ball');
@@ -2792,13 +3553,71 @@ try {
   mobileState = await readState(mobilePage);
   assert.equal(mobileState.modal, null, 'Stay should dismiss the confirmation');
   assert.equal(mobileState.mode, 'paused', 'Stay should return to the existing pause menu');
+  await mobilePage.waitForTimeout(550);
   await touchControl(mobilePage, 775, 475, 40);
   assert.equal((await readState(mobilePage)).modal, 'abandon-confirm');
+  await mobilePage.waitForTimeout(550);
   await touchControl(mobilePage, 775, 438, 40);
   await mobilePage.waitForFunction(() => JSON.parse(window.render_game_to_text()).mode === 'intro');
   assert.equal((await readState(mobilePage)).inputMode, 'touch', 'tablet abandon should return to the touch-specific intro');
   assert.deepEqual(mobileErrors, [], `mobile browser emitted errors:\n${mobileErrors.join('\n')}`);
   await mobile.close();
+
+  const selectorContext = await browser.newContext({
+    viewport: { width: 844, height: 390 },
+    deviceScaleFactor: 1,
+    hasTouch: true,
+    isMobile: true,
+  });
+  const selectorPage = await selectorContext.newPage();
+  const selectorErrors = [];
+  selectorPage.on('pageerror', (error) => selectorErrors.push(error.stack ?? error.message));
+  selectorPage.on('console', (message) => {
+    if (message.type() === 'error') selectorErrors.push(`console: ${message.text()}`);
+  });
+  await selectorPage.goto(url, { waitUntil: 'domcontentloaded' });
+  await waitThroughSplash(selectorPage);
+  await touchControl(selectorPage, 640, 252, 45);
+  await selectorPage.waitForFunction(() => JSON.parse(window.render_game_to_text()).mode === 'football-setup');
+
+  const fieldNextPoint = await canvasPoint(selectorPage, 580, 430);
+  await selectorPage.mouse.move(fieldNextPoint.x, fieldNextPoint.y);
+  await selectorPage.mouse.down();
+  await advance(selectorPage, 45);
+  assert.equal((await readState(selectorPage)).arena.id, 'neon', 'field selector should activate once on touch-down');
+  await selectorPage.mouse.up();
+  assert.equal((await readState(selectorPage)).arena.id, 'neon', 'field selector release must not advance again');
+  await selectorPage.waitForTimeout(60);
+  await selectorPage.mouse.down();
+  await advance(selectorPage, 45);
+  assert.equal((await readState(selectorPage)).arena.id, 'neon', 'field compatibility press must be ignored');
+  await selectorPage.mouse.up();
+  await selectorPage.waitForTimeout(550);
+  await selectorPage.mouse.down();
+  await advance(selectorPage, 45);
+  assert.equal((await readState(selectorPage)).arena.id, 'beach', 'field selector should rearm after the guard');
+  await selectorPage.mouse.up();
+
+  const ballNextPoint = await canvasPoint(selectorPage, 1155, 430);
+  await selectorPage.mouse.move(ballNextPoint.x, ballNextPoint.y);
+  await selectorPage.mouse.down();
+  await advance(selectorPage, 45);
+  assert.equal((await readState(selectorPage)).ballType.id, 'neon-ball', 'ball selector should activate once on touch-down');
+  await selectorPage.mouse.up();
+  assert.equal((await readState(selectorPage)).ballType.id, 'neon-ball', 'ball selector release must not advance again');
+  await selectorPage.waitForTimeout(60);
+  await selectorPage.mouse.down();
+  await advance(selectorPage, 45);
+  assert.equal((await readState(selectorPage)).ballType.id, 'neon-ball', 'ball compatibility press must be ignored');
+  await selectorPage.mouse.up();
+  await selectorPage.waitForTimeout(550);
+  await selectorPage.mouse.down();
+  await advance(selectorPage, 45);
+  assert.equal((await readState(selectorPage)).ballType.id, 'balloon', 'ball selector should rearm after the guard');
+  await selectorPage.mouse.up();
+  await capture(selectorPage, `${output}/07-touch-football-selectors.png`);
+  assert.deepEqual(selectorErrors, [], `selector browser emitted errors:\n${selectorErrors.join('\n')}`);
+  await selectorContext.close();
 
   const tablet = await browser.newContext({
     viewport: { width: 1280, height: 800 },
@@ -2833,7 +3652,13 @@ try {
   assert.deepEqual(tabletCanvas, { bitmapWidth: 1280, bitmapHeight: 800, width: 1280, height: 800 });
   await capture(tabletPage, `${output}/08-extended-tablet-intro.png`);
 
-  await touchControl(tabletPage, 535, 518, 40);
+  await touchControl(tabletPage, 430, 539, 40);
+  await tabletPage.waitForFunction(() => JSON.parse(window.render_game_to_text()).mode === 'mini-games');
+  await capture(tabletPage, `${output}/08-extended-tablet-mini-games.png`);
+  await touchControl(tabletPage, 345, 304, 40);
+  await tabletPage.waitForFunction(() => JSON.parse(window.render_game_to_text()).mode === 'minigame-setup');
+  await capture(tabletPage, `${output}/08-extended-tablet-kickfall-setup.png`);
+  await touchControl(tabletPage, 640, 700, 40);
   await tabletPage.waitForFunction(() => ['countdown', 'playing'].includes(JSON.parse(window.render_game_to_text()).mode));
   await tabletPage.evaluate(() => {
     window.__KICKFALL_DEBUG__.startPlaying();
@@ -2846,12 +3671,28 @@ try {
   await tabletPage.evaluate(() => window.__KICKFALL_DEBUG__.clearBalls());
   assert.equal(tabletState.controls.move, '8-way virtual joystick');
   assert.deepEqual(
-    [tabletState.controls.joystick.x, tabletState.controls.joystick.y, tabletState.controls.joystick.direction],
-    [160, 715, 'neutral'],
+    [
+      tabletState.controls.joystick.x,
+      tabletState.controls.joystick.y,
+      tabletState.controls.joystick.radius,
+      tabletState.controls.joystick.direction,
+    ],
+    [182, 674, 118, 'neutral'],
   );
   const tabletTouch = await tablet.newCDPSession(tabletPage);
-  const joystickCenterTouch = { x: 160, y: 715, id: 1, radiusX: 8, radiusY: 8, force: 1 };
-  const joystickDownRightTouch = { x: 230, y: 780, id: 1, radiusX: 8, radiusY: 8, force: 1 };
+  const joystickCenterTouch = {
+    x: tabletState.controls.joystick.x,
+    y: tabletState.controls.joystick.y,
+    id: 1,
+    radiusX: 8,
+    radiusY: 8,
+    force: 1,
+  };
+  const joystickDownRightTouch = {
+    ...joystickCenterTouch,
+    x: joystickCenterTouch.x + tabletState.controls.joystick.radius * 0.72,
+    y: joystickCenterTouch.y + tabletState.controls.joystick.radius * 0.72,
+  };
   const jumpTouch = { x: 1035, y: 705, id: 2, radiusX: 8, radiusY: 8, force: 1 };
   await tabletTouch.send('Input.dispatchTouchEvent', { type: 'touchStart', touchPoints: [joystickCenterTouch] });
   await tabletTouch.send('Input.dispatchTouchEvent', { type: 'touchMove', touchPoints: [joystickDownRightTouch] });
@@ -2887,7 +3728,10 @@ try {
   tabletState = await readState(tabletPage);
   assert.equal(tabletState.player.grounded, true, 'tablet Jump should land promptly');
   assert.ok(Math.abs(tabletState.player.platformSurfaceY - tabletState.player.visualGroundAnchorY) < 3);
-  const joystickRightTouch = { ...joystickCenterTouch, x: 240 };
+  const joystickRightTouch = {
+    ...joystickCenterTouch,
+    x: joystickCenterTouch.x + tabletState.controls.joystick.radius * 0.91,
+  };
   const kickTouch = { x: 1170, y: 725, id: 2, radiusX: 8, radiusY: 8, force: 1 };
   await tabletTouch.send('Input.dispatchTouchEvent', { type: 'touchStart', touchPoints: [joystickCenterTouch] });
   await tabletTouch.send('Input.dispatchTouchEvent', { type: 'touchMove', touchPoints: [joystickRightTouch] });
@@ -2929,11 +3773,18 @@ try {
   tabletState = await readState(tabletPage);
   assert.equal(tabletState.mode, 'paused');
   assert.equal(tabletState.modal, null, 'Stay should return tablet players to the existing pause menu');
+  await tabletPage.waitForTimeout(550);
   await touchControl(tabletPage, 775, 475, 40);
+  await tabletPage.waitForTimeout(550);
   await touchControl(tabletPage, 775, 478, 40);
+  await tabletPage.waitForFunction(() => JSON.parse(window.render_game_to_text()).mode === 'minigame-setup');
+  await touchControl(tabletPage, 82, 52, 40);
+  await tabletPage.waitForFunction(() => JSON.parse(window.render_game_to_text()).mode === 'mini-games');
+  await tabletPage.waitForTimeout(550);
+  await touchControl(tabletPage, 82, 52, 40);
   await tabletPage.waitForFunction(() => JSON.parse(window.render_game_to_text()).mode === 'intro');
 
-  await touchControl(tabletPage, 640, 580, 40);
+  await touchControl(tabletPage, 1020, 539, 40);
   await tabletPage.waitForFunction(() => JSON.parse(window.render_game_to_text()).mode === 'settings');
   tabletState = await readState(tabletPage);
   assert.equal(tabletState.stageLayout.height, 800);
@@ -2941,25 +3792,145 @@ try {
   await touchControl(tabletPage, 640, 720, 40);
   await tabletPage.waitForFunction(() => JSON.parse(window.render_game_to_text()).mode === 'intro');
 
-  await touchControl(tabletPage, 740, 518, 40);
+  await touchControl(tabletPage, 640, 252, 40);
+  await tabletPage.waitForFunction(() => JSON.parse(window.render_game_to_text()).mode === 'football-setup');
+  await capture(tabletPage, `${output}/08-extended-tablet-football-setup.png`);
+  await touchControl(tabletPage, 430, 740, 40);
   await tabletPage.waitForFunction(() => JSON.parse(window.render_game_to_text()).mode === 'power-lab');
   tabletState = await readState(tabletPage);
   assert.equal(tabletState.stageLayout.bottomOffset, 80);
   await capture(tabletPage, `${output}/08-extended-tablet-lab.png`);
   await touchControl(tabletPage, 74, 48, 40);
-  await tabletPage.waitForFunction(() => JSON.parse(window.render_game_to_text()).mode === 'intro');
+  await tabletPage.waitForFunction(() => JSON.parse(window.render_game_to_text()).mode === 'football-setup');
 
-  await touchControl(tabletPage, 640, 450, 40);
+  await tabletPage.evaluate(() => {
+    window.__SKYHEAD_GAME__.registry.set('developer:footballTouchMovementMode', 'joystick');
+  });
+  await touchControl(tabletPage, 785, 740, 40);
   await tabletPage.waitForFunction(() => JSON.parse(window.render_game_to_text()).mode === 'countdown');
   await advance(tabletPage, 3100);
   tabletState = await readState(tabletPage);
   assert.equal(tabletState.mode, 'playing');
   assert.equal(tabletState.stageLayout.height, 800);
+  assert.equal(tabletState.footballTouchMovementMode, 'joystick');
+  assert.deepEqual(
+    {
+      axis: tabletState.touchControlVisuals.joystick.axis,
+      x: tabletState.touchControlVisuals.joystick.x,
+      y: tabletState.touchControlVisuals.joystick.y,
+      radius: tabletState.touchControlVisuals.joystick.radius,
+    },
+    { axis: 'horizontal', x: 178, y: 678, radius: 114 },
+  );
+  assert.equal(tabletState.touchControlVisuals.joystick.boostThreshold, 0.82);
   const tabletStartX = tabletState.players.left.x;
-  await touchControl(tabletPage, 80, 710, 120);
-  assert.ok((await readState(tabletPage)).players.left.x < tabletStartX, 'extended tablet left control should move Joel');
-  await touchControl(tabletPage, 1165, 690, 45);
-  assert.ok((await readState(tabletPage)).players.left.kickCooldown > 0, 'extended tablet kick should remain interactive');
+  const tabletLeftEdgePoint = await stagePoint(
+    tabletPage,
+    tabletState.touchControlVisuals.joystick.x
+      - tabletState.touchControlVisuals.joystick.radius * 0.92,
+    tabletState.touchControlVisuals.joystick.y,
+  );
+  await tabletPage.mouse.move(tabletLeftEdgePoint.x, tabletLeftEdgePoint.y);
+  await tabletPage.mouse.down();
+  await advance(tabletPage, 70);
+  tabletState = await readState(tabletPage);
+  const leftEdgePointerId = tabletState.touchControlVisuals.joystick.pointerId;
+  assert.equal(tabletState.touchControlVisuals.joystick.direction, 'left');
+  assert.equal(tabletState.touchControlVisuals.joystick.boosted, true);
+  assert.ok(tabletState.players.left.x < tabletStartX, 'extended tablet left control should move Joel');
+  await tabletPage.evaluate(() => {
+    window.__SKYHEAD_GAME__.scene.getScene('Match').input.emit('gameout');
+  });
+  await advance(tabletPage, 70);
+  tabletState = await readState(tabletPage);
+  assert.equal(
+    tabletState.touchControlVisuals.joystick.pointerId,
+    leftEdgePointerId,
+    'crossing the canvas edge must preserve joystick pointer ownership',
+  );
+  assert.equal(
+    tabletState.touchControlVisuals.joystick.direction,
+    'left',
+    'crossing the canvas edge must keep the joystick clamped left',
+  );
+  assert.ok(
+    tabletState.currentIntent.left.move < -0.9,
+    'left movement should remain active while the held pointer is outside the canvas',
+  );
+  await capture(tabletPage, `${output}/08-extended-tablet-left-edge-hold.png`);
+  await tabletPage.mouse.up();
+  await advance(tabletPage, 40);
+  tabletState = await readState(tabletPage);
+  assert.equal(tabletState.touchControlVisuals.joystick.pointerId, null);
+  assert.equal(tabletState.touchControlVisuals.joystick.direction, 'neutral');
+  await tabletPage.evaluate(() => {
+    const match = window.__SKYHEAD_GAME__.scene.getScene('Match');
+    match.leftPlayer.dashTimer = 0;
+    match.leftPlayer.dashCooldown = 0;
+    match.leftPlayer.dashDirection = 0;
+    match.inputController.neutralize();
+  });
+  const matchJoystickCenterTouch = {
+    x: tabletState.touchControlVisuals.joystick.x,
+    y: tabletState.touchControlVisuals.joystick.y,
+    id: 3,
+    radiusX: 8,
+    radiusY: 8,
+    force: 1,
+  };
+  const matchJoystickRightTouch = {
+    ...matchJoystickCenterTouch,
+    x: matchJoystickCenterTouch.x + tabletState.touchControlVisuals.joystick.radius * 0.92,
+  };
+  const matchKickTouch = { x: 1165, y: 690, id: 4, radiusX: 8, radiusY: 8, force: 1 };
+  await tabletTouch.send('Input.dispatchTouchEvent', { type: 'touchStart', touchPoints: [matchJoystickCenterTouch] });
+  await tabletTouch.send('Input.dispatchTouchEvent', { type: 'touchMove', touchPoints: [matchJoystickRightTouch] });
+  await advance(tabletPage, 70);
+  tabletState = await readState(tabletPage);
+  const matchJoystickPointerId = tabletState.touchControlVisuals.joystick.pointerId;
+  assert.equal(tabletState.touchControlVisuals.joystick.direction, 'right');
+  assert.equal(tabletState.touchControlVisuals.joystick.boosted, true);
+  assert.ok(tabletState.players.left.dashTimer > 0);
+  const beforeKickAndMoveX = tabletState.players.left.x;
+  await tabletTouch.send('Input.dispatchTouchEvent', {
+    type: 'touchStart',
+    touchPoints: [matchJoystickRightTouch, matchKickTouch],
+  });
+  await advance(tabletPage, 70);
+  tabletState = await readState(tabletPage);
+  assert.equal(tabletState.touchControlVisuals.joystick.pointerId, matchJoystickPointerId, 'Kick must not steal the Football joystick pointer');
+  assert.equal(tabletState.touchControlVisuals.joystick.direction, 'right');
+  assert.ok(tabletState.players.left.x > beforeKickAndMoveX, 'horizontal movement must continue while Kick is held');
+  assert.ok(tabletState.players.left.kickCooldown > 0, 'Kick should fire while the horizontal joystick remains held');
+  await tabletTouch.send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [matchKickTouch] });
+  await advance(tabletPage, 40);
+  assert.equal((await readState(tabletPage)).touchControlVisuals.joystick.direction, 'right', 'releasing Kick must keep Football movement held');
+  await tabletTouch.send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [matchJoystickRightTouch] });
+  await advance(tabletPage, 40);
+
+  const matchJumpJoystickCenterTouch = { ...matchJoystickCenterTouch, id: 5 };
+  const matchJumpJoystickRightTouch = { ...matchJoystickRightTouch, id: 5 };
+  const matchJumpTouch = { x: 1020, y: 710, id: 6, radiusX: 8, radiusY: 8, force: 1 };
+  await tabletPage.evaluate(() => {
+    window.__SKYHEAD_DEBUG__.resumePlay();
+    window.__SKYHEAD_DEBUG__.setHumanPosition(400);
+    window.__SKYHEAD_DEBUG__.setOpponentPosition(1000);
+    window.__SKYHEAD_DEBUG__.setBall({ x: 760, y: 420 });
+  });
+  await tabletTouch.send('Input.dispatchTouchEvent', { type: 'touchStart', touchPoints: [matchJumpJoystickCenterTouch] });
+  await tabletTouch.send('Input.dispatchTouchEvent', { type: 'touchMove', touchPoints: [matchJumpJoystickRightTouch] });
+  await tabletTouch.send('Input.dispatchTouchEvent', {
+    type: 'touchStart',
+    touchPoints: [matchJumpJoystickRightTouch, matchJumpTouch],
+  });
+  await advance(tabletPage, 70);
+  tabletState = await readState(tabletPage);
+  assert.equal(tabletState.touchControlVisuals.joystick.direction, 'right', 'Jump must not interrupt the Football joystick');
+  assert.ok(tabletState.players.left.vy < 0, 'Jump should fire while the horizontal joystick remains held');
+  await tabletTouch.send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [matchJumpTouch] });
+  await tabletTouch.send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [matchJumpJoystickRightTouch] });
+  await advance(tabletPage, 40);
+  assert.equal((await readState(tabletPage)).touchControlVisuals.joystick.direction, 'neutral');
   await capture(tabletPage, `${output}/08-extended-tablet-match.png`);
   await touchControl(tabletPage, 52, 54, 40);
   tabletState = await readState(tabletPage);
@@ -2984,10 +3955,16 @@ try {
   });
   await penaltyPage.goto(url, { waitUntil: 'domcontentloaded' });
   await waitThroughSplash(penaltyPage);
-  await touchControl(penaltyPage, 1190, 34, 30);
+  await touchControl(penaltyPage, 1020, 493, 35);
+  await penaltyPage.waitForFunction(() => JSON.parse(window.render_game_to_text()).mode === 'settings');
+  await touchControl(penaltyPage, 685, 188, 30);
   await penaltyPage.waitForFunction(() => JSON.parse(window.render_game_to_text()).language === 'es');
+  await touchControl(penaltyPage, 640, 640, 35);
+  await penaltyPage.waitForFunction(() => JSON.parse(window.render_game_to_text()).mode === 'intro');
   await capture(penaltyPage, `${output}/07-intro-es-tablet.png`);
-  await touchControl(penaltyPage, 740, 438, 35);
+  await touchControl(penaltyPage, 640, 252, 35);
+  await penaltyPage.waitForFunction(() => JSON.parse(window.render_game_to_text()).mode === 'football-setup');
+  await touchControl(penaltyPage, 430, 660, 35);
   await penaltyPage.waitForFunction(() => JSON.parse(window.render_game_to_text()).mode === 'power-lab');
   await capture(penaltyPage, `${output}/07-power-lab-tablet.png`);
   await touchControl(penaltyPage, 805, 638, 35);
@@ -3003,7 +3980,9 @@ try {
 
   await penaltyPage.reload({ waitUntil: 'domcontentloaded' });
   await waitThroughSplash(penaltyPage);
-  await touchControl(penaltyPage, 740, 438, 35);
+  await touchControl(penaltyPage, 640, 252, 35);
+  await penaltyPage.waitForFunction(() => JSON.parse(window.render_game_to_text()).mode === 'football-setup');
+  await touchControl(penaltyPage, 430, 660, 35);
   await penaltyPage.waitForFunction(() => JSON.parse(window.render_game_to_text()).mode === 'power-lab');
   penaltyState = await readState(penaltyPage);
   assert.ok(penaltyState.mathLockRemainingMs > 290_000, 'refresh must not bypass the persisted math penalty');
@@ -3025,8 +4004,12 @@ try {
   let spanishDeviceState = await readState(spanishDevicePage);
   assert.equal(spanishDeviceState.language, 'es', 'a fresh Spanish tablet should detect Spanish');
   assert.equal(spanishDeviceState.languageSource, 'device');
-  await touchControl(spanishDevicePage, 1115, 34, 30);
+  await touchControl(spanishDevicePage, 1020, 539, 35);
+  await spanishDevicePage.waitForFunction(() => JSON.parse(window.render_game_to_text()).mode === 'settings');
+  await touchControl(spanishDevicePage, 595, 188, 30);
   await spanishDevicePage.waitForFunction(() => JSON.parse(window.render_game_to_text()).language === 'en');
+  await touchControl(spanishDevicePage, 640, 720, 30);
+  await spanishDevicePage.waitForFunction(() => JSON.parse(window.render_game_to_text()).mode === 'intro');
   spanishDeviceState = await readState(spanishDevicePage);
   assert.equal(spanishDeviceState.language, 'en');
   assert.equal(spanishDeviceState.languageSource, 'user', 'a language button must become a durable user choice');

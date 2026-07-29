@@ -1,6 +1,14 @@
 import { GAME_WIDTH } from '../constants.js';
 import { t } from '../i18n.js';
 import { createControlIcon } from './createControlIcon.js';
+import { createHelpColumnLayout } from './helpLayout.js';
+import { bindButtonInput } from './buttonInput.js';
+import {
+  FOOTBALL_TOUCH_MOVEMENT_MODES,
+  getFootballTouchMovementMode,
+} from '../developerOptions.js';
+
+const HELP_PANEL_WIDTH = 890;
 
 const textStyle = (size, color = '#ffffff', extra = {}) => ({
   fontFamily: 'Arial Rounded MT Bold, Trebuchet MS, sans-serif',
@@ -15,7 +23,7 @@ const createCloseControl = (scene, x, y, depth, onClose) => {
   const cross = scene.add.graphics({ x, y }).setDepth(depth + 0.1);
   cross.lineStyle(4, 0xffffff, 0.92).lineBetween(-8, -8, 8, 8).lineBetween(8, -8, -8, 8);
   const zone = scene.add.circle(x, y, 30, 0xffffff, 0).setDepth(depth + 0.2).setInteractive({ useHandCursor: true });
-  zone.on('pointerup', onClose);
+  bindButtonInput(scene, zone, { onActivate: onClose });
   return [ring, cross, zone];
 };
 
@@ -47,11 +55,20 @@ const createInstallContent = (scene, language, depth, onClose) => {
     .setStrokeStyle(2, 0x8fefff, 0.55).setDepth(depth).setInteractive({ useHandCursor: true });
   const label = scene.add.text(640, 552, t(language, 'install.close'), textStyle(18, '#ffffff', { fontStyle: 'bold' }))
     .setOrigin(0.5).setDepth(depth + 0.1);
-  button.on('pointerup', onClose);
+  bindButtonInput(scene, button, { onActivate: onClose });
   return [share, body, hint, button, label];
 };
 
-const createHelpRow = (scene, { x, y, icon, label, description, depth }) => {
+const createHelpRow = (scene, {
+  x,
+  textX,
+  textWidth,
+  y,
+  icon,
+  label,
+  description,
+  depth,
+}) => {
   const badge = scene.add.circle(x, y, 29, 0x5be4f2, 0.08).setStrokeStyle(2, 0x8fefff, 0.28).setDepth(depth);
   const symbol = createControlIcon(scene, {
     x,
@@ -61,13 +78,23 @@ const createHelpRow = (scene, { x, y, icon, label, description, depth }) => {
     depth: depth + 0.1,
     alpha: 0.9,
   });
-  const title = scene.add.text(x + 48, y - 12, label, textStyle(17, '#ffffff', { fontStyle: 'bold', align: 'left' })).setOrigin(0, 0.5).setDepth(depth);
-  const copy = scene.add.text(x + 48, y + 13, description, textStyle(13, '#b9cde5', { align: 'left' })).setOrigin(0, 0.5).setDepth(depth);
+  const title = scene.add.text(textX, y - 12, label, textStyle(17, '#ffffff', {
+    fontStyle: 'bold',
+    align: 'left',
+    wordWrap: { width: textWidth, useAdvancedWrap: true },
+  })).setOrigin(0, 0.5).setDepth(depth);
+  const copy = scene.add.text(textX, y + 3, description, textStyle(13, '#b9cde5', {
+    align: 'left',
+    lineSpacing: 2,
+    wordWrap: { width: textWidth, useAdvancedWrap: true },
+  })).setOrigin(0, 0).setDepth(depth);
   return [badge, symbol, title, copy];
 };
 
-const createHelpContent = (scene, language, inputMode, depth) => {
+const createHelpContent = (scene, language, inputMode, depth, helpLayout, footballTouchMovementMode) => {
   const touch = inputMode === 'touch';
+  const joystickTouch = touch
+    && footballTouchMovementMode === FOOTBALL_TOUCH_MOVEMENT_MODES.JOYSTICK;
   const actions = [
     ['move', 'right'], ['jump', 'jump'], ['kick', 'kick'],
     ['lob', 'lob'], ['power', 'power'],
@@ -76,20 +103,82 @@ const createHelpContent = (scene, language, inputMode, depth) => {
   actions.forEach(([action, icon], index) => {
     const column = index % 2;
     const row = Math.floor(index / 2);
+    const columnLayout = helpLayout.columns[column];
     objects.push(...createHelpRow(scene, {
-      x: 350 + column * 390,
+      x: columnLayout.badgeX,
+      textX: columnLayout.textX,
+      textWidth: columnLayout.textWidth,
       y: 232 + row * 78,
       icon,
       label: t(language, `help.${action}`),
-      description: t(language, `help.${touch ? 'touch' : 'keyboard'}.${action}`),
+      description: t(language, `help.${touch ? joystickTouch ? 'touchJoystick' : 'touch' : 'keyboard'}.${action}`),
       depth,
     }));
   });
   objects.push(
     scene.add.rectangle(640, 493, 690, 1, 0x8fefff, 0.22).setDepth(depth),
     scene.add.text(640, 528, t(language, 'help.specialTitle'), textStyle(17, '#ffdc72', { fontStyle: 'bold' })).setOrigin(0.5).setDepth(depth),
-    scene.add.text(640, 577, t(language, 'help.specialCopy'), textStyle(15, '#d7e8f8', {
+    scene.add.text(640, 577, t(language, joystickTouch ? 'help.specialCopyJoystick' : 'help.specialCopy'), textStyle(15, '#d7e8f8', {
       lineSpacing: 7,
+      wordWrap: { width: 690 },
+    })).setOrigin(0.5).setDepth(depth),
+  );
+  return objects;
+};
+
+const createKickfallHelpContent = (scene, language, inputMode, depth, helpLayout) => {
+  const touch = inputMode === 'touch';
+  const actions = [
+    {
+      icon: 'right',
+      label: t(language, 'kickfallSetup.move'),
+      description: touch
+        ? t(language, 'kickfallSetup.moveCopy')
+        : language === 'es' ? 'A/D o flechas izquierda/derecha' : 'A/D or Left/Right arrows',
+    },
+    {
+      icon: 'up',
+      label: language === 'es' ? 'CAMBIAR DE CARRIL' : 'CHANGE LANE',
+      description: language === 'es'
+        ? 'Mantén arriba o abajo mientras saltas'
+        : 'Hold Up or Down while jumping',
+    },
+    {
+      icon: 'jump',
+      label: t(language, 'kickfallSetup.jump'),
+      description: touch
+        ? t(language, 'kickfallSetup.jumpCopy')
+        : language === 'es' ? 'Espacio para saltar' : 'Press Space to jump',
+    },
+    {
+      icon: 'kick',
+      label: t(language, 'kickfallSetup.kick'),
+      description: touch
+        ? t(language, 'kickfallSetup.kickCopy')
+        : language === 'es' ? 'X o K para chutar' : 'Press X or K to kick',
+    },
+  ];
+  const objects = [];
+  actions.forEach((action, index) => {
+    const column = index % 2;
+    const row = Math.floor(index / 2);
+    const columnLayout = helpLayout.columns[column];
+    objects.push(...createHelpRow(scene, {
+      x: columnLayout.badgeX,
+      textX: columnLayout.textX,
+      textWidth: columnLayout.textWidth,
+      y: 250 + row * 92,
+      ...action,
+      depth,
+    }));
+  });
+  objects.push(
+    scene.add.rectangle(640, 472, 690, 1, 0x8fefff, 0.22).setDepth(depth),
+    scene.add.text(640, 510, t(language, 'kickfallSetup.objectiveTitle'), textStyle(18, '#ffdc72', {
+      fontStyle: 'bold',
+    })).setOrigin(0.5).setDepth(depth),
+    scene.add.text(640, 558, t(language, 'kickfallSetup.objective'), textStyle(15, '#d7e8f8', {
+      lineSpacing: 6,
       wordWrap: { width: 690 },
     })).setOrigin(0.5).setDepth(depth),
   );
@@ -98,6 +187,7 @@ const createHelpContent = (scene, language, inputMode, depth) => {
 
 export const createInfoOverlay = (scene, {
   kind,
+  gameId = 'football',
   language,
   inputMode,
   appInfo,
@@ -105,17 +195,31 @@ export const createInfoOverlay = (scene, {
 }) => {
   const depth = 300;
   const height = scene.stageLayout?.height ?? 720;
+  const helpLayout = kind === 'help'
+    ? createHelpColumnLayout({ panelWidth: HELP_PANEL_WIDTH })
+    : null;
+  const footballTouchMovementMode = getFootballTouchMovementMode(scene);
   const shade = scene.add.rectangle(0, 0, GAME_WIDTH, height, 0x030712, 0.78).setOrigin(0).setDepth(depth).setInteractive();
   const panelHeight = kind === 'help' ? 590 : kind === 'install' ? 500 : 430;
   const panelY = Math.min(height / 2, 380);
-  const panel = scene.add.rectangle(640, panelY, kind === 'help' ? 890 : 720, panelHeight, 0x0d1b34, 0.985)
+  const panel = scene.add.rectangle(640, panelY, kind === 'help' ? HELP_PANEL_WIDTH : 720, panelHeight, 0x0d1b34, 0.985)
     .setStrokeStyle(3, kind === 'help' ? 0x8fefff : 0xffdc72, 0.46)
     .setDepth(depth + 0.1);
-  const title = scene.add.text(640, panelY - panelHeight / 2 + 54, t(language, `${kind}.title`), textStyle(34, '#ffffff', { fontStyle: 'bold' }))
+  const titleKey = kind === 'help' && gameId === 'kickfall' ? 'kickfallSetup.helpTitle' : `${kind}.title`;
+  const title = scene.add.text(640, panelY - panelHeight / 2 + 54, t(language, titleKey), textStyle(34, '#ffffff', { fontStyle: 'bold' }))
     .setOrigin(0.5).setDepth(depth + 0.2);
   const closeObjects = createCloseControl(scene, 640 + (kind === 'help' ? 405 : 320), panelY - panelHeight / 2 + 42, depth + 0.3, onClose);
   const content = kind === 'help'
-    ? createHelpContent(scene, language, inputMode, depth + 0.2)
+    ? gameId === 'kickfall'
+      ? createKickfallHelpContent(scene, language, inputMode, depth + 0.2, helpLayout)
+      : createHelpContent(
+        scene,
+        language,
+        inputMode,
+        depth + 0.2,
+        helpLayout,
+        footballTouchMovementMode,
+      )
     : kind === 'install'
       ? createInstallContent(scene, language, depth + 0.2, onClose)
       : createAboutContent(scene, language, appInfo, depth + 0.2);
@@ -123,6 +227,7 @@ export const createInfoOverlay = (scene, {
   return {
     kind,
     appInfo: appInfo ?? null,
+    layout: helpLayout,
     destroy: () => objects.forEach((object) => object.destroy()),
   };
 };

@@ -2023,3 +2023,872 @@ No follow-up TODO remains for the boss counter-shot fix.
   Both partial-release sequences are now permanent tablet browser regressions.
 
 No follow-up TODO remains for the reusable joystick pass.
+
+### Graphical game journeys and shared mobile joystick (2026-07-23)
+
+- Rebuilt the home screen as a graphical journey hub: Football remains the
+  large featured experience, Mini-games is a distinct arcade path, and Options
+  uses its own illustrated workshop card. The cards use slanted arcade panels,
+  large badges, real game imagery, and broad touch targets instead of a stack of
+  square text buttons.
+- Added a dedicated Mini-games catalog and a Kickfall setup screen with a live
+  preview, mission summary, controls, game-specific difficulty, instructions,
+  continue/start-over actions, and durable campaign progress. Football now has
+  its own setup screen for player, rival, field, ball/object, difficulty,
+  instructions, Power Lab, and match launch.
+- Moved difficulty out of global Settings and migrated profiles to
+  `difficultyByGame.football` and `difficultyByGame.kickfall`. Existing legacy
+  difficulty values continue to migrate to Football, while Kickfall defaults to
+  Normal. Match AI and Kickfall timer tuning now read only their own setting.
+- Promoted the virtual joystick to `src/game/input/` as a shared component,
+  enlarged Kickfall's touch stick to a 106 px base radius on tablets, and added
+  a horizontal-only mode for Football. Wide-phone UI scaling grows the Football
+  stick above 110 px while tablets use a 102 px base radius.
+- The multi-pointer browser regression now proves both games preserve joystick
+  ownership while a second finger presses an action. Kickfall supports
+  down-right + Jump and right + Kick; Football supports right + Kick and right
+  + Jump. Releasing the action finger leaves movement active until the joystick
+  finger itself lifts.
+- Generated and integrated `public/assets/menu/options-workshop-v1.webp` for
+  the Options card using the built-in image generator. The Mini-games card uses
+  `public/assets/menu/arcade-cosmic-card-v1.webp`, derived from the real
+  Kickfall gameplay capture so the game remains immediately recognizable.
+- Visually inspected the desktop hub and Football setup plus the 1280×800 hub,
+  Mini-games catalog, Kickfall setup, enlarged Kickfall joystick, Football
+  setup, and horizontal Football joystick. The captures live under
+  `output/e2e/`, including `08-extended-tablet-intro.png`,
+  `08-extended-tablet-kickfall.png`, and
+  `08-extended-tablet-match.png`.
+- Final verification: all 122 unit tests pass, the production build succeeds,
+  `git diff --check` is clean, and the complete browser suite passes through
+  splash, both navigation journeys, all twenty Kickfall route audits, per-game
+  settings, persistence, desktop gameplay, phone touch controls, tablet
+  multi-touch, bilingual settings, and the math-penalty flow.
+
+No follow-up TODO remains for the journey/joystick redesign.
+
+### Per-game audio policy and Kickfall catalog copy (2026-07-23)
+
+- Replaced the binary menu/match audio switch with explicit `menu`, `football`,
+  and `kickfall` policies. All three currently share the six-track music
+  rotation; only Football enables audience ambience. The policy map can grow
+  with future mini-games without adding scene-specific mute workarounds.
+- Kickfall diagnostics now expose its active audio state. Browser coverage
+  verifies `musicRequested: true`, `audienceRequested: false`, and the Kickfall
+  policy while Football independently reports music plus audience.
+- Updated the Spanish Mini-games catalog subtitle to
+  “DESPEJA EL CAMINO A LOS BALONES” and visually inspected the live card at
+  `output/kickfall-audio-copy-spanish-2/shot-2.png`.
+- Final verification: all 123 unit tests, the complete browser suite, the
+  production build, and `git diff --check` pass.
+
+No follow-up TODO remains for this audio/copy tweak.
+
+### Global player selection in Mini-games (2026-07-23)
+
+- Added a graphical “Play as / Juega como” character selector beneath the
+  Mini-games catalog card. It uses the existing global `playerCharacterId`,
+  skips the active Football rival, retains the touch debounce, and updates the
+  portrait, name, accent, and profile immediately.
+- Kept the UI child-friendly and implicit: there is no explanatory “shared with
+  Football” copy. The same saved choice simply appears in Football and is used
+  by Kickfall.
+- Browser coverage selects Lucia in Mini-games, verifies the Intro and Football
+  setup inherit Lucia, returns the selector to Joel for the campaign fixture,
+  and separately launches live Kickfall as Lucia through the standalone
+  web-game client.
+- Visually inspected the final catalog selector at
+  `output/minigames-global-player-final/shot-2.png`.
+- Final verification: all 123 unit tests, the complete browser suite, the
+  production build, and `git diff --check` pass.
+
+No follow-up TODO remains for the global Mini-games player selector.
+
+### Kickfall gate explosions and trap feedback (2026-07-23)
+
+- Kept this pass entirely inside Kickfall. Breaking a blocker now produces a
+  layered burst with 26 themed gate fragments, 28 hot sparks, expanding smoke,
+  a short warm screen flash, camera shake, two restrained shockwave rings, and
+  a comic `BOOM!` accent. `BOOM!` is now the only gate-break copy; the competing
+  “Gate smashed / Muro roto” announcement was removed while the heavy haptic
+  remains intact.
+- Extended Kickfall's lightweight effect runner with typed effects and optional
+  scale animation. This keeps the burst deterministic, automatically cleans up
+  every visual, and avoids introducing a second particle system.
+- Added red additive overlays to both the pocket and cleat trap textures.
+  Kicking their captive ball now starts a 0.38-second pulsing red flash while
+  preserving the original sprite detail; ordinary nearby kicks do not trigger
+  it.
+- Added diagnostics for active debris, sparks, smoke, shockwaves, flash, and
+  `BOOM!` layers plus per-trap pulse count, remaining time, and visible alpha.
+  Browser regressions assert the complete gate burst and both trap variants.
+- Screenshot review caught and corrected an overbearing first-pass shockwave.
+  The final rings are thin, slower-expanding, and 50% more transparent than the
+  prior subtle pass (25% inner-ring opacity and 16% outer-ring opacity), so
+  debris and the kick remain dominant. Reviewed frames are
+  `output/e2e/01-kickfall-gate-break.png` and
+  `output/e2e/01-kickfall-pocket-kick-flash.png`.
+- Final verification: all 123 unit tests pass, the required standalone
+  web-game client reaches live Kickfall with the correct per-game audio policy,
+  and the complete browser suite passes across Kickfall, Football, menu,
+  persistence, localization, and touch flows.
+
+No APK was built or deployed during this pass. No follow-up TODO remains for
+the Kickfall visual-feedback work.
+
+### Mini-games opponent-filter regression (2026-07-23)
+
+- Fixed the Mini-games player selector so it always cycles through all six
+  characters. A character selected as Football's opponent is no longer hidden
+  from Kickfall or future single-player mini-games.
+- Kept the exclusion rule inside Football's two-sided setup, where it is still
+  required to prevent the same character from occupying both teams. If the
+  Mini-games choice conflicts with the saved Football opponent, the existing
+  profile invariant moves Football's opponent to another valid character.
+- Added an end-to-end regression for the reported case: set Luna as Football's
+  opponent, enter Mini-games, select Luna as the player, return to Football,
+  and verify the inherited Luna player plus a valid non-Luna opponent.
+- Visually inspected the final Luna selector frame at
+  `output/e2e/01-mini-games-luna-opponent-selectable.png`. All 123 unit tests,
+  the production build, the required standalone web-game client, and the
+  complete browser suite pass.
+
+No follow-up TODO remains for the Mini-games opponent-filter regression.
+
+### Kickfall tilted ball-entry wall (2026-07-23)
+
+- Replaced Kickfall's vertical ball-only entry boundary with an 11° ramp that
+  leans left at the top. Its bottom remains anchored at the original `x=175`,
+  while the top moves to `x=155.2`, preserving the player's starting space and
+  directing backed-up balls down and to the right.
+- Rotated both the real Matter collision body and its translucent visual, so
+  the geometry players see exactly matches the surface used by ball physics.
+  Football and every non-Kickfall scene remain untouched.
+- Added entry-wall geometry to Kickfall diagnostics and expanded the natural
+  pile regression. With five or more balls, the verified queue spans roughly
+  103 px horizontally versus 35 px vertically, keeping it materially wider
+  than one ball-height instead of forming a vertical column at the entry.
+- Visually inspected live Kickfall at
+  `output/kickfall-tilted-entry-wall-client/shot-1.png` and the longer natural
+  pile at `output/e2e/01-kickfall-natural-pile-up.png`. All 123 unit tests, the
+  production build, the required standalone web-game client, and the complete
+  browser suite pass.
+
+No follow-up TODO remains for the tilted entry-wall change.
+
+### Kickfall receiver-pile softlock escape (2026-07-23)
+
+- Reproduced the reported Level 7 receiver-ramp state with five balls supporting
+  the player. Matter physics held the player on the queue, but Kickfall only
+  treated platform contacts as grounded, leaving Jump disabled.
+- Added a narrow pure support rule: the player must be above a ball, horizontally
+  overlapping it, have their feet within a small top-contact tolerance, and not
+  already be moving upward. A supporting ball now refreshes the same short
+  grounding window as a platform, allowing an immediate normal jump without
+  enabling general air jumps.
+- Added a fallback pile kick. Direct forward-foot contacts and trapped balls
+  retain priority; only when neither is available can Kick target the ball
+  currently supporting the player and send it inward along the lane.
+- Diagnostics now identify the current supporting ball. The Level 7 browser
+  regression proves both escape routes: Kick releases a real pile ball with
+  useful lane velocity, and Jump launches above `5` vertical velocity units
+  before clearing support.
+- Visually inspected the reproduced state and both escapes at
+  `output/e2e/01-kickfall-level-7-receiver-pile-stuck.png`,
+  `output/e2e/01-kickfall-level-7-receiver-pile-kick-escape.png`, and
+  `output/e2e/01-kickfall-level-7-receiver-pile-escape.png`. Football remains
+  untouched.
+
+No follow-up TODO remains for the receiver-pile softlock.
+
+### Shared impulse and pressure system (2026-07-23)
+
+- Added a renderer-independent force module under `src/game/pure/forceSystem.js`
+  for contact attenuation, rapid-impact combos, temporary pressure, difficulty
+  tuning, and resistance-based permanent damage. It has no Phaser dependency so
+  future minigames and Football can adopt it without importing Kickfall rules.
+- Kickfall now retains 84% force per connected ball, rewards rapid same-lane
+  kicks with a capped 1.0×/1.25×/1.5× combo, and includes a small forward
+  approach bonus. Gaps and sub-threshold impulses still break the chain.
+- Gates convert surviving force into fractional, one-pip-capped damage. Cleats
+  use medium temporary hold resistance and magnetic pockets use stronger
+  resistance. Direct captive kicks remain reliable one-hit releases.
+- Easy/Normal/Hard scale only resistance and pressure decay. Transmission and
+  ball movement stay identical. Stored trap pressure is visible through the
+  existing red overlay and diagnostics expose force, hops, combo, resistance,
+  and pressure.
+- Documented the shared API, invariants, Kickfall tuning, diagnostics, tests,
+  and a safe future Football adoption path in `docs/FORCE_SYSTEM.md`; updated
+  the Kickfall spec and README to remove the obsolete direct-hit-only model.
+- Added five pure force-system tests and updated Kickfall attenuation coverage.
+  The live regression uses real four-ball queues: three transmitted contacts
+  release the cleat on the second rapid rear kick and the stronger pocket on the
+  third, while the obstacle can immediately capture the next queued ball.
+- Expanded the chain contact tolerance to the documented 8 px maximum gap after
+  a repeated full-suite run exposed a marginal seven-ball gate fixture. The
+  final complete browser pass is stable and green.
+- Visually inspected the first stored-pressure and breakthrough frames at
+  `output/e2e/01-kickfall-pocket-pressure-first-hit.png` and
+  `output/e2e/01-kickfall-pocket-pressure-release.png`.
+- Final verification: all 129 unit tests, production build, required standalone
+  web-game client, complete browser suite, and `git diff --check` pass.
+
+No follow-up TODO remains for the shared force-system pass. Football has not
+been changed; `docs/FORCE_SYSTEM.md` records the opt-in integration path.
+
+### Kickfall uphill receiver gravity correction (2026-07-23)
+
+- Reproduced the reported vertical receiver column with seven unattended balls.
+  The root cause was not insufficient triangle geometry: the uphill lane's
+  artificial target-velocity motor continued pushing every ball up the wedge,
+  overpowering Matter gravity indefinitely.
+- Rejected and removed a first-pass one-way latch after live feedback. Besides
+  feeling nonphysical, its horizontal-only trigger could affect a ball on the
+  tier below.
+- Replaced uphill target velocity with surface-angle acceleration. The shallow
+  lane still backslides unattended balls, but a ball physically touching the
+  much steeper receiver gets stronger acceleration down that slope. Fast kicks
+  remain untouched, and flat/downhill routes keep their existing behavior.
+- Centralized lane-scoped ramp contact math in
+  `getKickfallLandingGuideContact`; a unit regression proves the same x
+  coordinate on the lane below is not a receiver contact.
+- Added a sustained Level 7 browser regression. After six seconds, seven
+  backrolling balls remain in one broad horizontal row with at most one ball
+  traversing the ramp. The reviewed frame is
+  `output/e2e/01-kickfall-level-7-receiver-gravity-pile.png`.
+- Updated `docs/KICKFALL_SPEC.md` to record the surface-acceleration model and
+  the no-cross-tier/no-column invariants.
+- Final verification: all 131 unit tests, production build, required standalone
+  web-game client, complete browser suite, screenshot inspection, and
+  `git diff --check` pass.
+
+No follow-up TODO remains for the receiver gravity correction. The latch
+experiment has no remaining runtime code or diagnostic state.
+
+### Kickfall rescue mission copy (2026-07-23)
+
+- Reframed Kickfall as a race against time to free every trapped ball. Removed
+  the ball factory / ballworks story from the English and Spanish mission copy,
+  English catalog subtitle, Hard difficulty description, and loading message.
+- Added the localized mission and active difficulty description to setup-scene
+  diagnostics. Unit coverage asserts the exact bilingual mission and prevents
+  factory terminology from returning across the related keys.
+- Visually inspected the final setup card at
+  `output/e2e/01-kickfall-setup.png`; the shorter English mission wraps cleanly
+  in two lines. Spanish uses the matching rescue-and-clock framing.
+- Final verification: all unit tests, production build, required standalone
+  web-game client, complete browser suite, and `git diff --check` pass.
+
+No follow-up TODO remains for the mission-copy update.
+
+### Help modal safe columns (2026-07-23)
+
+- Replaced the help modal's unbounded row copy with explicit left and right text
+  lanes. Both titles and descriptions now wrap inside their lane, with a
+  protected gutter before the neighboring control badge and padding at the
+  panel edge.
+- Applied the shared layout contract to both Kickfall and Football help
+  overlays, so future localized copy cannot silently render across columns.
+- Added pure geometry coverage plus a live Spanish touch regression that checks
+  every Kickfall help label against its rendered Phaser bounds.
+- Visually inspected the corrected modal at
+  `output/e2e/01-kickfall-help-es-safe-columns.png` and the unaffected Football
+  variants at `output/e2e/01-football-help.png` and
+  `output/e2e/05-touch-help.png`.
+- Final verification: all 133 unit tests, production build, required standalone
+  web-game client, complete browser suite, and `git diff --check` pass.
+
+No follow-up TODO remains for the help modal responsiveness fix.
+
+### Analog Football joystick and edge dash (2026-07-23)
+
+- Kept keyboard movement unchanged: A/D and Left/Right remain digital, and the
+  existing same-direction double-tap still requests the original directional
+  dash with its normal cooldown and combat behavior.
+- Football's touch joystick now preserves its horizontal 0–1 displacement
+  instead of reducing every active gesture to a button. Partial tilt produces
+  proportionally slower acceleration and a lower movement cap; full tilt
+  returns to normal running speed.
+- Added an 82% outer dash ring with amber visual and haptic feedback. A
+  center-to-edge gesture requests one existing directional dash. Holding at the
+  edge cannot repeat it; the stick must return inside the neutral dead zone
+  before another edge gesture can be recognized, and the existing cooldown
+  still applies.
+- Fixed the live-input bug found during device testing: pointer movement did
+  not forward the configured boost threshold, silently changing it from `0.82`
+  to `null` as soon as the thumb moved. Idle diagnostics looked correct while
+  the real gesture could therefore never activate.
+- Added pure regressions for threshold detection and edge/hold/center/edge
+  latching, plus live phone and tablet coverage for analog speed, one-shot dash,
+  center rearm, cooldown, and joystick + Kick/Jump multitouch ownership.
+- Visually inspected `output/e2e/05-touch-analog-walk.png`,
+  `output/e2e/05-touch-joystick-dash.png`, `output/e2e/05-touch-help.png`, and
+  `output/e2e/08-extended-tablet-match.png`.
+- Final verification: all 135 unit tests, production build, required standalone
+  web-game client, complete browser suite, and `git diff --check` pass.
+
+No follow-up TODO remains for the Football analog joystick dash.
+
+### Shared menu button activation (2026-07-23)
+
+- Added `src/game/ui/buttonInput.js` as the game-wide input contract for
+  one-shot menu controls. Touch layouts retain accepted activation points for
+  500 ms and suppress compatibility pointer sequences within an 18 px logical
+  drift radius; other controls remain immediately responsive.
+- The shared binding supports both established phases: selectors and mute
+  controls still activate on pointer-down so a WebView-cancelled release cannot
+  lose the action, while conventional buttons activate on an accepted
+  pointer-up. Either path emits exactly one action and one haptic.
+- Migrated rectangular buttons, icon buttons, journey cards, Help/About close
+  controls, install close, and Power Lab cards. Joysticks, gameplay holds, and
+  sliders remain outside the gate because they require continuous pointer
+  ownership.
+- Removed the old selector-local timers and debounce settings. Added pure and
+  binding-level unit coverage for press/release phases, same-position
+  compatibility suppression, multiple guarded positions, nearby independent
+  controls, rearming, and unguarded desktop input.
+- Added a dedicated phone browser regression for player, field, and ball
+  selectors: pointer-down, pointer-up, a delayed WebView compatibility
+  sequence, and a new deliberate tap after rearming. Reviewed
+  `output/e2e/07-touch-football-selectors.png` and the extended tablet setup.
+- Hardened the existing analog-dash browser fixture by neutralizing unrelated
+  live combat after its long cooldown wait; diagnostics showed the AI could
+  otherwise stun the player or trigger a goal pause before the input assertion.
+- Final verification: all 141 unit tests, production build, required
+  standalone web-game client, complete browser suite, screenshot inspection,
+  console-error checks, and `git diff --check` pass.
+
+No follow-up TODO remains for the reusable menu button activation system.
+
+### Netlify web release (2026-07-23)
+
+- Rebuilt the current game and refreshed the generated payload in the clean
+  sibling `luisnomad.com` repository, including the new menu artwork and the
+  legacy `/games/head-soccer/` redirect.
+- Completed the 103-page Astro host build, committed the generated game payload
+  as `1840260` (`feat: publish latest Joel Football web build`), and pushed
+  `main`.
+- Confirmed Netlify serves the new `index-gJKUsoO6.js` bundle, menu artwork,
+  game URL, and legacy URL with HTTP 200 responses.
+- Ran the required web-game client against the live production URL. It reached
+  Football setup, changed the field to Neon Grid, reported no console/page
+  errors, and produced the inspected capture at
+  `output/web-game/netlify-live-1840260/shot-2.png`.
+
+The current web build is live at
+`https://luisnomad.com/games/joel-football/`.
+
+### Football touch arrows with developer joystick switch (2026-07-23)
+
+- Restored Football's two on-screen Left/Right arrows as the default touch
+  movement. Their established same-direction double-tap still enters the
+  existing one-off dash; keyboard controls remain unchanged.
+- Kept the experimental horizontal Football joystick behind a developer-only
+  option. Use `VITE_FOOTBALL_TOUCH_MOVEMENT_MODE=joystick` for a developer
+  build, or set the Phaser registry key
+  `developer:footballTouchMovementMode` and restart Match for a live comparison.
+  Invalid and missing values safely resolve to `arrows`; the choice is not
+  player-facing or persisted in the profile.
+- Kept Kickfall's independent 8-way joystick enabled and increased its touch
+  radius. The shared joystick no longer treats Phaser `gameout` as a release,
+  so a held thumb crossing the canvas edge stays clamped until the actual
+  pointer release. The larger horizontal Football joystick and edge behavior
+  remain available in developer mode for future tuning.
+- Made Football Help and serialized control diagnostics follow the active
+  developer mode. Production touch Help now explains arrow double-tap; the
+  experimental build explains analog movement and the center-to-edge dash.
+- Added a pure fail-safe regression plus live phone coverage for default
+  arrows, movement reversal, touch double-tap dash, and runtime opt-in. Retained
+  phone/tablet coverage for the experimental joystick's analog speed, edge
+  dash, edge retention, and simultaneous Kick/Jump pointer ownership.
+- Visually inspected `output/e2e/05-touch-football-arrows.png`,
+  `output/e2e/08-extended-tablet-kickfall.png`, and
+  `output/e2e/08-extended-tablet-left-edge-hold.png`.
+- Final verification: all 142 unit tests, the production build, required
+  standalone web-game client, complete browser suite, screenshot inspection,
+  browser error checks, and `git diff --check` pass.
+
+No player-facing Football joystick setting was added. The current release
+default is the simpler two-arrow control while the experiment remains
+available for development.
+
+### Netlify web release — Football arrows default (2026-07-23)
+
+- Rebuilt the game with the production-default Football arrows; the
+  developer-only joystick environment flag was not enabled.
+- Refreshed the generated payload in the clean `luisnomad.com` repository,
+  completed the 103-page Astro build, committed it as `974e2ad`
+  (`feat: publish Football touch control update`), and pushed `main`.
+- Confirmed Netlify serves the new `index-C3pwt-_J.js` bundle and its asset URL
+  with HTTP 200. The legacy `/games/head-soccer/` route remains available.
+- Ran the required web-game client against the live production URL. It reached
+  Football setup, reported no console/page errors, and produced the inspected
+  capture at `output/web-game/netlify-live-974e2ad/shot-1.png`.
+
+The current web release is live at
+`https://luisnomad.com/games/joel-football/`.
+
+### iOS long-press magnifier guard (2026-07-23)
+
+- Identified the large circular “zoom” shown while holding a Football arrow as
+  iOS/Safari's native long-press magnifier. It was displaying a magnified patch
+  of the pitch and was not a retained joystick object.
+- Applied `touch-action: none`, standard and WebKit-prefixed selection
+  suppression, and WebKit touch-callout suppression directly to the game shell,
+  game container, and canvas. Canvas image dragging is also disabled.
+- Added a narrow game-surface event guard for native `contextmenu`,
+  `dragstart`, and `selectstart` events. Phaser pointer handling remains
+  unchanged, including simultaneous gameplay touches.
+- Added browser assertions for the computed shell/canvas gesture contract and
+  cancelled native events. The live touch flow now holds the Right arrow for
+  750 ms, proves continuous movement, and captures the held state at
+  `output/e2e/05-touch-arrow-long-hold.png`.
+- Final verification: all 142 unit tests, production build, required
+  standalone web-game client, complete browser suite, screenshot inspection,
+  console-error checks, and `git diff --check` pass.
+
+### Netlify web release — iOS long-press hotfix (2026-07-23)
+
+- Published the verified long-press guard through the generated
+  `luisnomad.com` game payload and completed the 103-page Astro build.
+- Committed and pushed website `main` as `eac711e`
+  (`fix: prevent iOS game long-press magnifier`).
+- Confirmed Netlify serves `index-CRmlIaBp.js` and `index-DeZdmXRR.css` with
+  HTTP 200. The live computed styles report `touch-action: none`,
+  `user-select: none`, and `webkitUserSelect: none` on both the shell and
+  canvas; `contextmenu`, `dragstart`, and `selectstart` are all cancelled.
+- Ran the required standalone game client against production. It reached
+  Football setup without console/page errors, and the inspected capture is
+  `output/web-game/netlify-live-eac711e/shot-1.png`.
+
+The iOS long-press hotfix is live at
+`https://luisnomad.com/games/joel-football/`.
+
+### Cancelable iOS touch capture and Jump visibility (2026-07-23)
+
+- Follow-up device testing proved CSS selection/callout suppression alone did
+  not stop iOS's held-touch magnifier. Local Phaser source confirmed the
+  regression path: `input.touch.capture: false` registers passive canvas
+  `touchstart`/`touchmove` listeners, so the browser default was never
+  cancelled. The older arrow behavior had effectively captured those defaults.
+- Added reusable `src/platform/gameSurfaceInput.js`. The game shell now
+  registers non-passive `touchstart` and `touchmove` listeners and calls
+  `preventDefault` only when the event is cancelable. Phaser still receives the
+  event first at the canvas target, while noncancelable Android `touchcancel`
+  lifecycle events remain untouched.
+- Kept context-menu, drag, and selection prevention in the same reusable guard,
+  with cleanup support and two focused unit tests. Browser coverage verifies
+  all five native defaults are cancelled on the game surface.
+- Emphasized Football's Jump control without changing its hit area: glass fill
+  increased from 8.5% to 18%, with a stronger cyan accent/rim and an 88%-opaque
+  icon. Kick, Lob, Power, arrows, and Kickfall controls retain their existing
+  treatment.
+- Hardened two unrelated full-suite timing fixtures exposed during repeated
+  verification: Escape calls the registered Match handler directly, and the
+  mobile chilena landing gets the same short settle window as the desktop
+  fixture.
+- Visually inspected the held-arrow phone frame at
+  `output/e2e/05-touch-arrow-long-hold.png` and the extended-tablet composition
+  at `output/e2e/08-extended-tablet-match.png`.
+- Final verification: all 144 unit tests, production build, required
+  standalone web-game client, complete browser suite, screenshot inspection,
+  console-error checks, and `git diff --check` pass.
+
+This follow-up is verified locally but has not yet been published to the
+website.
+
+### Netlify web release — held-touch capture and Jump emphasis (2026-07-23)
+
+- Published the verified cancelable-touch guard and brighter Football Jump
+  control through the generated `luisnomad.com` game payload.
+- Completed the full 103-page Astro production build, committed website
+  `main` as `dff0647` (`fix: capture iOS held touches and emphasize Jump`),
+  and pushed it to Netlify.
+- Confirmed production serves `index-8WS4_nvc.js` and
+  `index-DeZdmXRR.css` with HTTP 200.
+- Ran the required standalone web-game client against production. It reached
+  Football setup without console/page errors; the inspected capture is
+  `output/web-game/netlify-live-dff0647/shot-1.png`.
+- A live iPhone-sized browser check reports `touch-action: none`,
+  `user-select: none`, and `webkitUserSelect: none` on both the shell and
+  canvas. Cancelable `touchstart`, `touchmove`, `contextmenu`, `dragstart`,
+  and `selectstart` events all report `defaultPrevented: true`.
+
+The mobile web release is live at
+`https://luisnomad.com/games/joel-football/`.
+
+### Football pre-joystick control audit (2026-07-23)
+
+- Compared the current worktree with `24e1040`, the immediate pre-Football-
+  joystick baseline. That commit explicitly limited joystick use to Kickfall.
+- Football's default arrow geometry is unchanged from that baseline: centers
+  remain at x=80 and x=260, radius 64. Jump also remains at x=930, y=500,
+  radius 56.
+- The older `31389cc` layout matches the user's memory of a more compact
+  cluster: arrow centers were x=98 and x=238 (140 px apart instead of 180),
+  and Jump was x=1020, y=630, radius 60. With radius-64 arrows, the visible
+  gap grew from 12 logical px to 52 px in the later layout.
+- Jump physics did not change in either the joystick experiment or rollback:
+  `jumpVelocity` remains -11.5, the grounded jump branch is equivalent, and
+  digital arrows still produce full movement intensity. The newer analog
+  movement clamp receives intensity 1 in arrow mode.
+- The most plausible source of the perceived weaker jump is ergonomics rather
+  than trajectory: the older Jump target was slightly larger and sat on the
+  lower action row, much closer to the movement thumb. Current multi-touch
+  browser coverage still proves Arrow + Jump fires simultaneously.
+- No implementation change was made during this audit. A sensible follow-up
+  would be to restore the compact x=98/x=238 arrow spacing and reconsider the
+  lower Jump position while preserving its new higher-contrast appearance.
+
+### Compact Football touch layout restoration (2026-07-23)
+
+- Restored the older Football arrow geometry: Left is x=98 and Right is x=238,
+  both at y=630 with radius 64. Their circles now have the familiar 12 px rim
+  gap instead of the later 52 px gap.
+- Returned Jump to its exact older x=1020, y=630, radius-60 placement while
+  preserving the brighter emphasized treatment.
+- Moved the secondary Lob action to Jump's former upper slot at x=930, y=500,
+  radius 56. This avoids overlap and restores the primary Jump/Kick pairing on
+  the lower action row.
+- Centralized these authored coordinates in exported
+  `FOOTBALL_TOUCH_LAYOUT` constants and exposed center/radius diagnostics so
+  browser coverage can guard the intended ergonomics.
+- Updated touch fixtures and added a real two-pointer phone regression that
+  holds compact Right, presses/releases lower Jump independently, and requires
+  movement to remain held throughout.
+
+- Visually inspected the restored phone layout at
+  `output/e2e/05-touch-football-arrows.png`, its held-arrow state at
+  `output/e2e/05-touch-arrow-long-hold.png`, and the extended-tablet action row
+  at `output/e2e/08-extended-tablet-match.png`. The compact arrows are distinct
+  without a dead-looking gap; Jump/Kick read as the lower primary pair, and Lob
+  remains separated above.
+- Final verification: all 144 unit tests, production build, required
+  standalone web-game client, complete browser suite, two-pointer
+  Right-plus-Jump flow, screenshot inspection, console-error checks, and
+  `git diff --check` pass.
+
+This layout restoration is verified locally and has not been published yet.
+
+### Disc Hockey mini-game (2026-07-28)
+
+- Recorded the complete product, bundle, input, physics, AI, theme, audio,
+  orientation, diagnostics, and verification contract in
+  `docs/DISC_HOCKEY_SPEC.md` before implementation.
+- Confirmed Kickfall already enters through a dynamic import, but the current
+  setup/loading scenes are Kickfall-specific. The implementation will preserve
+  Kickfall's separate chunk and generalize only its small shell.
+- Disc Hockey will reuse the global player/opponent lineup and existing audio
+  assets. Native landscape enforcement already exists; the mini-game will also
+  make an explicit platform lock request when entered.
+
+TODO:
+
+- Add the registry-driven mini-game shell and profile fields.
+- Implement and unit-test pure Disc Hockey rules/AI.
+- Implement the lazy Disc Hockey scene, setup options, both themes, multitouch,
+  match flow, pause/result UI, diagnostics, and orientation request.
+- Run unit/build/browser verification, inspect both arena screenshots, and
+  confirm separate production chunks for both mini-games.
+
+#### Disc Hockey implementation complete
+
+- Added a registry-driven mini-game loader. The production build emits
+  `DiscHockeyScene` (~24.3 kB) and `KickfallScene` (~91.0 kB) as independent
+  JavaScript chunks; neither gameplay scene is part of the startup bundle.
+- Generalized the setup/loading shell without changing Kickfall's saved-level
+  flow. The Mini-games menu now offers both cards.
+- Added persistent Disc Hockey computer/local mode, Ice/Neon arena choice, and
+  independent Easy/Normal/Hard difficulty. Setup reuses and can update the
+  globally selected player and opponent.
+- Implemented first-to-five top-down play, full-puck goal detection, legal
+  half-rink clamps, acceleration-based disc movement, puck momentum/bounces,
+  goal resets, result/rematch, pause/restart/leave, keyboard fallback, and
+  three genuinely distinct AI tunings.
+- Implemented two-pointer local play through Phaser's multi-pointer input. A
+  real Chromium CDP two-touch regression holds both players simultaneously,
+  crosses both target fingers over midfield, and verifies each target and disc
+  remains clamped to its legal half.
+- Added procedural white-ice and dark sci-fi arenas with identical geometry.
+  The neon theme uses only yellow/gold and red/orange glow accents. Both include
+  static audience bands and the top scoreboard.
+- Reused Football music, crowd, puck impact, whistle, click, and success audio.
+  Entering the game explicitly requests landscape orientation through the
+  existing platform service, on top of Android's native landscape enforcement.
+- Added deterministic diagnostics, debug fixtures, and fixed-step advancement.
+  Updated the README and preserved the full specification in
+  `docs/DISC_HOCKEY_SPEC.md`.
+- Visually inspected Mini-games, setup, local Neon, clamped two-touch, result,
+  pause, and computer Ice captures under `output/disc-hockey/`, plus the final
+  required web-game client capture under
+  `output/web-game/disc-hockey-final/shot-1.png`.
+- Verification passes: 152/152 unit tests, focused Disc Hockey browser flow,
+  the complete legacy Football/Kickfall/tablet browser suite, production
+  build, required standalone web-game client, and `git diff --check`.
+
+No follow-up TODO remains for the requested Disc Hockey implementation.
+
+#### Disc Hockey visual and controls refinement
+
+- Reflowed the setup screen into stacked, language-safe sections. Spanish and
+  English labels no longer compete horizontally with the option buttons, and
+  local two-player mode replaces the irrelevant AI difficulty row with its own
+  concise explanation.
+- Aligned desktop controls with the other games: Player 1 uses arrow keys.
+  Local mode adds WASD only for Player 2, while touch remains independently
+  tracked one-finger-per-half.
+- Replaced the procedural arenas with two generated 1280 × 720 illustrations:
+  a scratched ice rink with frosted walls and spectators, and a detailed
+  charcoal sci-fi arena with yellow-gold/red-orange lighting. Each selected
+  arena image is requested lazily; entering Neon does not download Ice, and
+  vice versa.
+- Replaced the reused settings/menu artwork with
+  `public/assets/menu/disc-hockey-gameplay-card-v1.webp`, derived from a clean
+  capture of the finished Neon match.
+- Matched gameplay physics to the illustrated inner rail with an 88 px rounded
+  collision boundary. Player and puck centers use radius-aware insets, corner
+  impacts reflect against the curved normal, and the visible outline has the
+  same curve and deliberate gaps at both goal mouths.
+- Verification passes: 154 unit tests, production build, complete Disc Hockey
+  browser flow (including real two-finger rounded-corner clamps), visual
+  inspection of both themes and the Spanish setup, the standalone web-game
+  client, the complete Football/Kickfall/tablet browser regression, and
+  `git diff --check`.
+
+#### Disc Hockey image-traced collision maps
+
+- Removed the artificial Ice/Neon perimeter strokes and their translucent rink
+  fills. Gameplay now draws only the midfield separator, centre circle/spot,
+  and goal nets over each arena illustration.
+- Replaced the shared rounded rectangle with separate, invisible vector
+  contours traced from the playable-surface edge in each generated image.
+  Ice includes its narrower side rails and equipment shoulders; Neon follows
+  its broader metal wall. The maps live in the lazy Disc Hockey module.
+- Disc centers are constrained by their own radius against the nearest contour
+  segment. Puck reflections use the corresponding local normal, including at
+  multi-segment corners, while players retain their midfield restriction.
+- Moved each theme's goal line and net depth to its traced side edge. Goal
+  mouths remain open to the puck and still require the whole puck to cross.
+- Added diagnostics identifying the selected hidden map, contour point count,
+  bounds, goal geometry, and player/target wall clearance. Pure and Chromium
+  two-touch coverage verify that both maps remain invisible and radius-safe.
+- Final verification passes: 154 unit tests (including a two-radius grid sweep
+  over both maps), production build, focused Disc Hockey browser flow,
+  standalone web-game client with screenshot/state inspection, full
+  Football/Kickfall/tablet browser regression, and `git diff --check`. The
+  complete browser suite had one unrelated Football chilena timing flake on
+  its first run and passed unchanged on the immediate rerun.
+
+#### Invisible image-mapped goals
+
+- Removed every generated goal fill, outline, post, and net line from both
+  themes. The glowing blue/orange side recesses painted into the arena images
+  are now the only visual representation of the goals.
+- Mapped the hidden goal mouths to those recesses independently: Ice uses its
+  blue side panels and Neon uses its narrower orange-lit panels. Scoring lines
+  sit deep inside the painted recesses so the whole puck visibly enters the
+  image feature before a goal is awarded.
+- Goal diagnostics explicitly report `visible: false`; the existing full-puck
+  scoring rule and open-mouth collision behavior remain unchanged.
+- The focused Chromium flow now reaches match point, drives the real puck into
+  the hidden Neon recess, and requires that physical crossing—not a direct
+  debug score call—to produce the winning result.
+- Final verification passes: 154 unit tests, production build, focused
+  Disc Hockey browser/scoring flow, standalone web-game state and screenshot
+  inspection, the full Football/Kickfall/tablet browser regression, and
+  `git diff --check`.
+
+#### Engraved pushers, themed pucks, and earlier goal detection
+
+- Generated four exact orthographic top-down equipment sprites with the
+  built-in image generator, removed their chroma backgrounds, and normalized
+  them to transparent 256 px WebP assets. Ice uses frosted silver/navy pushers
+  and a red/steel puck; Neon uses black ceramic, yellow-gold, and red-orange.
+- Replaced circular portrait frames with theme-specific pusher bodies. The
+  selected character is rendered once into a CanvasTexture as a cropped
+  head-and-shoulders relief using offset grayscale highlight/shadow layers, so
+  it reads as an engraving integrated into the medallion.
+- Added asymmetric puck artwork and rotation driven by puck speed. The selected
+  theme's arena, pusher, and puck are loaded together only after starting Disc
+  Hockey; the inactive equipment does not enter that match's network requests.
+- Moved invisible scoring planes to the painted goal entrances. A goal now
+  triggers at exactly 40% puck-diameter overlap (39% remains live), while the
+  vertical whole-puck mouth requirement stays intact.
+- Focused Chromium screenshots and the standalone deterministic web-game
+  client confirm the engraved pieces and themed pucks in both arenas, with no
+  visible collision or goal overlays.
+- Final verification passes: 154 unit tests, focused Disc Hockey browser flow,
+  production build with separate Disc Hockey/Kickfall chunks, standalone
+  web-game state and screenshot inspection, the complete
+  Football/Kickfall/tablet browser regression, and `git diff --check`.
+
+#### Disc Hockey halo cleanup
+
+- Removed the translucent outer glow circles from both engraved pushers and
+  the puck in Ice and Neon. The generated equipment art, internal sprite
+  lighting, engraving treatment, circular physics, and subtle contact shadows
+  remain unchanged.
+- Verification passes: focused Disc Hockey unit tests, production build,
+  focused Chromium match flow, standalone deterministic client state/capture
+  inspection, and `git diff --check`.
+
+#### Mini-game card readability redesign
+
+- Added an opt-in cinematic layout to the shared journey-card component and
+  applied it to Kickfall and Disc Hockey. Their artwork is now full-bleed
+  beneath an inset dark copy panel with a narrow per-game accent rail.
+- Reserved independent geometry for the left badge, top-row title and arrow,
+  objective copy, and bottom metadata. The arrow can no longer cover either
+  English or Spanish copy, and lighter strokes improve letterform clarity.
+- Added a focused Spanish mini-game-menu capture to the Disc Hockey Chromium
+  regression so the longer localized strings remain part of visual review.
+- Final verification passes: 154 unit tests, production build, focused
+  bilingual Disc Hockey browser flow, standalone deterministic client capture,
+  full browser/tablet regression, explicit 1280×720 and 1280×800 visual
+  inspection, and `git diff --check`.
+
+#### Air-hockey momentum and proactive computer opponent
+
+- Replaced the puck's heavy carpet-like damping with an air-table model:
+  normal motion uses `0.06` damping and `0.96` wall restitution, while only
+  sub-18 px/s nudges enter a stronger settling zone and eventually stop.
+- Removed the AI branch that sent the computer back to goal when a stationary
+  puck was reachable near midfield. All levels now get behind and attack pucks
+  on their own half; Easy hangs back across midfield, Normal presses, and Hard
+  patrols at x=688 with faster prediction and 500 px/s maximum movement.
+- Hard mode approaches slow midfield contests on a shallow vertical angle.
+  This prevents the human and computer pushers from pinning the puck directly
+  between their half-line limits.
+- Diagnostics now expose puck speed/surface coefficients and the current
+  computer target/tuning. Pure regressions cover long glides, soft settling,
+  difficulty press depth, angled midfield contests, and a complete stationary
+  puck chase-and-strike.
+- Final verification passes: 156 unit tests, production build, focused Disc
+  Hockey stalemate/scoring/multitouch flow, standalone Hard-mode client state
+  and screenshot inspection, full Football/Kickfall/tablet browser regression,
+  and `git diff --check`. The complete browser suite hit an unrelated existing
+  Football fireball timing flake on its first run and passed unchanged on the
+  immediate rerun.
+
+#### Android 16 tablet landscape enforcement
+
+- Diagnosed native tablet rotation despite the existing
+  `android:screenOrientation="sensorLandscape"` declaration. The Android 16
+  target ignores fixed-orientation requests on large screens unless an
+  exception applies, and the installed app was reported as
+  `SCREEN_ORIENTATION_UNSPECIFIED` at runtime.
+- Declared the native application category as `game`, which is Android's
+  documented exception for game orientation requests, while retaining the
+  existing sensor-landscape activity setting and Capacitor runtime lock.
+- Rebuilt and installed on the connected Android 16 Samsung SM-X210. With the
+  system explicitly locked to portrait, the foreground activity continued to
+  report `SCREEN_ORIENTATION_LANDSCAPE` at 1920 × 1200; the original free
+  rotation preference was restored afterward.
+
+#### Direct tablet pusher tracking
+
+- Tablet testing confirmed the refreshed native bundle corrected the apparent
+  early-goal behavior, so the artwork-mapped collision and scoring geometry
+  were left unchanged.
+- Added a touch-only pusher profile with 1200 px/s maximum speed and an 80 Hz
+  response, versus the existing 440 px/s keyboard profile. Both human pushers
+  use the faster profile while actively owned by a pointer; keyboard and AI
+  tuning are unchanged.
+- A deterministic 100 ms measurement on the installed tablet moved the pusher
+  112.8 logical pixels toward a 210 px target and reached 1199.6 px/s. The
+  focused 13-test Disc Hockey suite, full Disc Hockey Chromium flow, required
+  standalone web-game client capture, production/native build, Android install,
+  orientation override test, and device error-log check all pass.
+
+#### Hockey rematch routing and Football touch-action swap
+
+- Reproduced both Disc Hockey result actions end to end and found that the
+  Rematch and Prepare Match hit areas overlapped by 30 logical pixels. The
+  topmost Prepare Match button could therefore intercept a rematch tap near
+  the shared edge.
+- Narrowed and separated both result buttons. Rematch performs a clean Hockey
+  match reset with the same mode and arena, while Prepare Match continues to
+  open the Disc Hockey setup.
+- Found a second setup race during end-to-end reproduction: the Play button
+  could submit the scene's cached profile snapshot while the visible setup
+  already reflected newer global choices. Hockey launch now reads the live
+  global profile at activation time.
+- Swapped the Football touch positions of Power and the high-kick/Lob action:
+  Power now occupies `(930, 500)` and Lob occupies `(1195, 475)`. Their sizes,
+  actions, colors, and keyboard bindings are unchanged.
+- Final verification passes: 157 unit tests; focused Disc Hockey browser flow
+  including human loss, Prepare Match → Hockey setup → Hockey, and Rematch →
+  fresh Hockey; the complete Football/Kickfall/touch browser suite; standalone
+  web-game client capture; production/native build; Android install; direct
+  on-tablet route and touch-position assertions; device screenshot inspection;
+  device error-log check; and `git diff --check`. The complete browser suite
+  hit its known high-speed fireball sweep timing flake once and passed
+  unchanged on the immediate rerun.
+
+#### Ice collision recalibration and symmetric local touch
+
+- Retraced the Ice arena's hidden collision contour against its own artwork.
+  The wall now follows the painted rounded boundary and bends into the recessed
+  side goals instead of stopping at the former x=188/1092 approximation.
+- Moved the Ice scoring planes to the actual goal entrances at x=104/1176.
+  The existing 40%-inside scoring rule and full-puck vertical mouth check remain
+  unchanged; the Neon map is untouched.
+- Routed both local human pushers through one shared movement helper, removing
+  the duplicated Player 1/Player 2 touch-speed branches.
+- Added regressions for the Ice v2 map coordinates and mirrored simultaneous
+  touch travel. On the installed Samsung SM-X210 build, two real active touch
+  pointers each travelled 152.8 logical pixels in 100 ms and reached mirrored
+  1199.97 px/s velocities. The old Ice plane no longer scored, while 40%
+  overlap at the new painted entrance did.
+- Final verification passes: 158 unit tests, focused Disc Hockey browser flow,
+  production build with the separate Hockey chunk, native debug APK build and
+  install, exact on-tablet collision-map/state assertions, two-finger tracking
+  measurement, goal-depth check, and native screenshot inspection.
+
+#### Three-minute Hockey matches and larger, direct pushers
+
+- Replaced first-to-five with a fixed 180-second active-play clock. Countdown,
+  goal pauses, manual pause, and app suspension do not consume match time.
+  The higher score at 0:00 wins and a tied score now produces a bilingual draw
+  result; rematch restores the full 3:00.
+- Updated the HUD, setup objective, mini-game card copy, diagnostics, English
+  and Spanish strings, README, and Disc Hockey specification for timed play.
+- Increased both pusher art and circular physics radii exactly 10%, from 44 to
+  48.4 logical pixels.
+- Increased touch capacity to 2400 px/s and separated touch from keyboard/AI
+  acceleration. Touch-owned pushers now use a direct speed-capped follower,
+  preventing overshoot and the stutter found during the first tablet check.
+- On the installed Samsung SM-X210, simultaneous human pushers followed six
+  consecutive 30-pixel finger movements exactly on every 60 Hz step:
+  230/1050, 260/1020, 290/990, 320/960, 350/930, and 380/900. A 205-pixel jump
+  reached both targets within 100 ms and remained stationary without rebound.
+- Final verification passes: 161 unit tests, the focused timed Hockey browser
+  flow (including five-goal continuation, timeout win/loss/draw, rematch clock
+  reset, pause clock freeze, enlarged boundaries, and simultaneous touch),
+  required standalone web-game client capture, production/native builds,
+  Android install, direct device state assertions, continuous two-touch trace,
+  and native screenshot inspection.
+
+#### Android immersive fullscreen
+
+- Enabled Android immersive mode for the Capacitor activity, hiding both the
+  status bar and Samsung's navigation/taskbar while the game has focus.
+- Configured transient system bars: an edge swipe may reveal the controls
+  temporarily, after which Android hides them again.
+- Reapplied immersive mode on activity creation, resume, and regained window
+  focus so returning from system UI does not leave the tablet taskbar visible.
+- Added a fullscreen launch-theme flag to avoid showing system chrome during
+  startup.
+- Built and installed the debug APK on the Samsung SM-X210. A 1920×1200 device
+  capture contains only the game, and Android's window state reports both
+  `statusBars` and `navigationBars` (the Samsung `TaskbarWindow`) as hidden.
+
+#### Release validation for web publication
+
+- Re-ran all 161 unit tests, the dedicated Disc Hockey browser flow, and the
+  complete Football/Kickfall/touch browser suite; all pass.
+- Rebuilt the production bundle and confirmed Disc Hockey and Kickfall remain
+  separate lazy-loaded chunks.
+- Ran the standalone web-game client against the production preview. Its
+  screenshot and `render_game_to_text` state agree on the fully rendered
+  Football setup screen, with no new browser errors.

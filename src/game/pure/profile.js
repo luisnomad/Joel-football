@@ -18,11 +18,24 @@ export const DEFAULT_AUDIO_SETTINGS = Object.freeze({
 });
 
 export const DIFFICULTIES = Object.freeze(['easy', 'normal', 'hard']);
-export const PROFILE_VERSION = 11;
+export const GAME_IDS = Object.freeze(['football', 'kickfall', 'discHockey']);
+export const PROFILE_VERSION = 13;
 export const LANGUAGE_SOURCES = Object.freeze(['device', 'user']);
 export const KICKFALL_MAX_LEVEL = 20;
 
 export const sanitizeDifficulty = (value) => DIFFICULTIES.includes(value) ? value : 'normal';
+export const sanitizeDifficultyByGame = (candidate, legacyDifficulty = 'normal') => ({
+  football: sanitizeDifficulty(candidate?.football ?? legacyDifficulty),
+  kickfall: sanitizeDifficulty(candidate?.kickfall),
+  discHockey: sanitizeDifficulty(candidate?.discHockey),
+});
+
+export const DISC_HOCKEY_MODES = Object.freeze(['computer', 'local']);
+export const DISC_HOCKEY_THEMES = Object.freeze(['ice', 'neon']);
+export const sanitizeDiscHockeySettings = (candidate) => ({
+  mode: DISC_HOCKEY_MODES.includes(candidate?.mode) ? candidate.mode : 'computer',
+  themeId: DISC_HOCKEY_THEMES.includes(candidate?.themeId) ? candidate.themeId : 'ice',
+});
 
 const cleanVolume = (value, fallback) => {
   const numeric = Number(value);
@@ -54,7 +67,7 @@ export const createDefaultProfile = ({ language = 'en', languageSource = 'device
   version: PROFILE_VERSION,
   language: language === 'es' ? 'es' : 'en',
   languageSource: LANGUAGE_SOURCES.includes(languageSource) ? languageSource : 'device',
-  difficulty: 'normal',
+  difficultyByGame: sanitizeDifficultyByGame(),
   playerCharacterId: DEFAULT_PLAYER_CHARACTER_ID,
   opponentId: DEFAULT_OPPONENT_ID,
   arenaThemeId: DEFAULT_ARENA_THEME_ID,
@@ -64,6 +77,7 @@ export const createDefaultProfile = ({ language = 'en', languageSource = 'device
   powers: emptyPowers(),
   audio: sanitizeAudioSettings(),
   kickfall: sanitizeKickfallProgress(),
+  discHockey: sanitizeDiscHockeySettings(),
 });
 
 const cleanCount = (value) => Math.min(999, Math.max(0, Math.floor(Number(value) || 0)));
@@ -93,7 +107,7 @@ export const sanitizeProfile = (candidate) => {
     languageSource: LANGUAGE_SOURCES.includes(candidate.languageSource)
       ? candidate.languageSource
       : 'user',
-    difficulty: sanitizeDifficulty(candidate.difficulty),
+    difficultyByGame: sanitizeDifficultyByGame(candidate.difficultyByGame, candidate.difficulty),
     ...lineup,
     arenaThemeId: sanitizeArenaThemeId(candidate.arenaThemeId),
     ballTypeId: sanitizeBallTypeId(candidate.ballTypeId),
@@ -102,6 +116,15 @@ export const sanitizeProfile = (candidate) => {
     powers,
     audio: sanitizeAudioSettings(candidate.audio),
     kickfall: sanitizeKickfallProgress(candidate.kickfall),
+    discHockey: sanitizeDiscHockeySettings(candidate.discHockey),
+  };
+};
+
+export const setDiscHockeySettings = (profile, patch) => {
+  const safe = sanitizeProfile(profile);
+  return {
+    ...safe,
+    discHockey: sanitizeDiscHockeySettings({ ...safe.discHockey, ...patch }),
   };
 };
 
@@ -135,10 +158,21 @@ export const setProfileLanguage = (profile, language) => ({
   languageSource: 'user',
 });
 
-export const setProfileDifficulty = (profile, difficulty) => ({
-  ...sanitizeProfile(profile),
-  difficulty: sanitizeDifficulty(difficulty),
-});
+export const setGameDifficulty = (profile, gameId, difficulty) => {
+  const safe = sanitizeProfile(profile);
+  if (!GAME_IDS.includes(gameId)) return safe;
+  return {
+    ...safe,
+    difficultyByGame: {
+      ...safe.difficultyByGame,
+      [gameId]: sanitizeDifficulty(difficulty),
+    },
+  };
+};
+
+export const setProfileDifficulty = (profile, difficulty) => (
+  setGameDifficulty(profile, 'football', difficulty)
+);
 
 export const setProfileOpponent = (profile, opponentId) => ({
   ...sanitizeProfile(profile),

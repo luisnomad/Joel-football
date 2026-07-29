@@ -16,6 +16,17 @@ export const AUDIO_ASSET_URLS = Object.freeze([
   WHISTLE_EFFECT_URL,
   ...MUSIC_TRACKS,
 ]);
+export const AUDIO_SCENE_POLICIES = Object.freeze({
+  menu: Object.freeze({ music: true, audience: false }),
+  football: Object.freeze({ music: true, audience: true }),
+  kickfall: Object.freeze({ music: true, audience: false }),
+  discHockey: Object.freeze({ music: true, audience: true }),
+});
+
+export const resolveAudioScenePolicy = (mode) => {
+  const sceneMode = Object.hasOwn(AUDIO_SCENE_POLICIES, mode) ? mode : 'menu';
+  return { sceneMode, ...AUDIO_SCENE_POLICIES[sceneMode] };
+};
 
 const WHISTLE_INTERVAL_MS = 900;
 
@@ -86,13 +97,18 @@ class ArcadeAudio {
   setScene(mode) {
     this.cancelWhistleSequence();
     this.whistleEffect?.pause?.();
-    this.sceneMode = mode === 'match' ? 'match' : 'menu';
+    this.sceneMode = resolveAudioScenePolicy(mode).sceneMode;
     this.ensureMedia();
     this.primeMediaFromCache();
     if (!this.unlocked) return;
-    this.startMusic();
-    if (this.sceneMode === 'match') this.startAudience();
+    if (this.scenePolicy.music) this.startMusic();
+    else this.stopMusic();
+    if (this.scenePolicy.audience) this.startAudience();
     else this.stopAudience();
+  }
+
+  get scenePolicy() {
+    return AUDIO_SCENE_POLICIES[this.sceneMode] ?? AUDIO_SCENE_POLICIES.menu;
   }
 
   setPageVisible(visible) {
@@ -105,20 +121,19 @@ class ArcadeAudio {
       return;
     }
     if (!this.unlocked) return;
-    this.startMusic();
-    if (this.sceneMode === 'match') this.startAudience();
+    if (this.scenePolicy.music) this.startMusic();
+    else this.stopMusic();
+    if (this.scenePolicy.audience) this.startAudience();
+    else this.stopAudience();
   }
 
   updateSettings(patch) {
     const profile = playerProfileStore.setAudio(patch);
     this.settings = sanitizeAudioSettings(profile.audio);
     this.applyVolumes();
-    if (this.settings.musicMuted) {
-      this.musicRequested = false;
-      this.music?.pause?.();
-    }
+    if (this.settings.musicMuted || !this.scenePolicy.music) this.stopMusic();
     else if (this.unlocked) this.startMusic();
-    if (this.settings.effectsMuted || this.sceneMode !== 'match') this.stopAudience();
+    if (this.settings.effectsMuted || !this.scenePolicy.audience) this.stopAudience();
     else if (this.unlocked) this.startAudience();
     if (this.settings.effectsMuted) this.cancelWhistleSequence();
     return this.settings;
@@ -143,13 +158,14 @@ class ArcadeAudio {
       this.context ??= new AudioContext();
       if (this.context.state === 'suspended') this.context.resume().catch(() => {});
     }
-    this.startMusic();
-    if (this.sceneMode === 'match') this.startAudience();
+    if (this.scenePolicy.music) this.startMusic();
+    if (this.scenePolicy.audience) this.startAudience();
+    else this.stopAudience();
     this.warmCacheProgressively();
   }
 
   startMusic() {
-    this.musicRequested = !this.settings.musicMuted && this.pageVisible;
+    this.musicRequested = this.scenePolicy.music && !this.settings.musicMuted && this.pageVisible;
     if (!this.musicRequested || !this.music) return;
     safePlay(this.music);
   }
@@ -160,7 +176,7 @@ class ArcadeAudio {
   }
 
   startAudience() {
-    this.audienceRequested = !this.settings.effectsMuted && this.pageVisible && this.sceneMode === 'match';
+    this.audienceRequested = this.scenePolicy.audience && !this.settings.effectsMuted && this.pageVisible;
     if (!this.audienceRequested || !this.audience) return;
     safePlay(this.audience);
   }
@@ -324,6 +340,7 @@ class ArcadeAudio {
       settings: { ...this.settings },
       unlocked: this.unlocked,
       sceneMode: this.sceneMode,
+      scenePolicy: { ...this.scenePolicy },
       currentTrack: this.trackIndex + 1,
       trackCount: MUSIC_TRACKS.length,
       musicRequested: this.musicRequested,

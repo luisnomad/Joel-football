@@ -1,3 +1,5 @@
+import { resolveForceTransmission } from '../../pure/forceSystem.js';
+
 export const KICKFALL_CONFIG = Object.freeze({
   ballQuota: 8,
   spawnIntervalSeconds: 3,
@@ -5,7 +7,23 @@ export const KICKFALL_CONFIG = Object.freeze({
   armedSeconds: 0.65,
   gateHealth: 1,
   pocketPullSeconds: 0.32,
-  chargeTransferRetention: 0.9,
+  chargeTransferRetention: 0.84,
+});
+
+export const KICKFALL_FORCE_CONFIG = Object.freeze({
+  minimumForce: 0.12,
+  maximumGap: 8,
+  comboWindowSeconds: 0.9,
+  comboMultipliers: Object.freeze([1, 1.25, 1.5]),
+  maximumApproachBonus: 0.2,
+  approachSpeedForMaximumBonus: 12.5,
+  gateResistance: 0.7,
+  trapResistance: Object.freeze({
+    cleat: 1.1,
+    pocket: 1.5,
+  }),
+  pressureGraceSeconds: 0.5,
+  pressureDecayPerSecond: 0.8,
 });
 
 const modalElement = (id, x, y, width, height) => Object.freeze({
@@ -99,6 +117,7 @@ export const createKickfallLandingGuides = (tiers = []) => tiers
       ...FLAT_ENTRY_GUIDE,
       id: `${tier.mode}-entry-${tier.id}`,
       tierId: tier.id,
+      mode: tier.mode,
       flow: tier.flow,
       entryX,
       exitX,
@@ -112,6 +131,38 @@ export const createKickfallLandingGuides = (tiers = []) => tiers
       angle,
     });
   });
+
+export const getKickfallLandingGuideContact = ({
+  ballX = 0,
+  ballY = 0,
+  ballRadius = 18,
+  flow = 1,
+  entryX = 0,
+  width = 0,
+  height = 0,
+  surfaceY = 0,
+  verticalTolerance = 10,
+} = {}) => {
+  const direction = Math.sign(Number(flow) || 0) || 1;
+  const safeWidth = Math.max(Number.EPSILON, Number(width) || 0);
+  const safeHeight = Math.max(0, Number(height) || 0);
+  const safeRadius = Math.max(0, Number(ballRadius) || 0);
+  const progress = (Number(ballX) - Number(entryX)) * direction;
+  const clampedProgress = Math.min(safeWidth, Math.max(0, progress));
+  const rampSurfaceY = Number(surfaceY)
+    - safeHeight * (1 - clampedProgress / safeWidth);
+  const withinRamp = progress >= -safeRadius && progress <= safeWidth + safeRadius;
+  const touching = withinRamp
+    && Number(ballY) + safeRadius >= rampSurfaceY - Math.max(0, Number(verticalTolerance) || 0)
+    && Number(ballY) <= rampSurfaceY + safeRadius;
+  return {
+    progress,
+    clampedProgress,
+    rampSurfaceY,
+    withinRamp,
+    touching,
+  };
+};
 
 const obstacle = (id, type, tierId, x) => Object.freeze({
   id,
@@ -382,6 +433,27 @@ export const stepKickfallRunCycle = ({
   return (Number(cycle) || 0) + Math.max(0, Number(dt) || 0) * framesPerSecond;
 };
 
+export const stepKickfallSurfaceRollVelocity = ({
+  velocityX = 0,
+  surfaceAngle = 0,
+  dt = 0,
+  gravityScale = 80,
+  maximumSpeed = 4.2,
+} = {}) => {
+  const current = Number(velocityX) || 0;
+  const acceleration = Math.sin(Number(surfaceAngle) || 0)
+    * Math.max(0, Number(gravityScale) || 0);
+  const speedLimit = Math.max(0, Number(maximumSpeed) || 0);
+  if (Math.sign(current) === Math.sign(acceleration) && Math.abs(current) >= speedLimit) {
+    return current;
+  }
+  const next = current + acceleration * Math.max(0, Number(dt) || 0);
+  if (Math.sign(next) === Math.sign(acceleration) && Math.abs(next) > speedLimit) {
+    return Math.sign(next) * speedLimit;
+  }
+  return next;
+};
+
 export const resolveKickfallChargeTransfer = ({
   sourceX = 0,
   sourceY = 0,
@@ -397,6 +469,8 @@ export const resolveKickfallChargeTransfer = ({
   laneTolerance = 28,
   minimumSpeed = 4,
   chargeRetention = KICKFALL_CONFIG.chargeTransferRetention,
+  minimumForce = KICKFALL_FORCE_CONFIG.minimumForce,
+  sourceForceHops = 0,
 } = {}) => {
   const velocityX = Number(sourceVx) || 0;
   const direction = Math.sign(velocityX);
@@ -412,13 +486,19 @@ export const resolveKickfallChargeTransfer = ({
     || horizontalDistance > Math.max(0, Number(contactDistance) || 0)
     || verticalDistance > Math.max(0, Number(laneTolerance) || 0)
   ) return null;
+  const targetImpactPower = resolveForceTransmission({
+    force: sourceImpactPower,
+    retention: chargeRetention,
+    minimumForce,
+  });
+  if (targetImpactPower <= 0) return null;
   return {
     direction,
     sourceArmedUntil: 0,
     sourceImpactPower: 0,
     targetArmedUntil: Number(sourceArmedUntil),
-    targetImpactPower: Math.max(0, Number(sourceImpactPower) || 0)
-      * Math.min(1, Math.max(0, Number(chargeRetention) || 0)),
+    targetImpactPower,
+    targetForceHops: Math.max(0, Math.floor(Number(sourceForceHops) || 0)) + 1,
     targetVelocityX: direction * Math.max(
       5.5,
       Math.abs(velocityX) * 0.84,
@@ -473,6 +553,38 @@ export const stepKickfallFallVelocity = ({
   Math.max(0, Number(maxVelocity) || 0),
   (Number(velocityY) || 0) + Math.max(0, Number(acceleration) || 0),
 );
+
+export const isKickfallBallSupport = ({
+  playerX = 0,
+  playerY = 0,
+  playerVelocityY = 0,
+  playerHalfWidth = 22,
+  playerHalfHeight = 41,
+  ballX = 0,
+  ballY = 0,
+  ballRadius = 18,
+  horizontalInset = 3,
+  verticalTolerance = 10,
+  maximumPenetration = 12,
+  maximumUpwardSpeed = 1.2,
+} = {}) => {
+  const bodyBottom = Number(playerY) + Math.max(0, Number(playerHalfHeight) || 0);
+  const ballTop = Number(ballY) - Math.max(0, Number(ballRadius) || 0);
+  const verticalGap = ballTop - bodyBottom;
+  const horizontalReach = Math.max(
+    0,
+    Math.max(0, Number(playerHalfWidth) || 0)
+      + Math.max(0, Number(ballRadius) || 0)
+      - Math.max(0, Number(horizontalInset) || 0),
+  );
+  return (
+    Number(playerY) < Number(ballY)
+    && Math.abs(Number(playerX) - Number(ballX)) <= horizontalReach
+    && verticalGap <= Math.max(0, Number(verticalTolerance) || 0)
+    && verticalGap >= -Math.max(0, Number(maximumPenetration) || 0)
+    && Number(playerVelocityY) >= -Math.max(0, Number(maximumUpwardSpeed) || 0)
+  );
+};
 
 export const resolveKickfallMagnetPull = ({
   startX = 0,

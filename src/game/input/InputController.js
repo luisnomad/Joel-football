@@ -1,6 +1,7 @@
 import Phaser from 'phaser';
 import { normalizeIntent } from '../pure/actions.js';
 import { createDirectionTapState, registerDirectionTap, resolveDirectionalDash } from '../pure/directionalDash.js';
+import { resolveJoystickDashGesture } from './virtualJoystickMath.js';
 
 const consumePulse = (state, name) => {
   const value = state[name];
@@ -27,6 +28,8 @@ export class InputController {
       powerJ: 'J',
     });
     this.touch = { left: false, right: false, jump: false, kick: false, lob: false, power: false };
+    this.touchMove = 0;
+    this.touchDashArmed = true;
     this.keyboardPulse = { power: false };
     this.directionTapState = createDirectionTapState();
     this.pendingDashDirection = 0;
@@ -50,6 +53,21 @@ export class InputController {
     this.touch[action] = down;
   }
 
+  setTouchMovement(move, { active = false, boosted = false } = {}) {
+    const safeMove = Math.max(-1, Math.min(1, Number(move) || 0));
+    const gesture = resolveJoystickDashGesture({
+      armed: this.touchDashArmed,
+      active,
+      boosted,
+      move: safeMove,
+    });
+    this.touchMove = safeMove;
+    this.touchDashArmed = gesture.armed;
+    if (gesture.triggeredDirection) {
+      this.pendingDashDirection = gesture.triggeredDirection;
+    }
+  }
+
   recordDirectionPress(direction) {
     this.directionTapState = registerDirectionTap(this.directionTapState, {
       direction,
@@ -68,6 +86,8 @@ export class InputController {
 
   neutralize() {
     Object.keys(this.touch).forEach((action) => { this.touch[action] = false; });
+    this.touchMove = 0;
+    this.touchDashArmed = true;
     Object.keys(this.keyboardPulse).forEach((action) => { this.keyboardPulse[action] = false; });
     this.scene.input.keyboard.resetKeys?.();
     Object.values(this.keys).forEach((key) => key.reset?.());
@@ -76,8 +96,9 @@ export class InputController {
 
   sample(self = {}, context = {}) {
     const { JustDown } = Phaser.Input.Keyboard;
-    const left = this.keys.leftA.isDown || this.keys.leftArrow.isDown || this.touch.left;
-    const right = this.keys.rightD.isDown || this.keys.rightArrow.isDown || this.touch.right;
+    const keyboardMove = Number(this.keys.rightD.isDown || this.keys.rightArrow.isDown)
+      - Number(this.keys.leftA.isDown || this.keys.leftArrow.isDown);
+    const digitalTouchMove = Number(this.touch.right) - Number(this.touch.left);
     const jumpHeld = this.keys.jumpW.isDown || this.keys.jumpArrow.isDown || this.keys.jumpSpace.isDown;
     const jumpPressed =
       JustDown(this.keys.jumpW) ||
@@ -89,14 +110,14 @@ export class InputController {
     const modifierLob = kickPressed && jumpHeld;
     const requestedShot = kickPressed || lobPressed;
     const kickBoost = requestedShot && self.kickTimer > 0 && !self.powerArmed ? 1 : 0;
-    const move = Number(right) - Number(left);
+    const move = keyboardMove || this.touchMove || digitalTouchMove;
     let dashDirection = 0;
     if (this.pendingDashDirection) {
       const canStart = self.grounded !== false
         && !self.stunned
         && !(self.dashTimer > 0)
         && !(self.dashCooldown > 0)
-        && move === this.pendingDashDirection;
+        && Math.sign(move) === this.pendingDashDirection;
       if (canStart) {
         this.lastDashResolution = resolveDirectionalDash({
           tapDirection: this.pendingDashDirection,
@@ -120,6 +141,15 @@ export class InputController {
       power: consumePulse(this.keyboardPulse, 'power') || consumePulse(this.touch, 'power'),
       kickBoost,
     });
+  }
+
+  diagnostics() {
+    return {
+      touchMove: this.touchMove,
+      touchDashArmed: this.touchDashArmed,
+      touch: { ...this.touch },
+      pendingDashDirection: this.pendingDashDirection,
+    };
   }
 
   destroy() {

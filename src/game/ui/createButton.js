@@ -1,5 +1,6 @@
 import { fitTextSize } from './textFit.js';
 import { getWideStageUiScale } from '../layout/tabletStage.js';
+import { bindButtonInput } from './buttonInput.js';
 
 export const createButton = (scene, {
   x,
@@ -10,7 +11,6 @@ export const createButton = (scene, {
   onPress,
   color = 0x7c5cff,
   activateOnPointerDown = false,
-  pointerDownDebounceMs = 0,
 }) => {
   const uiScale = getWideStageUiScale(scene.stageLayout);
   const scaledWidth = width * uiScale;
@@ -38,37 +38,14 @@ export const createButton = (scene, {
   setLabel(label);
   const zone = scene.add.zone(x, y, scaledWidth, scaledHeight).setInteractive({ useHandCursor: true });
   const setScale = (scale) => [background, text].forEach((item) => item.setScale(scale));
-  let pointerDownLocked = false;
-  let unlockTimer = null;
-  const activate = () => {
-    scene.game.events.emit('platform:haptic', 'light');
-    onPress();
-  };
-  const lockPointerDown = () => {
-    if (pointerDownDebounceMs <= 0) return true;
-    if (pointerDownLocked) return false;
-    pointerDownLocked = true;
-    unlockTimer?.remove(false);
-    unlockTimer = scene.time.delayedCall(2_000, () => { pointerDownLocked = false; });
-    return true;
-  };
-  const releasePointerDown = () => {
-    if (!activateOnPointerDown || pointerDownDebounceMs <= 0) return;
-    unlockTimer?.remove(false);
-    unlockTimer = scene.time.delayedCall(pointerDownDebounceMs, () => { pointerDownLocked = false; });
-  };
-  zone.on('pointerover', () => setScale(1.035));
-  zone.on('pointerout', () => setScale(1));
-  zone.on('pointerdown', () => {
-    setScale(0.96);
-    if (activateOnPointerDown && lockPointerDown()) activate();
+  bindButtonInput(scene, zone, {
+    onOver: () => setScale(1.035),
+    onOut: () => setScale(1),
+    onPress: () => setScale(0.96),
+    onRelease: () => setScale(1.035),
+    onActivate: () => onPress?.(),
+    activateOnPointerDown,
   });
-  zone.on('pointerup', () => {
-    setScale(1.035);
-    if (!activateOnPointerDown) activate();
-    releasePointerDown();
-  });
-  zone.on('pointerupoutside', releasePointerDown);
   return {
     shadow,
     background,

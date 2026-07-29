@@ -34,6 +34,7 @@ import { createInfoOverlay } from '../ui/createInfoOverlay.js';
 import { createConfirmationOverlay } from '../ui/createConfirmationOverlay.js';
 import { resolveChilenaShot, shouldRedirectLobChilena } from '../pure/chilena.js';
 import { shouldResolvePlayerClash, sweepCircleAgainstBounds } from '../pure/gameplayPhysics.js';
+import { FOOTBALL_TOUCH_MOVEMENT_MODES } from '../developerOptions.js';
 
 const round = (value, places = 2) => {
   const factor = 10 ** places;
@@ -65,11 +66,12 @@ export class MatchScene extends Phaser.Scene {
     this.playerCharacter = getCharacter(this.profile.playerCharacterId);
     this.opponent = getCharacter(this.profile.opponentId, 'bob');
     this.language = this.profile.language;
-    arcadeAudio.setScene('match');
+    arcadeAudio.setScene('football');
     setActiveScene(this);
     this.events.once(Phaser.Scenes.Events.SHUTDOWN, () => {
       clearActiveScene(this);
       this.matter?.world?.off('collisionstart', this.onCollisionStart, this);
+      this.touchControls?.destroy();
       this.inputController?.destroy();
       this.unbindKeyboard();
       delete window.__SKYHEAD_DEBUG__;
@@ -91,7 +93,7 @@ export class MatchScene extends Phaser.Scene {
       }),
     };
     this.opponentProvider = this.registry.get('agentProvider')
-      ?? createHeuristicAgentProvider('right', { difficulty: this.profile.difficulty });
+      ?? createHeuristicAgentProvider('right', { difficulty: this.profile.difficultyByGame.football });
     this.currentIntents = { left: null, right: null };
     this.lastAiAdvancedIntent = { dashDirection: 0, kickBoost: 0 };
     this.aiThinkTimer = 0;
@@ -722,7 +724,7 @@ export class MatchScene extends Phaser.Scene {
       const proposedIntent = safeDecide(this.opponentProvider, snapshot);
       this.currentIntents.right = this.opponentProvider.type === 'human'
         ? proposedIntent
-        : applyAiDifficulty(proposedIntent, this.profile.difficulty);
+        : applyAiDifficulty(proposedIntent, this.profile.difficultyByGame.football);
       this.lastAiAdvancedIntent = {
         dashDirection: this.currentIntents.right.dashDirection,
         kickBoost: this.currentIntents.right.kickBoost,
@@ -1263,6 +1265,8 @@ export class MatchScene extends Phaser.Scene {
   serializeState() {
     const left = this.leftPlayer?.snapshot?.() ?? null;
     const right = this.rightPlayer?.snapshot?.() ?? null;
+    const footballTouchMovementMode = this.touchControls?.movementMode
+      ?? FOOTBALL_TOUCH_MOVEMENT_MODES.ARROWS;
     return {
       mode: this.isPaused ? 'paused' : this.phase,
       pauseReason: this.pauseReason,
@@ -1302,7 +1306,7 @@ export class MatchScene extends Phaser.Scene {
         counterRule: 'kick or jumping head contact at impact',
       },
       language: this.language,
-      difficulty: this.profile?.difficulty ?? 'normal',
+      difficulty: this.profile?.difficultyByGame?.football ?? 'normal',
       customization: {
         arenaThemeId: this.profile?.arenaThemeId ?? 'skycourt',
         ballTypeId: this.ball?.type?.id ?? 'classic',
@@ -1315,7 +1319,7 @@ export class MatchScene extends Phaser.Scene {
         equippedCount: this.profile?.equippedPowerId ? this.profile.powers[this.profile.equippedPowerId] : 0,
       },
       opponentProvider: this.opponentProvider?.id ?? 'unknown',
-      aiAdvancedMechanicsEnabled: (this.profile?.difficulty ?? 'normal') !== 'easy',
+      aiAdvancedMechanicsEnabled: (this.profile?.difficultyByGame?.football ?? 'normal') !== 'easy',
       lastAiAdvancedIntent: this.lastAiAdvancedIntent,
       meterFlash: {
         left: round(this.meterFlash?.left ?? 0),
@@ -1333,12 +1337,18 @@ export class MatchScene extends Phaser.Scene {
       },
       touchControls: this.touchControls?.visible ?? false,
       touchControlVisuals: this.touchControls?.diagnostics?.() ?? {},
+      footballTouchMovementMode,
       inputMode: this.isTouchLayout ? 'touch' : 'keyboard',
+      inputDiagnostics: this.inputController?.diagnostics?.() ?? null,
       currentIntent: this.currentIntents,
       humanDashResolution: this.inputController?.lastDashResolution ?? { direction: 0, purpose: 'none' },
       controls: this.isTouchLayout ? {
-        move: 'on-screen left/right',
-        dash: 'double-tap either direction arrow',
+        move: footballTouchMovementMode === FOOTBALL_TOUCH_MOVEMENT_MODES.JOYSTICK
+          ? 'analog horizontal virtual joystick'
+          : 'on-screen left/right arrows',
+        dash: footballTouchMovementMode === FOOTBALL_TOUCH_MOVEMENT_MODES.JOYSTICK
+          ? 'flick from the center to the joystick edge'
+          : 'double-tap the left/right arrow',
         jump: 'on-screen up',
         kick: 'on-screen kick icon',
         lob: 'on-screen lob icon',

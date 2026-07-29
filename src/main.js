@@ -11,10 +11,16 @@ import { SettingsScene } from './game/scenes/SettingsScene.js';
 import { SplashScene } from './game/scenes/SplashScene.js';
 import { CustomizeScene } from './game/scenes/CustomizeScene.js';
 import { MiniGameLoadingScene } from './game/scenes/MiniGameLoadingScene.js';
+import { MiniGamesScene } from './game/scenes/MiniGamesScene.js';
+import { MiniGameSetupScene } from './game/scenes/MiniGameSetupScene.js';
 import { arcadeAudio } from './game/services/ArcadeAudio.js';
 import { detectExtendedTabletStage, detectWidePhoneStage } from './game/layout/tabletStage.js';
 import { PLATFORM_EVENTS } from './platform/PlatformServices.js';
 import { createPlatformServices } from './platform/createPlatformServices.js';
+import { installGameSurfaceInputGuard } from './platform/gameSurfaceInput.js';
+
+const gameShell = document.getElementById('game-shell');
+installGameSurfaceInputGuard(gameShell);
 
 const platformServices = createPlatformServices();
 const useExtendedTabletStage = detectExtendedTabletStage({ forceLandscape: platformServices.native });
@@ -40,8 +46,9 @@ const config = {
     activePointers: 6,
     keyboard: true,
     touch: {
-      // CSS `touch-action: none` owns gesture suppression. Avoid calling
-      // preventDefault on Android touchcancel events that are not cancelable.
+      // The shell guard cancels only cancelable touchstart/touchmove defaults.
+      // Keep Phaser capture off because its touchcancel path calls
+      // preventDefault even when Android marks the lifecycle event noncancelable.
       capture: false,
     },
   },
@@ -53,7 +60,19 @@ const config = {
       debug: false,
     },
   },
-  scene: [BootScene, SplashScene, IntroScene, CustomizeScene, SettingsScene, PowerLabScene, MiniGameLoadingScene, MatchLoadingScene, MatchScene],
+  scene: [
+    BootScene,
+    SplashScene,
+    IntroScene,
+    CustomizeScene,
+    SettingsScene,
+    PowerLabScene,
+    MiniGamesScene,
+    MiniGameSetupScene,
+    MiniGameLoadingScene,
+    MatchLoadingScene,
+    MatchScene,
+  ],
 };
 
 const game = new Phaser.Game(config);
@@ -67,6 +86,7 @@ const platformActions = Object.freeze({
   getAppInfo: () => platformServices.getAppInfo(),
   getInstallState: () => platformServices.getInstallState(),
   installWebApp: () => platformServices.installWebApp(),
+  lockLandscape: () => platformServices.lockLandscape(),
 });
 game.registry.set('platformActions', platformActions);
 

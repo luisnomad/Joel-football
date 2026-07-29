@@ -73,11 +73,26 @@ asset.
 
 ### Human controls
 
-- Move: A/D or Left/Right.
-- Directional dash: double-tap either movement direction within 280 ms. The
-  chosen arrow remains authoritative: toward the rival challenges them, while
-  the opposite arrow creates a reverse defensive dash or a goalward escape.
-  It cannot begin in mid-air and retains the normal dash cooldown.
+- Keyboard move: A/D or Left/Right.
+- Touch move defaults to two on-screen Left/Right arrows.
+- Keyboard and default-touch directional dash: double-tap either movement
+  direction within 280 ms.
+- A developer-only Football joystick experiment may replace the arrows. Its
+  horizontal thumb displacement is analog, from a slow walk just outside the
+  dead zone to full running speed near the edge. Moving from the neutral center
+  into the outer 18% ring requests one cooldown-gated burst; holding at the
+  edge cannot repeat it, and the stick must return inside the dead zone before
+  another edge gesture can be recognized.
+  The chosen direction remains authoritative: toward the rival challenges
+  them, while the opposite direction creates a reverse defensive dash or a
+  goalward escape. It cannot begin in mid-air and retains the normal dash
+  cooldown.
+- The experiment is enabled only through
+  `VITE_FOOTBALL_TOUCH_MOVEMENT_MODE=joystick` or the runtime Phaser registry
+  key `developer:footballTouchMovementMode`, followed by a Match restart.
+  Unsupported values safely resolve to `arrows`. It is not stored in the player
+  profile and has no player-facing option. Kickfall's 8-way joystick is
+  independent and remains enabled.
 - Jump: W, Up, or Space.
 - Kick: X or K.
 - Lob: Z or I; Up + Kick is an alternate chord. The lob trades horizontal
@@ -98,6 +113,23 @@ asset.
   remains active, so the defender can block or counter either variant.
 - Touch controls expose every gameplay action plus pause, restart, menu, and
   fullscreen on pointer-capable coarse/touch devices.
+
+### Menu button input
+
+- Every one-shot menu pressable uses the shared `bindButtonInput` contract
+  directly or through `createButton`, `createIconButton`, or
+  `createJourneyCard`; new menu controls must not wire independent action
+  handlers to both pointer-down and pointer-up.
+- Touch layouts keep a game-wide 500 ms record of accepted activation points.
+  A compatibility mouse/pointer sequence within 18 logical pixels is ignored,
+  including when a newly opened scene or modal places a control under the same
+  finger position. A control elsewhere on the screen remains immediately
+  available.
+- Components may activate on pointer-down when a WebView can cancel release
+  (selectors and mute controls), or on the conventional accepted pointer-up.
+  The shared gate guarantees one action in either phase.
+- Continuous gameplay ownership is deliberately separate: joysticks, held
+  movement/action controls, and sliders do not use the one-shot button gate.
 
 ### Physics and collision dynamics
 
@@ -131,8 +163,11 @@ asset.
   alternating directly with the idle drawing.
 - Kicks visually progress through anticipation, contact, and recovery while
   retaining the existing strike window, boost taps, and cooldown timing.
-- Normal running retains one consistent speed; there is no sustained sprint
-  mode. Directional double-tap dash is the single burst-movement mechanic.
+- Keyboard and default touch-arrow running retain one consistent speed and use
+  same-direction double-taps for the same one-off dash. In the developer
+  joystick mode, movement scales with horizontal thumb displacement and the
+  center-to-edge gesture enters that same dash with the same cooldown and
+  combat rules.
 - Before overtaking the defender, each player always faces the rival goal;
   retreating is a backpedal and cannot accidentally aim a shot at their own
   net. After overtaking the defender, horizontal movement may turn the attacker

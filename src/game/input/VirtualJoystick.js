@@ -11,7 +11,10 @@ export class VirtualJoystick {
     thumbRadius = radius * 0.4,
     interactionRadius = radius * 1.34,
     deadZone = 0.24,
+    axis = 'both',
+    boostThreshold = null,
     accent = 0x50d8ef,
+    boostAccent = 0xffc857,
     depth = 85,
     fixedToCamera = true,
     haptic = 'light',
@@ -24,7 +27,10 @@ export class VirtualJoystick {
     this.thumbRadius = Math.max(1, thumbRadius);
     this.interactionRadius = Math.max(this.radius, interactionRadius);
     this.deadZone = deadZone;
+    this.axis = axis === 'horizontal' ? 'horizontal' : 'both';
+    this.boostThreshold = Number.isFinite(boostThreshold) ? boostThreshold : null;
     this.accent = accent;
+    this.boostAccent = boostAccent;
     this.depth = depth;
     this.fixedToCamera = fixedToCamera;
     this.haptic = haptic;
@@ -32,7 +38,12 @@ export class VirtualJoystick {
     this.pointer = null;
     this.visible = true;
     this.enabled = true;
-    this.state = resolveVirtualJoystickVector({ radius: this.radius, deadZone: this.deadZone });
+    this.state = resolveVirtualJoystickVector({
+      radius: this.radius,
+      deadZone: this.deadZone,
+      axis: this.axis,
+      boostThreshold: this.boostThreshold,
+    });
 
     this.createVisuals();
     this.bindInput();
@@ -75,21 +86,51 @@ export class VirtualJoystick {
       GLASS_TINT,
       0.025,
     ).setStrokeStyle(1, 0xffffff, 0.13).setDepth(this.depth + 0.35);
+    this.boostRing = this.boostThreshold === null
+      ? null
+      : this.scene.add.circle(
+        this.x,
+        this.y,
+        this.radius * this.boostThreshold,
+        this.boostAccent,
+        0.012,
+      ).setStrokeStyle(2, this.boostAccent, 0.28).setDepth(this.depth + 0.36);
 
     this.guides = this.scene.add.graphics({ x: this.x, y: this.y }).setDepth(this.depth + 0.4);
     this.guides.lineStyle(2, 0xcaf7ff, 0.22);
-    for (let index = 0; index < 8; index += 1) {
-      const angle = (Math.PI * 2 * index) / 8;
-      this.guides.beginPath();
-      this.guides.moveTo(
-        Math.cos(angle) * this.radius * 0.7,
-        Math.sin(angle) * this.radius * 0.7,
+    if (this.axis === 'horizontal') {
+      this.guides.lineBetween(-this.radius * 0.72, 0, this.radius * 0.72, 0);
+      this.guides.fillStyle(0xcaf7ff, 0.34);
+      this.guides.fillTriangle(
+        -this.radius * 0.82,
+        0,
+        -this.radius * 0.65,
+        -this.radius * 0.12,
+        -this.radius * 0.65,
+        this.radius * 0.12,
       );
-      this.guides.lineTo(
-        Math.cos(angle) * this.radius * 0.84,
-        Math.sin(angle) * this.radius * 0.84,
+      this.guides.fillTriangle(
+        this.radius * 0.82,
+        0,
+        this.radius * 0.65,
+        -this.radius * 0.12,
+        this.radius * 0.65,
+        this.radius * 0.12,
       );
-      this.guides.strokePath();
+    } else {
+      for (let index = 0; index < 8; index += 1) {
+        const angle = (Math.PI * 2 * index) / 8;
+        this.guides.beginPath();
+        this.guides.moveTo(
+          Math.cos(angle) * this.radius * 0.7,
+          Math.sin(angle) * this.radius * 0.7,
+        );
+        this.guides.lineTo(
+          Math.cos(angle) * this.radius * 0.84,
+          Math.sin(angle) * this.radius * 0.84,
+        );
+        this.guides.strokePath();
+      }
     }
 
     this.thumbShadow = this.scene.add.circle(
@@ -127,6 +168,7 @@ export class VirtualJoystick {
       this.base,
       this.innerRim,
       this.deadZoneRing,
+      ...(this.boostRing ? [this.boostRing] : []),
       this.guides,
       this.zone,
     ];
@@ -140,7 +182,6 @@ export class VirtualJoystick {
     this.scene.input.on('pointermove', this.handlePointerMove, this);
     this.scene.input.on('pointerup', this.handlePointerUp, this);
     this.scene.input.on('pointerupoutside', this.handlePointerUp, this);
-    this.scene.input.on('gameout', this.handleGameOut, this);
   }
 
   handlePointerDown(pointer) {
@@ -163,10 +204,6 @@ export class VirtualJoystick {
     if (pointer === this.pointer) this.reset();
   }
 
-  handleGameOut() {
-    if (this.pointer) this.reset();
-  }
-
   updateFromPointer(pointer) {
     const camera = pointer.camera ?? this.scene.cameras.main;
     const worldPoint = camera.getWorldPoint(pointer.x, pointer.y);
@@ -177,6 +214,8 @@ export class VirtualJoystick {
       dy: worldPoint.y - originY,
       radius: this.radius,
       deadZone: this.deadZone,
+      axis: this.axis,
+      boostThreshold: this.boostThreshold,
     }));
   }
 
@@ -197,6 +236,19 @@ export class VirtualJoystick {
     this.thumbCore.setScale(this.state.active ? 1.08 : 1);
     this.glow.setAlpha(this.state.active ? 1 : 0.55);
     this.base.setFillStyle(GLASS_TINT, this.state.active ? 0.14 : 0.105);
+    this.thumb.setFillStyle(
+      this.state.boosted ? this.boostAccent : this.accent,
+      this.state.boosted ? 0.52 : 0.32,
+    );
+    if (this.boostRing) {
+      this.boostRing
+        .setStrokeStyle(
+          this.state.boosted ? 4 : 2,
+          this.boostAccent,
+          this.state.boosted ? 0.82 : 0.28,
+        )
+        .setAlpha(this.state.boosted ? 1 : 0.72);
+    }
   }
 
   getState() {
@@ -208,6 +260,8 @@ export class VirtualJoystick {
     return this.setState(resolveVirtualJoystickVector({
       radius: this.radius,
       deadZone: this.deadZone,
+      axis: this.axis,
+      boostThreshold: this.boostThreshold,
     }), { notify });
   }
 
@@ -236,6 +290,8 @@ export class VirtualJoystick {
       radius: this.radius,
       interactionRadius: this.interactionRadius,
       deadZone: this.deadZone,
+      axis: this.axis,
+      boostThreshold: this.boostThreshold,
       ...this.state,
     };
   }
@@ -246,7 +302,6 @@ export class VirtualJoystick {
     this.scene.input.off('pointermove', this.handlePointerMove, this);
     this.scene.input.off('pointerup', this.handlePointerUp, this);
     this.scene.input.off('pointerupoutside', this.handlePointerUp, this);
-    this.scene.input.off('gameout', this.handleGameOut, this);
     this.objects.forEach((object) => object.destroy());
     this.objects = [];
     this.pointer = null;

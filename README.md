@@ -31,8 +31,9 @@ power strike; missed kicks do not consume charges.
 
 ## Controls
 
-- Move: A/D or Left/Right
-- Directional dash: double-tap either movement direction within 280 ms
+- Move: A/D or Left/Right; touch builds use the matching on-screen arrows
+- Directional dash: double-tap either keyboard or on-screen direction within
+  280 ms
 - Jump: W, Up, or Space
 - Kick: X or K
 - Lob: Z or I (or hold Up while pressing Kick)
@@ -48,6 +49,18 @@ icons replace the old K/L/D/P labels and match the localized Help overlay.
 The top-row buttons provide pause, restart, main menu, Help, and fullscreen, so
 tablet play does not depend on a keyboard. The pause overlay also exposes
 resume, restart, and menu.
+
+Football's experimental horizontal joystick remains available to developers
+without adding a player-facing setting:
+
+```sh
+VITE_FOOTBALL_TOUCH_MOVEMENT_MODE=joystick npm run dev
+```
+
+The default and every unsupported value resolve to `arrows`. For a live debug
+session, set the Phaser registry key
+`developer:footballTouchMovementMode` to `joystick` and restart the Match
+scene. This switch affects Football only; Kickfall keeps its 8-way joystick.
 
 The home screen's info button opens localized credits, the dedication to Joel,
 and the authoritative installed version/build. Help is available from home and
@@ -71,22 +84,25 @@ unpredictable bounces, the can uses a tumbling box collider, and the cannonball
 is heavy, low-bouncing, and hard to lift. Object radius is respected by kicks,
 power-shot sweeps, arena recovery, crossbar release, and goal detection.
 
-## Kickfall mini-game
+## Mini-games
 
-The home screen also opens **Kickfall**, a separately loaded four-tier arcade
-course. Level 1 sends eight physical balls toward three brick gates; Level 2
-adds ten balls, a 60-second clock, a catch pocket, and a kick cleat that only a
-deliberate kick can clear. Balls collide and stack and must be kicked through
-before the top hatch or danger line stays blocked for two seconds. The selected
-player character carries into the mode;
-horizontal movement, adjacent-tier direction, Jump, and Kick are the gameplay
-actions.
+The Mini-games journey currently offers two separately loaded games:
+
+- **Kickfall**, a four-tier arcade course with a twenty-level campaign. Balls
+  collide and stack; deliberate kicks send diminishing impulse through
+  connected queues. Gates and traps react to the reusable force system.
+- **Disc Hockey**, a three-minute top-down match against three computer
+  difficulties or a second local player on the same tablet. Each character
+  disc stays on its own half while the red puck remains free to cross the
+  field. Its white-ice and yellow/red neon arenas share identical physics.
 
 Kickfall's playable scene is a dynamic Vite import and its backdrop, ramp,
 gate, and ball art live under `public/assets/minigames/kickfall/`. Neither the
 scene chunk nor those exclusive assets is requested during initial startup.
-See `docs/KICKFALL_SPEC.md` for the prototype rules, future validated-layout
-generator, difficulty progression, loading boundary, and acceptance criteria.
+Disc Hockey is a second independent dynamic scene chunk and uses the globally
+selected player/opponent portraits plus existing game audio. See
+`docs/KICKFALL_SPEC.md`, `docs/FORCE_SYSTEM.md`, and
+`docs/DISC_HOCKEY_SPEC.md` for the complete contracts.
 
 Both players can cross midfield. Before passing the defender, retreating is a
 backpedal and each character keeps facing the rival goal. After passing the
@@ -104,6 +120,7 @@ trades height for horizontal speed while still targeting space beyond them.
 npm test
 npm run build
 npm run test:e2e
+npm run test:disc-hockey:e2e
 ```
 
 The browser test writes inspected state screenshots to `output/e2e/` and
@@ -172,7 +189,8 @@ the default sibling repository path on another machine. The former
 - `src/game/entities/`: focused Matter-backed ball, fighter, and reusable goal.
 - `src/game/ai/`: pluggable provider implementations.
 - `src/game/pure/`: renderer-independent rules, snapshots, prediction, intent,
-  math challenges, player-profile economy, and power math.
+  shared impulse/pressure mechanics, math challenges, player-profile economy,
+  and power math.
 - `src/game/content/`: data-driven characters, match customization, powers,
   physics presets, and shot modifiers.
 - `src/game/i18n.js`: centralized English/Spanish interface copy.

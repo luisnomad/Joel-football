@@ -49,6 +49,9 @@ export class BootScene extends Phaser.Scene {
     this.load.svg('control-high-kick', assetUrl('icons/high-kick.svg'), { width: 128, height: 128 });
     this.load.svg('control-kick', assetUrl('icons/kick.svg'), { width: 128, height: 128 });
     this.load.svg('control-jump', assetUrl('icons/jump.svg'), { width: 128, height: 128 });
+    this.load.image('menu-arcade-cosmic', assetUrl('menu/arcade-cosmic-card-v1.webp'));
+    this.load.image('menu-options-workshop', assetUrl('menu/options-workshop-v1.webp'));
+    this.load.image('menu-disc-hockey', assetUrl('menu/disc-hockey-gameplay-card-v1.webp'));
   }
 
   create() {

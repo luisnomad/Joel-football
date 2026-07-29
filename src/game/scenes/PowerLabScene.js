@@ -8,6 +8,7 @@ import { playerProfileStore } from '../services/PlayerProfile.js';
 import { clearActiveScene, setActiveScene } from '../stateBridge.js';
 import { createButton } from '../ui/createButton.js';
 import { createArenaStage } from '../ui/createArenaStage.js';
+import { bindButtonInput } from '../ui/buttonInput.js';
 
 const cardPositions = SUPERPOWERS.map((_, index) => ({
   x: 144 + (index % 5) * 248,
@@ -25,6 +26,7 @@ export class PowerLabScene extends Phaser.Scene {
   }
 
   create(data = {}) {
+    this.returnScene = data.returnScene ?? 'Intro';
     this.profile = playerProfileStore.get();
     this.language = this.profile.language;
     arcadeAudio.setScene('menu');
@@ -59,7 +61,7 @@ export class PowerLabScene extends Phaser.Scene {
       height: 42,
       label: `‹  ${t(this.language, 'lab.back')}`,
       color: 0x173858,
-      onPress: () => this.scene.start('Intro'),
+      onPress: () => this.scene.start(this.returnScene),
     });
 
     this.add.rectangle(640, 127, 440, 40, 0x0b1930, 0.76).setStrokeStyle(2, 0x7ce8ff, 0.22);
@@ -71,7 +73,7 @@ export class PowerLabScene extends Phaser.Scene {
 
     this.input.keyboard.on('keydown-ESC', () => {
       if (this.challenge) this.closeChallenge();
-      else this.scene.start('Intro');
+      else this.scene.start(this.returnScene);
     });
     this.time.addEvent({ delay: 250, loop: true, callback: () => this.refreshLockUi() });
 
@@ -113,12 +115,12 @@ export class PowerLabScene extends Phaser.Scene {
     const count = this.add.text(x - 82, y + 58, '×0', this.textStyle(19, '#ffdc70')).setOrigin(0.5);
     const equipped = this.add.text(x + 76, y + 58, '✓', this.textStyle(19, '#73f7d3')).setOrigin(0.5).setVisible(false);
     const zone = this.add.zone(x, y, 220, 164).setInteractive({ useHandCursor: true });
-    zone.on('pointerover', () => panel.setScale(1.025));
-    zone.on('pointerout', () => panel.setScale(1));
-    zone.on('pointerdown', () => panel.setScale(0.98));
-    zone.on('pointerup', () => {
-      panel.setScale(1.025);
-      this.selectPower(power.id);
+    bindButtonInput(this, zone, {
+      onOver: () => panel.setScale(1.025),
+      onOut: () => panel.setScale(1),
+      onPress: () => panel.setScale(0.98),
+      onRelease: () => panel.setScale(1.025),
+      onActivate: () => this.selectPower(power.id),
     });
     this.cards.set(power.id, { panel, iconDisc, icon, name, description, count, equipped, zone });
   }
@@ -319,7 +321,7 @@ export class PowerLabScene extends Phaser.Scene {
 
   handlePlatformBack() {
     if (this.challenge) this.closeChallenge();
-    else this.scene.start('Intro');
+    else this.scene.start(this.returnScene);
     return true;
   }
 

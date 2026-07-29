@@ -104,8 +104,12 @@ make the difficulty curve reproducible and keep every route testable.
 - When that receiving tier is flat or uphill, its wall wedge carries the
   falling ball far enough inward for the player to stand behind it and make a
   direct kick. On uphill lanes the same wedge also acts as a chock when gravity
-  returns the ball toward the entry wall. The wedge assists only while the ball
-  is touching its slope; ordinary lane behavior resumes after the ball clears it.
+  returns the ball toward the entry wall. Uphill rolling is emulated as
+  acceleration along the current surface angle: the shallow lane pulls gently
+  toward its entry, while the wedge's much steeper angle accelerates the ball
+  back inward. This surface response is applied only to a ball physically
+  touching that tier's slope; it never teleports, clamps, or affects a ball on
+  the lane below.
 - Flat or nearly flat work space around each gate keeps kicks predictable.
 - A player-only boundary prevents the character from falling through the final
   drain while balls remain free to exit.
@@ -131,8 +135,9 @@ Level 1 values are tuning starting points rather than permanent balance:
   so the player must actively move each ball.
 - Level 5 introduces reinforced gates. Their health pips expose the remaining
   number of valid armed-ball impacts.
-- Level 6 introduces uphill tiers. Their reversed roll assist makes unattended
-  balls backslide, so meaningful forward progress requires repeated kicks.
+- Level 6 introduces uphill tiers. Their shallow surface acceleration makes
+  unattended balls backslide, so meaningful forward progress requires repeated
+  kicks.
 - Levels 7–9 combine faster spawns, clocks, obstacles, flat or uphill work, and
   reinforced gates without introducing another new rule.
 - Level 10 is the first rival encounter. The opponent kicks unarmed balls
@@ -145,9 +150,11 @@ Level 1 values are tuning starting points rather than permanent balance:
   authored level through Level 20; the finale offers Retry and Main Menu.
 
 The catch rail and kick cleat affect balls only. An ordinary rolling ball is
-retained, while a ball traveling in the correct direction during its existing
-armed-kick window is released. This state-assisted behavior keeps the obstacle
-visually physical but prevents random pile pressure from solving it.
+retained. A clean direct kick releases it immediately, while a deliberate kick
+through a connected queue sends diminishing force to the captive ball. The trap
+stores that pressure briefly and releases only after its type- and
+difficulty-specific resistance is reached. Random pile pressure remains
+invalid because only player-armed impulse is transmitted.
 Obstacle capture is lane-scoped: the ball must be detected on the obstacle's
 authored tier and vertically near that ramp. Sharing the same horizontal
 coordinate from a tier above or below never captures or teleports the ball.
@@ -193,11 +200,11 @@ coordinate from a tier above or below never captures or teleports the ball.
   foot overlaps the ball collider. Proximity alone never launches or arms a ball.
 - The struck ball receives forward velocity, a small lift, spin, and an
   approximately 0.65-second armed window.
-- Only an armed ball can damage a gate.
+- Only player-armed impulse can damage a gate.
 - Gate contact is checked while the armed window is active instead of relying
   exclusively on `collisionstart`. This covers a ball already resting against
   a gate when kicked.
-- One kick cannot damage the same gate more than once.
+- One kick cannot damage the same gate or trap more than once.
 - Gravity, rolling contact, and pile pressure never damage gates.
 - Ramps use a small downhill roll assist so an unblocked ball quickly reaches
   the next gate instead of creeping across the long tier. A kicked ball keeps
@@ -206,10 +213,11 @@ coordinate from a tier above or below never captures or teleports the ball.
   jumps and tier drops, but balls on the lane do not advance without contact.
 - Uphill tiers use a modest reverse roll assist. Balls can climb them after a
   kick, then backslide if the player leaves them unattended.
-- The cyan catch rail centers an unarmed ball until the player kicks it out in
+- The cyan catch rail is the stronger magnetic trap. It centers an unarmed ball
+  until a direct kick or enough rapidly accumulated queue pressure frees it in
   the lane's flow direction.
-- The amber kick cleat holds an unarmed ball immediately upstream; a correctly
-  directed kick carries it over the three teeth.
+- The amber kick cleat has medium hold strength. It retains an unarmed ball
+  immediately upstream but yields to less queue pressure than the catch rail.
 - Each obstacle captures only its lead ball. Later balls remain ordinary
   colliding Matter bodies and form a visible queue behind it; kicking near a
   queue prioritizes the captive lead ball so the obstacle remains clearable.
@@ -219,6 +227,12 @@ coordinate from a tier above or below never captures or teleports the ball.
   impact feedback, and releases the queue immediately.
 - Reinforced gates lose one visible health pip per valid armed-ball impact and
   remain solid until their final hit.
+- Force retains 84% of its value per connected ball. Gaps break the pressure
+  chain. Rapid kicks into the same lane and direction build a capped
+  1.0×/1.25×/1.5× pressure combo.
+- Trap resistance and pressure decay vary by the selected Kickfall difficulty;
+  transmission and movement physics do not. See `docs/FORCE_SYSTEM.md` for the
+  reusable API, exact tuning, invariants, diagnostics, and future Football use.
 
 ## Rival encounters
 
@@ -345,6 +359,9 @@ The authored campaign introduces one major pressure axis at a time:
 - Level 3 includes a flat tier whose untouched ball does not advance.
 - Non-top flat tiers mirror a physical triangular wedge at their receiving edge;
   a falling ball clears the wall before becoming stationary and kickable.
+- Seven unattended balls backrolling on the Level 7 uphill receiver remain a
+  broad horizontal lane queue after six seconds; the wedge cannot turn them
+  into a vertical column and cannot influence balls on another tier.
 - Level 5 contains a reinforced gate that survives its first valid impact.
 - Level 6 contains an uphill tier whose unattended ball backslides.
 - Levels 10 and 20 contain rivals that counter-kick ordinary balls, take only
