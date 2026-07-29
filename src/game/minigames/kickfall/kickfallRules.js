@@ -416,22 +416,27 @@ export const stepKickfallJumpBuffer = ({
     : Math.max(0, (Number(seconds) || 0) - Math.max(0, Number(dt) || 0))
 );
 
+/**
+ * Horizontal travel (px) that advances the Kickfall run loop by one phase.
+ * At the top speed of 12.5 px/tick (750 px/s) this yields about 10 displayed
+ * frames/second: brisk enough to read as running, slow enough that each of
+ * the three authored drawings actually shows.
+ */
+export const KICKFALL_RUN_FRAME_DISTANCE = 70;
+
+/**
+ * Advances the run cycle from actual horizontal travel so the feet only
+ * cycle while the character is genuinely covering ground. The old time-based
+ * cadence kept cycling at low speeds, which read as foot sliding.
+ */
 export const stepKickfallRunCycle = ({
   cycle = 0,
-  dt = 0,
-  speed = 0,
-  maxSpeed = 12.5,
-  minFramesPerSecond = 6,
-  maxFramesPerSecond = 9,
-} = {}) => {
-  const absoluteSpeed = Math.abs(Number(speed) || 0);
-  if (absoluteSpeed <= 0) return Number(cycle) || 0;
-  const speedRatio = Math.min(1, absoluteSpeed / Math.max(0.01, Number(maxSpeed) || 0.01));
-  const minimumCadence = Math.max(0, Number(minFramesPerSecond) || 0);
-  const maximumCadence = Math.max(minimumCadence, Number(maxFramesPerSecond) || 0);
-  const framesPerSecond = minimumCadence + (maximumCadence - minimumCadence) * speedRatio;
-  return (Number(cycle) || 0) + Math.max(0, Number(dt) || 0) * framesPerSecond;
-};
+  distance = 0,
+  frameDistance = KICKFALL_RUN_FRAME_DISTANCE,
+} = {}) => (
+  (Number(cycle) || 0)
+  + Math.abs(Number(distance) || 0) / Math.max(1, Number(frameDistance) || 1)
+);
 
 export const stepKickfallSurfaceRollVelocity = ({
   velocityX = 0,

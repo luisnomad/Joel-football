@@ -235,22 +235,19 @@ describe('Kickfall rules', () => {
     });
   });
 
-  it('advances the run cycle at a readable time-based cadence', () => {
+  it('advances the run cycle from horizontal travel instead of time', () => {
     expect(stepKickfallRunCycle({
       cycle: 0,
-      dt: 1 / 60,
-      speed: 12.5,
-    })).toBeCloseTo(0.15);
+      distance: 70,
+    })).toBeCloseTo(1);
     expect(stepKickfallRunCycle({
       cycle: 2,
-      dt: 0.1,
-      speed: 0,
+      distance: 0,
     })).toBe(2);
     expect(stepKickfallRunCycle({
       cycle: 2,
-      dt: 0.1,
-      speed: 6.25,
-    })).toBeCloseTo(2.75);
+      distance: -35,
+    })).toBeCloseTo(2.5);
   });
 
   it('requires the full quota to drain before victory', () => {

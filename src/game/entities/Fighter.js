@@ -20,10 +20,17 @@ import {
   CHARACTER_GAMEPLAY_HEIGHT,
   CHARACTER_FRAMES,
   ENHANCED_CHARACTER_FRAME_COUNT,
+  KICK_STRIKE_WINDOW_END,
+  KICK_VISUAL_SECONDS,
+  LANDING_SQUASH_MIN_VELOCITY,
+  LAND_SQUASH_SECONDS,
   RUN_FRAME_DISTANCE,
+  TAKEOFF_STRETCH_MIN_VELOCITY,
+  TAKEOFF_STRETCH_SECONDS,
   isGroundedVisualFrame,
   kickVisualAt,
   runVisualAt,
+  secondaryMotionAt,
 } from '../pure/characterAnimation.js';
 import {
   CHILENA_MAX_SECONDS,
@@ -36,6 +43,17 @@ import {
 } from '../pure/chilena.js';
 
 const scaled = (base, stat) => base * (0.9 + stat * 0.1);
+
+/** Glow pulse speed (radians per millisecond of scene time) for status effects. */
+const STATUS_GLOW_PULSE_RATE = 0.018;
+/** Extra glow strength added at the peak of the status pulse. */
+const STATUS_GLOW_PULSE_AMPLITUDE = 0.7;
+/** Base glow strength while the chilena is airborne. */
+const CHILENA_GLOW_STRENGTH = 5;
+/** Glow color while the chilena is airborne. */
+const CHILENA_GLOW_COLOR = 0xff7b32;
+/** Tint applied to the artwork while the chilena is airborne. */
+const CHILENA_TINT = 0xffe1c7;
 
 export class Fighter {
   constructor(scene, {
@@ -90,6 +108,12 @@ export class Fighter {
     this.currentAnimationStage = 'idle';
     this.visualOffsetY = 0;
     this.currentPose = 'idle';
+    this.landSquashTimer = 0;
+    this.takeoffStretchTimer = 0;
+    this.kickVisualTimer = 0;
+    this.prevGrounded = true;
+    this.prevVelocityY = 0;
+    this.chilenaAngle = 0;
 
     const { Bodies, Body } = Phaser.Physics.Matter.Matter;
     const head = Bodies.circle(0, -52, 43, {
@@ -132,39 +156,56 @@ export class Fighter {
       (this.hasPoseSheet ? CHARACTER_DISPLAY_HEIGHT : 205) * this.visualScale,
     );
     this.baseSpriteScale = { x: this.sprite.scaleX, y: this.sprite.scaleY };
-    this.visualGroundOriginY = this.hasEnhancedPoseSheet
-      ? CHARACTER_GROUND_ANCHOR_Y - 89 / this.baseSpriteScale.y
-      : this.sprite.height / 2;
     this.bigGuyScale = 1;
     this.sprite.setDepth(18);
     scene.matter.add.gameObject(this.sprite, compound);
+    if (this.visualScale !== 1) {
+      // Scaled-up artwork needs a scaled-up collider, otherwise the ball
+      // sails through the top of bigger characters' heads. Scale around the
+      // feet so ground registration is preserved.
+      Body.scale(
+        this.sprite.body,
+        this.visualScale,
+        this.visualScale,
+        { x: this.sprite.body.position.x, y: this.sprite.body.bounds.max.y },
+      );
+      this.sprite.setFixedRotation();
+    }
+    this.baseBodyBottomOffset = this.sprite.body.bounds.max.y - this.sprite.body.position.y;
+    this.visualGroundOriginY = this.hasEnhancedPoseSheet
+      ? CHARACTER_GROUND_ANCHOR_Y - this.baseBodyBottomOffset / this.baseSpriteScale.y
+      : this.sprite.height / 2;
     this.sprite.setOrigin(0.5, 0.5);
-    this.sprite.setPosition(x, GROUND_Y - 89);
+    this.sprite.setPosition(x, GROUND_Y - this.baseBodyBottomOffset);
     this.sprite.setDisplayOrigin(this.sprite.width / 2, this.visualGroundOriginY);
     this.sprite.setFlipX(this.facing !== this.textureFacing);
     this.sprite.setFixedRotation();
     this.sprite.setCollisionCategory(CATEGORIES.PLAYER);
     this.sprite.setCollidesWith([CATEGORIES.WORLD, CATEGORIES.PLAYER, CATEGORIES.BALL, CATEGORIES.GOAL]);
-    this.baseBodyBottomOffset = this.sprite.body.bounds.max.y - this.sprite.body.position.y;
 
-    // Matter rotates the compound collider whenever its sprite rotates. Keep the
-    // acrobatic artwork separate so Joel's head-and-feet body stays upright and
-    // returns to the same ground height after a chilena.
-    this.chilenaVisual = scene.add.sprite(x, GROUND_Y - 89, texture, 0)
+    // The Matter sprite is the physics body only: scaling or rotating it would
+    // reshape the compound collider, so it never renders. All artwork lives on
+    // a visual-only mirror sprite that copies position, frame, and flip every
+    // frame and is free to squash, stretch, lean, and rotate (chilena) around
+    // the shared ground anchor.
+    this.visual = scene.add.sprite(x, GROUND_Y - this.baseBodyBottomOffset, texture, 0)
       .setOrigin(0.5, 0.5)
       .setDisplaySize(this.sprite.displayWidth, this.sprite.displayHeight)
-      .setDepth(18.5)
-      .setVisible(false);
+      .setDepth(18);
+    this.visual.setDisplayOrigin(this.sprite.width / 2, this.visualGroundOriginY);
+    this.visual.setFlipX(this.sprite.flipX);
+    this.sprite.setVisible(false);
 
-    this.statusGlow = this.sprite.preFX?.addGlow?.(0xffffff, 0, 0, false) ?? null;
-    this.chilenaGlow = this.chilenaVisual.preFX?.addGlow?.(0xff7b32, 0, 0, false) ?? null;
+    this.statusGlow = this.visual.preFX?.addGlow?.(0xffffff, 0, 0, false) ?? null;
 
     this.aura = scene.add.graphics().setDepth(17);
   }
 
   get grounded() {
     const growthOffset = this.baseBodyBottomOffset * (this.bigGuyScale - 1);
-    return this.sprite.y >= GROUND_Y - 94 - growthOffset && Math.abs(this.sprite.body.velocity.y) < 1.8;
+    // Five pixels of tolerance beyond the body-bottom offset, as before.
+    return this.sprite.y >= GROUND_Y - (this.baseBodyBottomOffset + 5) - growthOffset
+      && Math.abs(this.sprite.body.velocity.y) < 1.8;
   }
 
   get stunned() {
@@ -174,7 +215,7 @@ export class Fighter {
   reset(x) {
     this.bigGuy = createBigGuyState();
     this.setBigGuyScale(1);
-    this.sprite.setPosition(x, GROUND_Y - 89);
+    this.sprite.setPosition(x, GROUND_Y - this.baseBodyBottomOffset);
     this.sprite.setVelocity(0, 0);
     this.sprite.setAngularVelocity(0);
     this.kickTimer = 0;
@@ -185,9 +226,9 @@ export class Fighter {
     this.lastStrikePowered = false;
     this.chilenaActive = false;
     this.chilenaElapsed = 0;
+    this.chilenaAngle = 0;
     this.sprite.setAngle(0);
-    this.sprite.setVisible(true);
-    this.chilenaVisual.setAngle(0).setVisible(false);
+    this.visual.setAngle(0).setVisible(true);
     this.dashTimer = 0;
     this.dashDirection = 0;
     this.stunTimer = 0;
@@ -204,12 +245,20 @@ export class Fighter {
     this.currentAnimationStage = 'idle';
     this.visualOffsetY = 0;
     this.currentPose = 'idle';
+    this.landSquashTimer = 0;
+    this.takeoffStretchTimer = 0;
+    this.kickVisualTimer = 0;
+    this.prevGrounded = true;
+    this.prevVelocityY = 0;
     this.setFacing(this.baseFacing);
-    if (this.hasPoseSheet) this.sprite.setFrame(0);
+    if (this.hasPoseSheet) {
+      this.sprite.setFrame(0);
+      this.visual.setFrame(0);
+    }
     this.sprite.setDisplayOrigin(this.sprite.width / 2, this.visualGroundOriginY);
-    this.sprite.clearTint();
+    this.visual.setScale(this.baseSpriteScale.x, this.baseSpriteScale.y);
+    this.visual.clearTint();
     if (this.statusGlow) this.statusGlow.outerStrength = 0;
-    if (this.chilenaGlow) this.chilenaGlow.outerStrength = 0;
     this.aura.clear();
   }
 
@@ -235,6 +284,9 @@ export class Fighter {
     this.jumpCounterWindow = Math.max(0, this.jumpCounterWindow - dt);
     this.hyperTimer = Math.max(0, this.hyperTimer - dt);
     this.freezeTimer = Math.max(0, this.freezeTimer - dt);
+    this.landSquashTimer = Math.max(0, this.landSquashTimer - dt);
+    this.takeoffStretchTimer = Math.max(0, this.takeoffStretchTimer - dt);
+    this.kickVisualTimer = Math.max(0, this.kickVisualTimer - dt);
     this.bigGuy = stepBigGuy(this.bigGuy, dt);
     this.setBigGuyScale(this.bigGuy.scale);
     this.meter = chargeMeter(this.meter, PLAYER_TUNING.passiveChargePerSecond * dt, this.stats.power);
@@ -300,8 +352,11 @@ export class Fighter {
     } else if (intent.move !== 0) {
       const airMultiplier = airborne ? PLAYER_TUNING.airControlMultiplier : 1;
       const hyperForce = this.hyperTimer > 0 ? 1.35 : 1;
+      // Bigger colliders are heavier (Matter scales mass with area), so the
+      // force grows with the character's footprint to keep acceleration equal.
       this.sprite.applyForce({
-        x: intent.move * scaled(PLAYER_TUNING.moveForce, this.stats.speed) * airMultiplier * hyperForce,
+        x: intent.move * scaled(PLAYER_TUNING.moveForce, this.stats.speed)
+          * (this.visualScale ** 2) * airMultiplier * hyperForce,
         y: 0,
       });
       const hyperSpeed = this.hyperTimer > 0 ? 1.25 : 1;
@@ -333,18 +388,23 @@ export class Fighter {
   }
 
   updatePose() {
-    if (!this.hasPoseSheet) return;
+    if (!this.hasPoseSheet) {
+      this.syncVisual();
+      return;
+    }
     let frame = CHARACTER_FRAMES.idle;
     this.currentRunPhase = null;
     this.currentAnimationStage = 'idle';
     if (this.stunned) frame = CHARACTER_FRAMES.stun;
     else if (this.chilenaActive) frame = CHARACTER_FRAMES.legacyKick;
     else if (this.dashTimer > 0) frame = CHARACTER_FRAMES.dash;
-    else if (this.kickTimer > 0) {
+    else if (this.kickVisualTimer > 0) {
       if (this.hasEnhancedPoseSheet) {
+        // The visual timeline outlives the gameplay kick so the follow-through
+        // can play out; the strike itself still connects immediately.
         const kickVisual = kickVisualAt({
-          remaining: this.kickTimer,
-          duration: PLAYER_TUNING.kickDuration,
+          remaining: this.kickVisualTimer,
+          duration: KICK_VISUAL_SECONDS,
         });
         frame = kickVisual.frame;
         this.currentAnimationStage = kickVisual.stage;
@@ -378,18 +438,63 @@ export class Fighter {
     if (this.chilenaActive) this.currentPose = 'chilena';
     else if (frame === CHARACTER_FRAMES.idle && Math.abs(this.sprite.body.velocity.x) <= 0.65) this.currentPose = 'idle';
     else if (frame === CHARACTER_FRAMES.jump) this.currentPose = 'jump';
-    else if (this.kickTimer > 0) this.currentPose = this.shotType === 'lob' ? 'lob' : 'kick';
-    else if (frame === CHARACTER_FRAMES.dash) this.currentPose = 'dash';
+    else if (frame === CHARACTER_FRAMES.legacyKick
+      || frame === CHARACTER_FRAMES.kickAnticipation
+      || frame === CHARACTER_FRAMES.kickContact
+      || frame === CHARACTER_FRAMES.kickRecovery) {
+      this.currentPose = this.shotType === 'lob' ? 'lob' : 'kick';
+    } else if (frame === CHARACTER_FRAMES.dash) this.currentPose = 'dash';
     else if (frame === CHARACTER_FRAMES.stun) this.currentPose = 'stun';
     this.sprite.setFrame(frame);
-    this.applySecondaryMotion();
+    this.syncVisual();
   }
 
-  applySecondaryMotion() {
-    // Ground registration belongs to the atlas. Do not animate the display
-    // origin: even a one-pixel bob makes planted shoes visibly cross the pitch.
+  /**
+   * Mirrors the physics body onto the visual-only sprite and layers the
+   * procedural accent motion (breathing, run plant dips, dash lean, stun
+   * wobble, landing squash, takeoff stretch) on top. The Matter sprite itself
+   * is never scaled or rotated, so the collider stays untouched. Scaling
+   * pivots on the shared ground anchor, keeping planted feet planted.
+   */
+  syncVisual() {
+    const grounded = this.grounded;
+    const velocityY = this.sprite.body.velocity.y;
+    if (!this.prevGrounded && grounded && this.prevVelocityY > LANDING_SQUASH_MIN_VELOCITY) {
+      this.landSquashTimer = LAND_SQUASH_SECONDS;
+    }
+    if (this.prevGrounded && !grounded && velocityY < TAKEOFF_STRETCH_MIN_VELOCITY) {
+      this.takeoffStretchTimer = TAKEOFF_STRETCH_SECONDS;
+    }
+    this.prevGrounded = grounded;
+    this.prevVelocityY = velocityY;
+
+    this.visual.setPosition(this.sprite.x, this.sprite.y);
+    this.visual.setFlipX(this.sprite.flipX);
+    if (this.visual.frame.name !== this.sprite.frame.name) {
+      this.visual.setFrame(this.sprite.frame.name);
+    }
+
+    // Ease the impulse envelopes so they punch in and settle smoothly.
+    const landSquash = (this.landSquashTimer / LAND_SQUASH_SECONDS) ** 2;
+    const takeoffStretch = (this.takeoffStretchTimer / TAKEOFF_STRETCH_SECONDS) ** 2;
+    const motion = secondaryMotionAt({
+      pose: this.currentPose,
+      stage: this.currentAnimationStage,
+      runCycle: this.runCycle,
+      clockSeconds: this.scene.time.now / 1000,
+      landSquash,
+      takeoffStretch,
+      dashDirection: this.dashTimer > 0 ? this.dashDirection : 0,
+      chilena: this.chilenaActive,
+    });
+    this.visual.setScale(
+      this.baseSpriteScale.x * this.bigGuyScale * motion.scaleX,
+      this.baseSpriteScale.y * this.bigGuyScale * motion.scaleY,
+    );
+    this.visual.setAngle(this.chilenaActive ? this.chilenaAngle : motion.angle);
+    // Ground registration belongs to the atlas. No vertical display offset:
+    // even a one-pixel bob makes planted shoes visibly cross the pitch.
     this.visualOffsetY = 0;
-    this.sprite.setDisplayOrigin(this.sprite.width / 2, this.visualGroundOriginY);
   }
 
   startKick(shotType = 'drive') {
@@ -401,6 +506,7 @@ export class Fighter {
     this.lastKickBoostSpent = 0;
     this.lastStrikePowered = false;
     this.kickTimer = PLAYER_TUNING.kickDuration;
+    this.kickVisualTimer = KICK_VISUAL_SECONDS;
     this.kickCooldown = PLAYER_TUNING.kickCooldown;
     this.kickSerial += 1;
     this.scene.events.emit('fighter-kick', this, this.powerArmed > 0);
@@ -419,7 +525,9 @@ export class Fighter {
   isKickContactActive() {
     if (this.kickTimer <= 0) return false;
     const progress = 1 - this.kickTimer / PLAYER_TUNING.kickDuration;
-    return progress >= 0 && progress <= 0.86;
+    // Strikes connect immediately on kick start (a tested gameplay contract:
+    // the kick-boost taps rely on it) and close early in the follow-through.
+    return progress >= 0 && progress <= KICK_STRIKE_WINDOW_END;
   }
 
   strikeCapsule() {
@@ -530,6 +638,7 @@ export class Fighter {
     this.dashTimer = 0;
     this.dashDirection = 0;
     this.kickTimer = 0;
+    this.kickVisualTimer = 0;
     this.kickBoostTaps = 0;
     this.kickBoostAppliedTaps = 0;
     this.powerArmed = 0;
@@ -582,23 +691,19 @@ export class Fighter {
     this.renderAura();
   }
 
-  syncChilenaVisual(angle = this.chilenaVisual.angle) {
-    this.sprite.setVisible(false);
-    this.chilenaVisual
-      .setVisible(true)
-      .setPosition(this.sprite.x, this.sprite.y)
-      .setDisplaySize(this.sprite.displayWidth, this.sprite.displayHeight)
-      .setFlipX(this.facing !== this.textureFacing)
-      .setFrame(this.hasPoseSheet ? 3 : 0)
-      .setAngle(angle);
+  syncChilenaVisual(angle = this.chilenaAngle) {
+    // The visual mirror rotates around the ground anchor, which sits at the
+    // body position — roughly hip height — so the bicycle kick spins around
+    // the torso while the head-and-feet collider stays upright.
+    this.chilenaAngle = angle;
   }
 
   finishChilena() {
     this.chilenaActive = false;
     this.chilenaElapsed = 0;
+    this.chilenaAngle = 0;
     this.sprite.setAngle(0);
-    this.sprite.setVisible(true);
-    this.chilenaVisual.setAngle(0).setVisible(false);
+    this.visual.setAngle(0).setVisible(true);
     this.setFacing(this.baseFacing);
   }
 
@@ -785,22 +890,20 @@ export class Fighter {
       tint = 0xb5c6d9;
     }
 
+    if (this.chilenaActive) {
+      color = CHILENA_GLOW_COLOR;
+      tint = CHILENA_TINT;
+      strength = CHILENA_GLOW_STRENGTH;
+    }
+
     if (this.statusGlow) {
       if (color !== null) this.statusGlow.color = color;
       this.statusGlow.outerStrength = strength > 0
-        ? strength + Math.sin(this.scene.time.now * 0.018) * 0.7
+        ? strength + Math.sin(this.scene.time.now * STATUS_GLOW_PULSE_RATE) * STATUS_GLOW_PULSE_AMPLITUDE
         : 0;
     }
-    if (tint === null) this.sprite.clearTint();
-    else this.sprite.setTint(tint);
-
-    if (this.chilenaGlow) {
-      this.chilenaGlow.outerStrength = this.chilenaActive
-        ? 5 + Math.sin(this.scene.time.now * 0.02) * 0.8
-        : 0;
-    }
-    if (this.chilenaActive) this.chilenaVisual.setTint(0xffe1c7);
-    else this.chilenaVisual.clearTint();
+    if (tint === null) this.visual.clearTint();
+    else this.visual.setTint(tint);
   }
 
   snapshot() {
@@ -834,7 +937,7 @@ export class Fighter {
       lastKickBoostSpent: this.lastKickBoostSpent,
       chilenaActive: this.chilenaActive,
       chilenaSeconds: Math.round(this.chilenaElapsed * 100) / 100,
-      chilenaRotation: Math.round(this.chilenaVisual.angle * 10) / 10,
+      chilenaRotation: Math.round(this.chilenaAngle * 10) / 10,
       chilenaSuccesses: this.chilenaSuccesses,
       pose: this.currentPose,
       visualFrame,
@@ -864,7 +967,7 @@ export class Fighter {
 
   destroy() {
     this.aura.destroy();
-    this.chilenaVisual.destroy();
+    this.visual.destroy();
     this.sprite.destroy();
   }
 }

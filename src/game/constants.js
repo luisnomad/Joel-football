@@ -29,8 +29,11 @@ export const DEFAULT_STATS = Object.freeze({
 });
 
 export const PLAYER_TUNING = Object.freeze({
-  moveForce: 0.0204,
-  maxSpeed: 14.16,
+  // Base values (0.017 force, 11.8 px/tick top speed) with three stacked
+  // twenty-percent bumps (x1.728 total): players should cross the pitch
+  // briskly without leaning on the dash for every move.
+  moveForce: 0.029376,
+  maxSpeed: 20.3904,
   jumpVelocity: -11.5,
   airControlMultiplier: 1.38,
   fastFallAcceleration: 0.34,

@@ -9,8 +9,14 @@ import {
   CHARACTER_GROUND_ANCHOR_Y,
   CHARACTER_FRAMES,
   ENHANCED_CHARACTER_FRAME_COUNT,
+  KICK_VISUAL_SECONDS,
+  LANDING_SQUASH_MIN_VELOCITY,
+  LAND_SQUASH_SECONDS,
+  TAKEOFF_STRETCH_MIN_VELOCITY,
+  TAKEOFF_STRETCH_SECONDS,
   kickVisualAt,
   runVisualAt,
+  secondaryMotionAt,
 } from '../../pure/characterAnimation.js';
 import { isTouchLayout } from '../../input/isTouchLayout.js';
 import { getSceneStageLayout, getWideStageUiScale } from '../../layout/tabletStage.js';
@@ -55,6 +61,7 @@ import {
   stepKickfallJumpBuffer,
   stepKickfallRunCycle,
   stepKickfallSurfaceRollVelocity,
+  KICKFALL_RUN_FRAME_DISTANCE,
 } from './kickfallRules.js';
 import { getKickfallTheme, getKickfallThemeAssets } from './kickfallThemes.js';
 
@@ -100,7 +107,9 @@ const tierSurfaceY = (tier, x) => (
   tier.y + Math.tan(tier.angle) * (x - tierCenterX(tier)) - tier.height / 2
 );
 
-const playerCenterYOnTier = (tier, x) => tierSurfaceY(tier, x) - PLAYER_HEIGHT / 2 - 0.5;
+const playerCenterYOnTier = (tier, x, halfHeight = PLAYER_HEIGHT / 2) => (
+  tierSurfaceY(tier, x) - halfHeight - 0.5
+);
 const KICKFALL_TIME_MULTIPLIER = Object.freeze({
   easy: 1.25,
   normal: 1,
@@ -218,6 +227,7 @@ export class KickfallScene extends Phaser.Scene {
     this.boss = null;
     this.effects = [];
     this.kickTimer = 0;
+    this.kickVisualTimer = 0;
     this.kickCooldown = 0;
     this.kickSerial = 0;
     this.lastKickedBallId = null;
@@ -226,6 +236,11 @@ export class KickfallScene extends Phaser.Scene {
     this.facing = 1;
     this.groundedUntil = 0;
     this.runCycle = 0;
+    this.lastAnimationX = 0;
+    this.landSquashTimer = 0;
+    this.takeoffStretchTimer = 0;
+    this.prevGrounded = true;
+    this.prevVelocityY = 0;
     this.visualFrame = CHARACTER_FRAMES.idle;
     this.animationPose = 'idle';
     this.currentTierId = 'top';
@@ -613,15 +628,21 @@ export class KickfallScene extends Phaser.Scene {
   createPlayer() {
     const topTier = this.getTier('top');
     const x = 92;
-    const y = playerCenterYOnTier(topTier, x);
-    this.player = this.matter.add.sprite(x, y, this.character.sheetTexture, 0);
     const visualScale = getCharacterVisualScale(this.character);
+    // The collider grows with the artwork, otherwise scaled-up characters
+    // take balls through the top of their bigger visual heads.
+    const bodyWidth = PLAYER_WIDTH * visualScale;
+    const bodyHeight = PLAYER_HEIGHT * visualScale;
+    this.playerBodyHalfWidth = bodyWidth / 2;
+    this.playerBodyHalfHeight = bodyHeight / 2;
+    const y = playerCenterYOnTier(topTier, x, this.playerBodyHalfHeight);
+    this.player = this.matter.add.sprite(x, y, this.character.sheetTexture, 0);
     this.player.setDisplaySize(84 * visualScale, 126 * visualScale);
-    this.player.setRectangle(PLAYER_WIDTH, PLAYER_HEIGHT, { chamfer: { radius: 13 } });
+    this.player.setRectangle(bodyWidth, bodyHeight, { chamfer: { radius: 13 * visualScale } });
     this.player.setOrigin(0.5, 0.5);
     this.player.setDisplayOrigin(
       this.player.width / 2,
-      CHARACTER_GROUND_ANCHOR_Y - (PLAYER_HEIGHT / 2) / this.player.scaleY,
+      CHARACTER_GROUND_ANCHOR_Y - this.playerBodyHalfHeight / this.player.scaleY,
     );
     this.player.setFixedRotation();
     this.player.setFriction(0.36, 0.02, 0);
@@ -632,6 +653,21 @@ export class KickfallScene extends Phaser.Scene {
     this.player.body.label = 'kickfall-player';
     this.player.setDepth(24);
     this.playerHasEnhancedSheet = this.player.texture.frameTotal >= ENHANCED_CHARACTER_FRAME_COUNT;
+    // Same pattern as the football fighters: the Matter sprite is physics-only
+    // (scaling or rotating it would reshape the collider), so a visual-only
+    // mirror sprite renders the artwork and carries the accent motion.
+    this.playerVisual = this.add.sprite(x, y, this.character.sheetTexture, 0)
+      .setOrigin(0.5, 0.5)
+      .setDepth(24);
+    this.playerVisual.setDisplaySize(this.player.displayWidth, this.player.displayHeight);
+    this.playerVisual.setDisplayOrigin(
+      this.player.width / 2,
+      CHARACTER_GROUND_ANCHOR_Y - this.playerBodyHalfHeight / this.player.scaleY,
+    );
+    this.playerVisual.setFlipX(this.player.flipX);
+    this.playerVisualBaseScale = { x: this.playerVisual.scaleX, y: this.playerVisual.scaleY };
+    this.player.setVisible(false);
+    this.lastAnimationX = x;
     this.setFacing(1);
   }
 
@@ -639,15 +675,18 @@ export class KickfallScene extends Phaser.Scene {
     if (!this.level.boss) return;
     const tier = this.getTier('bottom');
     const x = this.level.boss.startX;
-    const y = playerCenterYOnTier(tier, x);
-    const sprite = this.matter.add.sprite(x, y, this.rivalCharacter.sheetTexture, CHARACTER_FRAMES.idle);
     const visualScale = getCharacterVisualScale(this.rivalCharacter);
+    const bodyWidth = PLAYER_WIDTH * visualScale;
+    const bodyHeight = PLAYER_HEIGHT * visualScale;
+    const bossHalfHeight = bodyHeight / 2;
+    const y = playerCenterYOnTier(tier, x, bossHalfHeight);
+    const sprite = this.matter.add.sprite(x, y, this.rivalCharacter.sheetTexture, CHARACTER_FRAMES.idle);
     sprite.setDisplaySize(84 * visualScale, 126 * visualScale);
-    sprite.setRectangle(PLAYER_WIDTH, PLAYER_HEIGHT, { chamfer: { radius: 13 } });
+    sprite.setRectangle(bodyWidth, bodyHeight, { chamfer: { radius: 13 * visualScale } });
     sprite.setOrigin(0.5, 0.5);
     sprite.setDisplayOrigin(
       sprite.width / 2,
-      CHARACTER_GROUND_ANCHOR_Y - (PLAYER_HEIGHT / 2) / sprite.scaleY,
+      CHARACTER_GROUND_ANCHOR_Y - bossHalfHeight / sprite.scaleY,
     );
     sprite.setFixedRotation();
     sprite.setStatic(true);
@@ -664,6 +703,9 @@ export class KickfallScene extends Phaser.Scene {
       defeated: false,
       kickCooldown: this.level.boss.kickIntervalSeconds * 0.55,
       kickTimer: 0,
+      kickVisualTimer: 0,
+      halfWidth: bodyWidth / 2,
+      halfHeight: bossHalfHeight,
       pushDistance: (x - 185) / this.level.boss.hits,
     };
   }
@@ -1156,6 +1198,7 @@ export class KickfallScene extends Phaser.Scene {
     }
     this.updateThemeMotion();
     this.kickTimer = Math.max(0, this.kickTimer - dt);
+    this.kickVisualTimer = Math.max(0, this.kickVisualTimer - dt);
     this.kickCooldown = Math.max(0, this.kickCooldown - dt);
     this.stepPlayer(dt);
     this.updateEffects(dt);
@@ -1293,13 +1336,12 @@ export class KickfallScene extends Phaser.Scene {
     }
     if (this.player.y > GAME_HEIGHT + 80) this.recoverPlayer();
 
+    const animationDistance = Math.abs(this.player.x - this.lastAnimationX);
+    this.lastAnimationX = this.player.x;
     if (Math.abs(this.player.body.velocity.x) > 0.55 && grounded) {
-      this.runCycle = stepKickfallRunCycle({
-        cycle: this.runCycle,
-        dt,
-        speed: this.player.body.velocity.x,
-        maxSpeed: 12.5 * this.character.stats.speed,
-      });
+      // Guard against tier-transfer teleports registering as a huge stride.
+      const travelled = animationDistance > KICKFALL_RUN_FRAME_DISTANCE * 2 ? 0 : animationDistance;
+      this.runCycle = stepKickfallRunCycle({ cycle: this.runCycle, distance: travelled });
     } else if (!grounded) {
       this.runCycle = 0;
     }
@@ -1310,7 +1352,7 @@ export class KickfallScene extends Phaser.Scene {
     const targetIndex = currentIndex + Math.sign(direction);
     if (currentIndex < 0 || targetIndex < 0 || targetIndex >= this.tiers.length) return false;
     const targetTier = this.tiers[targetIndex];
-    const edgePadding = PLAYER_WIDTH / 2 + 14;
+    const edgePadding = this.playerBodyHalfWidth + 14;
     const baseTargetX = Phaser.Math.Clamp(
       this.player.x,
       targetTier.left + edgePadding,
@@ -1324,7 +1366,7 @@ export class KickfallScene extends Phaser.Scene {
       ))
       .filter((x, index, values) => values.indexOf(x) === index);
     const landing = candidateXs
-      .map((x) => ({ x, y: playerCenterYOnTier(targetTier, x) }))
+      .map((x) => ({ x, y: playerCenterYOnTier(targetTier, x, this.playerBodyHalfHeight) }))
       .find(({ x, y }) => this.isTierTransferCorridorClear(x, y));
     if (!landing) {
       this.cameras.main.shake(80, 0.002);
@@ -1352,16 +1394,16 @@ export class KickfallScene extends Phaser.Scene {
   }
 
   isTierTransferCorridorClear(targetX, targetY) {
-    const corridorMinY = Math.min(this.player.y, targetY) - PLAYER_HEIGHT / 2;
-    const corridorMaxY = Math.max(this.player.y, targetY) + PLAYER_HEIGHT / 2;
+    const corridorMinY = Math.min(this.player.y, targetY) - this.playerBodyHalfHeight;
+    const corridorMaxY = Math.max(this.player.y, targetY) + this.playerBodyHalfHeight;
     const blockedByGate = this.gates.some((gate) => (
       gate.active
-      && Math.abs(gate.x - targetX) <= gate.width / 2 + PLAYER_WIDTH / 2 + 6
+      && Math.abs(gate.x - targetX) <= gate.width / 2 + this.playerBodyHalfWidth + 6
       && gate.y + gate.height / 2 >= corridorMinY
       && gate.y - gate.height / 2 <= corridorMaxY
     ));
     const blockedByBall = this.balls.some((ball) => (
-      Math.abs(ball.body.x - targetX) <= ball.radius + PLAYER_WIDTH / 2 + 4
+      Math.abs(ball.body.x - targetX) <= ball.radius + this.playerBodyHalfWidth + 4
       && ball.body.y + ball.radius >= corridorMinY
       && ball.body.y - ball.radius <= corridorMaxY
     ));
@@ -1393,13 +1435,14 @@ export class KickfallScene extends Phaser.Scene {
   recoverPlayer() {
     const bottom = this.getTier('bottom');
     const x = 240;
-    this.player.setPosition(x, playerCenterYOnTier(bottom, x));
+    this.player.setPosition(x, playerCenterYOnTier(bottom, x, this.playerBodyHalfHeight));
     this.player.setVelocity(0, 0);
     this.currentTierId = 'bottom';
   }
 
   startKick() {
     this.kickTimer = KICK_DURATION;
+    this.kickVisualTimer = KICK_VISUAL_SECONDS;
     this.kickCooldown = KICK_COOLDOWN;
     this.kickSerial += 1;
     this.lastKickedBallId = null;
@@ -2033,6 +2076,7 @@ export class KickfallScene extends Phaser.Scene {
     if (!boss?.sprite) return;
     boss.kickCooldown = Math.max(0, boss.kickCooldown - dt);
     boss.kickTimer = Math.max(0, boss.kickTimer - dt);
+    boss.kickVisualTimer = Math.max(0, (boss.kickVisualTimer ?? 0) - dt);
 
     if (!boss.active) {
       if (boss.sprite.y > GAME_HEIGHT + 70) {
@@ -2047,8 +2091,8 @@ export class KickfallScene extends Phaser.Scene {
       !ball.damagedBoss
       && ball.armedUntil > this.simulationSeconds
       && this.tierForBall(ball)?.id === tier.id
-      && Math.abs(ball.body.x - boss.sprite.x) <= PLAYER_WIDTH / 2 + ball.radius + 7
-      && Math.abs(ball.body.y - boss.sprite.y) <= PLAYER_HEIGHT / 2 + ball.radius
+      && Math.abs(ball.body.x - boss.sprite.x) <= boss.halfWidth + ball.radius + 7
+      && Math.abs(ball.body.y - boss.sprite.y) <= boss.halfHeight + ball.radius
     ));
     if (touchingBall) {
       this.damageBoss(touchingBall);
@@ -2089,6 +2133,7 @@ export class KickfallScene extends Phaser.Scene {
           ball.damagedBoss = false;
         });
         boss.kickTimer = KICK_DURATION;
+        boss.kickVisualTimer = KICK_VISUAL_SECONDS;
         boss.kickCooldown = this.level.boss.kickIntervalSeconds;
         arcadeAudio.kick(false);
         this.spawnImpact(target.body.x, target.body.y, 0xff7e9d, 10);
@@ -2096,8 +2141,8 @@ export class KickfallScene extends Phaser.Scene {
       }
     }
 
-    const frame = boss.kickTimer > 0
-      ? kickVisualAt({ remaining: boss.kickTimer, duration: KICK_DURATION }).frame
+    const frame = (boss.kickVisualTimer ?? 0) > 0
+      ? kickVisualAt({ remaining: boss.kickVisualTimer, duration: KICK_VISUAL_SECONDS }).frame
       : CHARACTER_FRAMES.idle;
     if (frame < boss.sprite.texture.frameTotal) boss.sprite.setFrame(frame);
   }
@@ -2110,7 +2155,7 @@ export class KickfallScene extends Phaser.Scene {
     ball.armedUntil = 0;
     boss.health -= 1;
     const nextX = boss.health <= 0 ? 150 : boss.sprite.x + tier.flow * boss.pushDistance;
-    boss.sprite.setPosition(nextX, playerCenterYOnTier(tier, Math.max(tier.left, nextX)));
+    boss.sprite.setPosition(nextX, playerCenterYOnTier(tier, Math.max(tier.left, nextX), boss.halfHeight));
     this.spawnImpact(boss.sprite.x, boss.sprite.y, 0xff8ca5, 12);
     this.cameras.main.shake(180, 0.007);
     this.game.events.emit('platform:haptic', 'heavy');
@@ -2155,8 +2200,8 @@ export class KickfallScene extends Phaser.Scene {
       playerX: this.player.x,
       playerY: this.player.y,
       playerVelocityY: this.player.body.velocity.y,
-      playerHalfWidth: PLAYER_WIDTH / 2,
-      playerHalfHeight: PLAYER_HEIGHT / 2,
+      playerHalfWidth: this.playerBodyHalfWidth,
+      playerHalfHeight: this.playerBodyHalfHeight,
       ballX: ball.body.x,
       ballY: ball.body.y,
       ballRadius: ball.radius,
@@ -2173,7 +2218,7 @@ export class KickfallScene extends Phaser.Scene {
     const tier = this.getTier(this.currentTierId);
     if (!tier || this.player.x < tier.left - 8 || this.player.x > tier.left + tier.width + 8) return false;
     const surfaceY = tierSurfaceY(tier, this.player.x);
-    const bodyBottom = this.player.y + PLAYER_HEIGHT / 2;
+    const bodyBottom = this.player.y + this.playerBodyHalfHeight;
     return Math.abs(surfaceY - bodyBottom) <= 6 && Math.abs(this.player.body.velocity.y) <= 2.4;
   }
 
@@ -2185,16 +2230,33 @@ export class KickfallScene extends Phaser.Scene {
 
   updatePlayerVisual(dt = 0) {
     if (!this.player?.texture) return;
+    this.landSquashTimer = Math.max(0, this.landSquashTimer - dt);
+    this.takeoffStretchTimer = Math.max(0, this.takeoffStretchTimer - dt);
+    const grounded = this.isPlayerGrounded();
+    const velocityY = this.player.body.velocity.y;
+    if (!this.prevGrounded && grounded && this.prevVelocityY > LANDING_SQUASH_MIN_VELOCITY) {
+      this.landSquashTimer = LAND_SQUASH_SECONDS;
+    }
+    if (this.prevGrounded && !grounded && velocityY < TAKEOFF_STRETCH_MIN_VELOCITY) {
+      this.takeoffStretchTimer = TAKEOFF_STRETCH_SECONDS;
+    }
+    this.prevGrounded = grounded;
+    this.prevVelocityY = velocityY;
+
     let frame = CHARACTER_FRAMES.idle;
     let pose = 'idle';
-    if (this.kickTimer > 0) {
-      const kickVisual = kickVisualAt({ remaining: this.kickTimer, duration: KICK_DURATION });
+    let stage = 'idle';
+    if (this.kickVisualTimer > 0) {
+      // The visual timeline outlives the gameplay kick so the follow-through
+      // can play out; the strike itself is applied immediately in startKick.
+      const kickVisual = kickVisualAt({ remaining: this.kickVisualTimer, duration: KICK_VISUAL_SECONDS });
       frame = this.playerHasEnhancedSheet ? kickVisual.frame : CHARACTER_FRAMES.legacyKick;
       pose = `kick-${kickVisual.stage}`;
+      stage = kickVisual.stage;
     } else if (this.tierTransfer) {
       frame = CHARACTER_FRAMES.jump;
       pose = this.tierTransfer.direction < 0 ? 'tier-up' : 'tier-down';
-    } else if (!this.isPlayerGrounded()) {
+    } else if (!grounded) {
       frame = CHARACTER_FRAMES.jump;
       pose = 'jump';
     } else if (Math.abs(this.player.body.velocity.x) > 0.55) {
@@ -2205,9 +2267,38 @@ export class KickfallScene extends Phaser.Scene {
     if (frame < this.player.texture.frameTotal) this.player.setFrame(frame);
     this.visualFrame = frame;
     this.animationPose = pose;
+    this.syncPlayerVisual(pose, stage);
     if (dt > 0 && this.kickTimer <= 0 && this.goBannerSeconds <= 0 && this.phase === 'playing') {
       this.announcementText.setColor('#ffffff');
     }
+  }
+
+  /**
+   * Mirrors the physics body onto the visual-only sprite and layers the same
+   * procedural accent motion used by the football fighters (breathing, run
+   * plant dips, landing squash, takeoff stretch). The collider is untouched
+   * and scaling pivots on the ground anchor, so feet stay planted.
+   */
+  syncPlayerVisual(pose, stage) {
+    if (!this.playerVisual) return;
+    this.playerVisual.setPosition(this.player.x, this.player.y);
+    this.playerVisual.setFlipX(this.player.flipX);
+    if (this.playerVisual.frame.name !== this.player.frame.name) {
+      this.playerVisual.setFrame(this.player.frame.name);
+    }
+    const motion = secondaryMotionAt({
+      pose: pose.startsWith('kick') ? 'kick' : pose,
+      stage,
+      runCycle: this.runCycle,
+      clockSeconds: this.time.now / 1000,
+      landSquash: (this.landSquashTimer / LAND_SQUASH_SECONDS) ** 2,
+      takeoffStretch: (this.takeoffStretchTimer / TAKEOFF_STRETCH_SECONDS) ** 2,
+    });
+    this.playerVisual.setScale(
+      this.playerVisualBaseScale.x * motion.scaleX,
+      this.playerVisualBaseScale.y * motion.scaleY,
+    );
+    this.playerVisual.setAngle(motion.angle);
   }
 
   spawnImpact(x, y, color, count) {
@@ -2624,7 +2715,7 @@ export class KickfallScene extends Phaser.Scene {
     const ball = this.spawnBall({ x: ballX, y: ballY, vx: 0, vy: 0 });
     ball.spawnedAt = this.simulationSeconds;
     const playerX = ballX - flow * 52;
-    this.player.setPosition(playerX, playerCenterYOnTier(tier, playerX));
+    this.player.setPosition(playerX, playerCenterYOnTier(tier, playerX, this.playerBodyHalfHeight));
     this.player.setVelocity(0, 0);
     this.currentTierId = tier.id;
     this.tierTransfer = null;
@@ -2655,7 +2746,7 @@ export class KickfallScene extends Phaser.Scene {
     });
     const rearBall = balls[balls.length - 1];
     const playerX = rearBall.body.x - flow * 46;
-    this.player.setPosition(playerX, playerCenterYOnTier(tier, playerX));
+    this.player.setPosition(playerX, playerCenterYOnTier(tier, playerX, this.playerBodyHalfHeight));
     this.player.setVelocity(0, 0);
     this.currentTierId = tier.id;
     this.tierTransfer = null;
@@ -2678,7 +2769,7 @@ export class KickfallScene extends Phaser.Scene {
     ball.stalledObstacleId = obstacle.id;
     obstacle.stalledBallId = ball.id;
     const playerX = obstacle.holdX - obstacle.flow * 52;
-    this.player.setPosition(playerX, playerCenterYOnTier(tier, playerX));
+    this.player.setPosition(playerX, playerCenterYOnTier(tier, playerX, this.playerBodyHalfHeight));
     this.player.setVelocity(0, 0);
     this.currentTierId = tier.id;
     this.tierTransfer = null;
@@ -2718,7 +2809,7 @@ export class KickfallScene extends Phaser.Scene {
     }
     const rearBall = balls[balls.length - 1];
     const playerX = rearBall.body.x - obstacle.flow * 46;
-    this.player.setPosition(playerX, playerCenterYOnTier(tier, playerX));
+    this.player.setPosition(playerX, playerCenterYOnTier(tier, playerX, this.playerBodyHalfHeight));
     this.player.setVelocity(0, 0);
     this.currentTierId = tier.id;
     this.tierTransfer = null;
@@ -2735,12 +2826,12 @@ export class KickfallScene extends Phaser.Scene {
     this.spawnTimer = this.level.spawnIntervalSeconds;
     this.announcementText.setText('');
     const tier = this.getTier('bottom');
-    const ballX = this.boss.sprite.x - tier.flow * (PLAYER_WIDTH / 2 + BALL_RADIUS + 2);
+    const ballX = this.boss.sprite.x - tier.flow * (this.boss.halfWidth + BALL_RADIUS + 2);
     const ballY = tierSurfaceY(tier, ballX) - BALL_RADIUS - 3;
     const ball = this.spawnBall({ x: ballX, y: ballY, vx: 0, vy: 0 });
     ball.spawnedAt = this.simulationSeconds;
     const playerX = ballX - tier.flow * 52;
-    this.player.setPosition(playerX, playerCenterYOnTier(tier, playerX));
+    this.player.setPosition(playerX, playerCenterYOnTier(tier, playerX, this.playerBodyHalfHeight));
     this.player.setVelocity(0, 0);
     this.currentTierId = tier.id;
     this.tierTransfer = null;
@@ -2804,8 +2895,8 @@ export class KickfallScene extends Phaser.Scene {
     const tier = this.getTier(guide.tierId);
     const tierIndex = this.tiers.findIndex((candidate) => candidate.id === tier.id);
     const x = guide.entryX + guide.flow * 72;
-    const expectedLandingY = playerCenterYOnTier(tier, x);
-    const startY = guide.surfaceY - guide.height - PLAYER_HEIGHT / 2 - 8;
+    const expectedLandingY = playerCenterYOnTier(tier, x, this.playerBodyHalfHeight);
+    const startY = guide.surfaceY - guide.height - this.playerBodyHalfHeight - 8;
     this.player.setSensor(false);
     this.player.setStatic(false);
     this.player.setFixedRotation();
@@ -2844,7 +2935,7 @@ export class KickfallScene extends Phaser.Scene {
     this.player.setFixedRotation();
     this.player.setPosition(
       supportBall.body.x,
-      supportBall.body.y - BALL_RADIUS - PLAYER_HEIGHT / 2,
+      supportBall.body.y - BALL_RADIUS - this.playerBodyHalfHeight,
     );
     this.player.setVelocity(0, 0);
     this.currentTierId = tier.id;
@@ -2885,7 +2976,7 @@ export class KickfallScene extends Phaser.Scene {
       return ball;
     });
     const playerX = tierCenterX(tier);
-    this.player.setPosition(playerX, playerCenterYOnTier(tier, playerX));
+    this.player.setPosition(playerX, playerCenterYOnTier(tier, playerX, this.playerBodyHalfHeight));
     this.player.setVelocity(0, 0);
     this.currentTierId = tier.id;
     this.tierTransfer = null;
@@ -2907,7 +2998,7 @@ export class KickfallScene extends Phaser.Scene {
     this.spawnTimer = this.level.spawnIntervalSeconds;
     this.announcementText.setText('');
     const x = tier.left + tier.width * 0.7;
-    const expectedLandingY = playerCenterYOnTier(tier, x);
+    const expectedLandingY = playerCenterYOnTier(tier, x, this.playerBodyHalfHeight);
     this.player.setSensor(false);
     this.player.setStatic(false);
     this.player.setFixedRotation();
@@ -3025,8 +3116,8 @@ export class KickfallScene extends Phaser.Scene {
         visualScale: getCharacterVisualScale(this.character),
         displayWidth: round(this.player.displayWidth, 2),
         displayHeight: round(this.player.displayHeight, 2),
-        collisionWidth: PLAYER_WIDTH,
-        collisionHeight: PLAYER_HEIGHT,
+        collisionWidth: this.playerBodyHalfWidth * 2,
+        collisionHeight: this.playerBodyHalfHeight * 2,
         collisionBoundsWidth: round(
           this.player.body.bounds.max.x - this.player.body.bounds.min.x,
           2,

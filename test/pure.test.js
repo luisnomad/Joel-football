@@ -39,9 +39,11 @@ import {
   GROUNDED_VISUAL_FRAMES,
   RUN_FRAME_DISTANCE,
   RUN_VISUAL_SEQUENCE,
+  IDLE_BREATH_ENABLED,
   isGroundedVisualFrame,
   kickVisualAt,
   runVisualAt,
+  secondaryMotionAt,
 } from '../src/game/pure/characterAnimation.js';
 import {
   circleIntersectsCapsule,
@@ -134,7 +136,7 @@ describe('enhanced character animation', () => {
   });
 
   it('uses a four-phase distance-driven run loop with two planted contacts', () => {
-    expect(RUN_FRAME_DISTANCE).toBe(30);
+    expect(RUN_FRAME_DISTANCE).toBe(82);
     expect(RUN_VISUAL_SEQUENCE).toEqual([
       CHARACTER_FRAMES.runContactA,
       CHARACTER_FRAMES.runPassing,
@@ -150,26 +152,54 @@ describe('enhanced character animation', () => {
     expect([0, 1, 2, 3].filter((phase) => runVisualAt(phase).footstep)).toEqual([0, 2]);
   });
 
-  it('stages the kick without changing its gameplay duration', () => {
-    expect(kickVisualAt({ remaining: 0.16, duration: 0.16 })).toMatchObject({
+  it('stages the kick across a visual timeline that outlives the gameplay kick', () => {
+    expect(kickVisualAt({ remaining: 0.32, duration: 0.32 })).toMatchObject({
       frame: CHARACTER_FRAMES.kickAnticipation,
       stage: 'anticipation',
     });
-    expect(kickVisualAt({ remaining: 0.1, duration: 0.16 })).toMatchObject({
+    expect(kickVisualAt({ remaining: 0.2, duration: 0.32 })).toMatchObject({
       frame: CHARACTER_FRAMES.kickContact,
       stage: 'contact',
     });
-    expect(kickVisualAt({ remaining: 0.02, duration: 0.16 })).toMatchObject({
+    expect(kickVisualAt({ remaining: 0.05, duration: 0.32 })).toMatchObject({
       frame: CHARACTER_FRAMES.kickRecovery,
       stage: 'recovery',
     });
   });
+
+  it('keeps the idle breathing accent gated behind its disabled flag', () => {
+    expect(IDLE_BREATH_ENABLED).toBe(false);
+    const idle = secondaryMotionAt({ pose: 'idle', clockSeconds: 0.5 });
+    expect(idle).toEqual({ scaleX: 1, scaleY: 1, angle: 0 });
+
+    const planted = secondaryMotionAt({ pose: 'run-contact', runCycle: 2 });
+    expect(planted.scaleY).toBeLessThan(1);
+    const passing = secondaryMotionAt({ pose: 'run-stride', runCycle: 1.5 });
+    expect(passing.scaleY).toBeCloseTo(1, 5);
+  });
+
+  it('leans with the dash, wobbles while stunned, and squashes on landing', () => {
+    expect(secondaryMotionAt({ pose: 'dash', dashDirection: 1 }).angle).toBeGreaterThan(0);
+    expect(secondaryMotionAt({ pose: 'dash', dashDirection: -1 }).angle).toBeLessThan(0);
+    expect(secondaryMotionAt({ pose: 'stun', clockSeconds: 0.1 }).angle).not.toBe(0);
+
+    const landing = secondaryMotionAt({ pose: 'idle', landSquash: 1 });
+    expect(landing.scaleY).toBeLessThan(1);
+    expect(landing.scaleX).toBeGreaterThan(1);
+    const takeoff = secondaryMotionAt({ pose: 'jump', takeoffStretch: 1 });
+    expect(takeoff.scaleY).toBeGreaterThan(1);
+  });
+
+  it('keeps the chilena free of accent motion so the spin stays clean', () => {
+    const motion = secondaryMotionAt({ pose: 'dash', dashDirection: 1, chilena: true });
+    expect(motion).toEqual({ scaleX: 1, scaleY: 1, angle: 0 });
+  });
 });
 
 describe('movement tuning', () => {
-  it('keeps the requested twenty-percent speed increase', () => {
-    expect(PLAYER_TUNING.moveForce).toBeCloseTo(0.017 * 1.2);
-    expect(PLAYER_TUNING.maxSpeed).toBeCloseTo(11.8 * 1.2);
+  it('keeps the stacked twenty-percent speed increases', () => {
+    expect(PLAYER_TUNING.moveForce).toBeCloseTo(0.017 * 1.728);
+    expect(PLAYER_TUNING.maxSpeed).toBeCloseTo(11.8 * 1.728);
   });
 });
 
