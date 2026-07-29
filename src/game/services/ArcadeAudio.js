@@ -10,10 +10,24 @@ export const MUSIC_TRACKS = Object.freeze(
 export const AUDIENCE_AMBIENT_URL = soundUrl('bg_audience_ambient.mp3');
 export const BALL_EFFECT_URL = soundUrl('ball_sound_effect.mp3');
 export const WHISTLE_EFFECT_URL = soundUrl('whistle_sound_effect.mp3');
+export const GAME_EFFECT_URLS = Object.freeze({
+  button: soundUrl('button_feedback_1.mp3'),
+  menuEnter: soundUrl('menu_enter_feedback.mp3'),
+  goal1: soundUrl('GOAL_1.mp3'),
+  goal2: soundUrl('GOAL_2.mp3'),
+  joelGoal: soundUrl('vamos_sound_effect.mp3'),
+  powerUp: soundUrl('power_up_1.mp3'),
+  poweredShot: soundUrl('powered_up_shot.mp3'),
+  wallBreak: soundUrl('brick_wall_breaking.mp3'),
+  levelFinished: soundUrl('level_finished_3s.mp3'),
+  hockeyNeon: soundUrl('hockey_shot.mp3'),
+  hockeyIce: soundUrl('hockey_shot_ice.mp3'),
+});
 export const AUDIO_ASSET_URLS = Object.freeze([
   AUDIENCE_AMBIENT_URL,
   BALL_EFFECT_URL,
   WHISTLE_EFFECT_URL,
+  ...Object.values(GAME_EFFECT_URLS),
   ...MUSIC_TRACKS,
 ]);
 export const AUDIO_SCENE_POLICIES = Object.freeze({
@@ -27,6 +41,14 @@ export const resolveAudioScenePolicy = (mode) => {
   const sceneMode = Object.hasOwn(AUDIO_SCENE_POLICIES, mode) ? mode : 'menu';
   return { sceneMode, ...AUDIO_SCENE_POLICIES[sceneMode] };
 };
+
+export const resolveGoalEffectId = (scorerCharacterId, variantIndex = 0) => (
+  scorerCharacterId === 'joel'
+    ? 'joelGoal'
+    : Math.max(0, Number(variantIndex) || 0) % 2 === 0
+      ? 'goal1'
+      : 'goal2'
+);
 
 const WHISTLE_INTERVAL_MS = 900;
 
@@ -59,6 +81,7 @@ class ArcadeAudio {
     this.audience = null;
     this.ballEffect = null;
     this.whistleEffect = null;
+    this.gameEffects = {};
     this.musicRequested = false;
     this.audienceRequested = false;
     this.goalCheerPlays = 0;
@@ -70,6 +93,11 @@ class ArcadeAudio {
     this.whistleTimers = new Set();
     this.whistlePlaybackSerial = 0;
     this.recentWhistles = [];
+    this.gameEffectPlays = Object.fromEntries(
+      Object.keys(GAME_EFFECT_URLS).map((effectId) => [effectId, 0]),
+    );
+    this.lastGameEffectPlayback = null;
+    this.goalVariantIndex = 0;
     this.cacheWarmStarted = false;
   }
 
@@ -83,6 +111,9 @@ class ArcadeAudio {
     this.audience = createMediaElement();
     this.ballEffect = createMediaElement();
     this.whistleEffect = createMediaElement();
+    this.gameEffects = Object.fromEntries(
+      Object.keys(GAME_EFFECT_URLS).map((effectId) => [effectId, createMediaElement()]),
+    );
     if (!this.music) return;
 
     this.music.src = MUSIC_TRACKS[this.trackIndex];
@@ -91,6 +122,9 @@ class ArcadeAudio {
     this.audience.loop = true;
     this.ballEffect.src = BALL_EFFECT_URL;
     this.whistleEffect.src = WHISTLE_EFFECT_URL;
+    Object.entries(GAME_EFFECT_URLS).forEach(([effectId, url]) => {
+      if (this.gameEffects[effectId]) this.gameEffects[effectId].src = url;
+    });
     this.applyVolumes();
   }
 
@@ -118,6 +152,7 @@ class ArcadeAudio {
       this.music?.pause?.();
       this.audience?.pause?.();
       this.whistleEffect?.pause?.();
+      Object.values(this.gameEffects).forEach((effect) => effect?.pause?.());
       return;
     }
     if (!this.unlocked) return;
@@ -135,7 +170,10 @@ class ArcadeAudio {
     else if (this.unlocked) this.startMusic();
     if (this.settings.effectsMuted || !this.scenePolicy.audience) this.stopAudience();
     else if (this.unlocked) this.startAudience();
-    if (this.settings.effectsMuted) this.cancelWhistleSequence();
+    if (this.settings.effectsMuted) {
+      this.cancelWhistleSequence();
+      Object.values(this.gameEffects).forEach((effect) => effect?.pause?.());
+    }
     return this.settings;
   }
 
@@ -148,6 +186,11 @@ class ArcadeAudio {
     if (this.whistleEffect) this.whistleEffect.volume = this.settings.effectsMuted
       ? 0
       : Math.min(1, this.settings.effectsVolume * 1.7);
+    Object.values(this.gameEffects).forEach((effect) => {
+      if (effect) effect.volume = this.settings.effectsMuted
+        ? 0
+        : Math.min(1, this.settings.effectsVolume * 1.5);
+    });
   }
 
   unlock() {
@@ -199,17 +242,21 @@ class ArcadeAudio {
   async primeMediaFromCache() {
     if (!this.music || this.unlocked || !this.music.paused) return;
     const trackIndex = this.trackIndex;
-    const [musicUrl, audienceUrl, ballUrl, whistleUrl] = await Promise.all([
+    const [musicUrl, audienceUrl, ballUrl, whistleUrl, ...gameEffectUrls] = await Promise.all([
       audioAssetCache.cachedPlayableUrl(MUSIC_TRACKS[trackIndex]),
       audioAssetCache.cachedPlayableUrl(AUDIENCE_AMBIENT_URL),
       audioAssetCache.cachedPlayableUrl(BALL_EFFECT_URL),
       audioAssetCache.cachedPlayableUrl(WHISTLE_EFFECT_URL),
+      ...Object.values(GAME_EFFECT_URLS).map((url) => audioAssetCache.cachedPlayableUrl(url)),
     ]);
     if (this.unlocked || trackIndex !== this.trackIndex || !this.music.paused) return;
     this.music.src = musicUrl;
     this.audience.src = audienceUrl;
     this.ballEffect.src = ballUrl;
     this.whistleEffect.src = whistleUrl;
+    Object.keys(GAME_EFFECT_URLS).forEach((effectId, index) => {
+      if (this.gameEffects[effectId]) this.gameEffects[effectId].src = gameEffectUrls[index];
+    });
   }
 
   warmCacheProgressively() {
@@ -218,10 +265,17 @@ class ArcadeAudio {
     const connection = globalThis.navigator?.connection;
     const dataSaver = connection?.saveData || ['slow-2g', '2g'].includes(connection?.effectiveType);
     const currentTrack = MUSIC_TRACKS[this.trackIndex];
-    const essentialUrls = [currentTrack, BALL_EFFECT_URL, WHISTLE_EFFECT_URL, AUDIENCE_AMBIENT_URL];
+    const essentialUrls = [
+      currentTrack,
+      BALL_EFFECT_URL,
+      WHISTLE_EFFECT_URL,
+      AUDIENCE_AMBIENT_URL,
+      GAME_EFFECT_URLS.button,
+      GAME_EFFECT_URLS.menuEnter,
+    ];
     const urls = dataSaver
       ? essentialUrls
-      : [...essentialUrls, ...MUSIC_TRACKS.filter((url) => url !== currentTrack)];
+      : [...new Set(AUDIO_ASSET_URLS)];
     audioAssetCache.warm(urls).catch(() => {});
   }
 
@@ -248,7 +302,61 @@ class ArcadeAudio {
   }
 
   click() {
-    this.tone({ frequency: 430, endFrequency: 620, duration: 0.055, type: 'triangle', gain: 0.025 });
+    if (!this.playGameEffect('button')) {
+      this.tone({ frequency: 430, endFrequency: 620, duration: 0.055, type: 'triangle', gain: 0.025 });
+    }
+  }
+
+  menuEnter() {
+    if (!this.playGameEffect('menuEnter')) {
+      this.tone({ frequency: 360, endFrequency: 720, duration: 0.12, type: 'triangle', gain: 0.032 });
+    }
+  }
+
+  playGameEffect(effectId, { volumeScale = 1 } = {}) {
+    if (this.settings.effectsMuted || this.settings.effectsVolume <= 0) return false;
+    this.unlock();
+    const effect = this.gameEffects[effectId];
+    if (!effect) return false;
+    try {
+      const safeVolumeScale = Math.min(1, Math.max(0, Number(volumeScale) || 0));
+      const channelVolume = Math.min(1, this.settings.effectsVolume * 1.5);
+      effect.volume = channelVolume * safeVolumeScale;
+      effect.currentTime = 0;
+      this.gameEffectPlays[effectId] += 1;
+      this.lastGameEffectPlayback = {
+        effectId,
+        volumeScale: safeVolumeScale,
+        effectiveVolume: effect.volume,
+      };
+      safePlay(effect);
+      return true;
+    } catch {
+      return false;
+    }
+  }
+
+  hockeyShot(themeId, volumeScale = 1) {
+    this.playGameEffect(
+      themeId === 'ice' ? 'hockeyIce' : 'hockeyNeon',
+      { volumeScale },
+    );
+  }
+
+  powerUp() {
+    this.playGameEffect('powerUp');
+  }
+
+  poweredShot() {
+    this.playGameEffect('poweredShot');
+  }
+
+  wallBreak() {
+    this.playGameEffect('wallBreak');
+  }
+
+  levelFinished() {
+    this.playGameEffect('levelFinished');
   }
 
   kick(powered = false) {
@@ -280,7 +388,10 @@ class ArcadeAudio {
     });
   }
 
-  goal() {
+  goal(scorerCharacterId = null) {
+    const effectId = resolveGoalEffectId(scorerCharacterId, this.goalVariantIndex);
+    if (effectId !== 'joelGoal') this.goalVariantIndex += 1;
+    this.playGameEffect(effectId);
     this.whistle(1, { label: 'goal' });
   }
 
@@ -352,6 +463,9 @@ class ArcadeAudio {
         audienceVolume: this.audience?.volume ?? 0,
         ballEffectVolume: this.ballEffect?.volume ?? 0,
         whistleEffectVolume: this.whistleEffect?.volume ?? 0,
+        gameEffectVolumes: Object.fromEntries(
+          Object.entries(this.gameEffects).map(([effectId, effect]) => [effectId, effect?.volume ?? 0]),
+        ),
       },
       goalCheerPlays: this.goalCheerPlays,
       ballEffectPlays: this.ballEffectPlays,
@@ -361,6 +475,13 @@ class ArcadeAudio {
       lastWhistleSequenceCount: this.lastWhistleSequenceCount,
       pendingWhistles: this.whistleTimers.size,
       recentWhistles: this.recentWhistles.map((whistle) => ({ ...whistle })),
+      gameEffectPlays: { ...this.gameEffectPlays },
+      lastGameEffectPlayback: this.lastGameEffectPlayback
+        ? { ...this.lastGameEffectPlayback }
+        : null,
+      goalStingerPlays: this.gameEffectPlays.goal1
+        + this.gameEffectPlays.goal2
+        + this.gameEffectPlays.joelGoal,
       cache: { ...cache, total: AUDIO_ASSET_URLS.length },
     };
   }

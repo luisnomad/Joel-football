@@ -190,13 +190,13 @@ export class MiniGamesScene extends Phaser.Scene {
 
   openKickfall() {
     arcadeAudio.unlock();
-    arcadeAudio.click();
+    arcadeAudio.menuEnter();
     this.scene.start('MiniGameSetup', { gameId: 'kickfall' });
   }
 
   openDiscHockey() {
     arcadeAudio.unlock();
-    arcadeAudio.click();
+    arcadeAudio.menuEnter();
     this.scene.start('MiniGameSetup', { gameId: 'discHockey' });
   }
 

@@ -38,12 +38,22 @@ import {
 const scaled = (base, stat) => base * (0.9 + stat * 0.1);
 
 export class Fighter {
-  constructor(scene, { id, side, x, texture, textureFacing, name, stats = DEFAULT_STATS }) {
+  constructor(scene, {
+    id,
+    side,
+    x,
+    texture,
+    textureFacing,
+    name,
+    stats = DEFAULT_STATS,
+    visualScale = 1,
+  }) {
     this.scene = scene;
     this.id = id;
     this.side = side;
     this.name = name;
     this.stats = { ...DEFAULT_STATS, ...stats };
+    this.visualScale = Phaser.Math.Clamp(Number(visualScale) || 1, 0.85, 1.2);
     this.facing = side === 'left' ? 1 : -1;
     this.baseFacing = this.facing;
     this.textureFacing = textureFacing === -1 ? -1 : 1;
@@ -118,8 +128,8 @@ export class Fighter {
     this.hasPoseSheet = this.sprite.texture.frameTotal >= 6;
     this.hasEnhancedPoseSheet = this.sprite.texture.frameTotal >= ENHANCED_CHARACTER_FRAME_COUNT;
     this.sprite.setDisplaySize(
-      this.hasPoseSheet ? CHARACTER_DISPLAY_WIDTH : 205,
-      this.hasPoseSheet ? CHARACTER_DISPLAY_HEIGHT : 205,
+      (this.hasPoseSheet ? CHARACTER_DISPLAY_WIDTH : 205) * this.visualScale,
+      (this.hasPoseSheet ? CHARACTER_DISPLAY_HEIGHT : 205) * this.visualScale,
     );
     this.baseSpriteScale = { x: this.sprite.scaleX, y: this.sprite.scaleY };
     this.visualGroundOriginY = this.hasEnhancedPoseSheet
@@ -830,6 +840,14 @@ export class Fighter {
       visualFrame,
       displayWidth: Math.round(this.sprite.displayWidth * 10) / 10,
       displayHeight: Math.round(this.sprite.displayHeight * 10) / 10,
+      visualScale: Math.round(this.visualScale * 100) / 100,
+      collisionWidth: Math.round(
+        (this.sprite.body.bounds.max.x - this.sprite.body.bounds.min.x) * 10,
+      ) / 10,
+      collisionHeight: Math.round(
+        (this.sprite.body.bounds.max.y - this.sprite.body.bounds.min.y) * 10,
+      ) / 10,
+      collisionArea: Math.round(this.sprite.body.area * 10) / 10,
       enhancedAnimation: this.hasEnhancedPoseSheet,
       animationStage: this.currentAnimationStage,
       runPhase: this.currentRunPhase,

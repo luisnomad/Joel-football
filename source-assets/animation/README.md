@@ -3,6 +3,29 @@
 Generated on 2026-07-10 with the built-in `imagegen` workflow, using the
 original six-pose player sheets and idle cutouts as identity references.
 
+Joel's fictional Nova artwork was superseded on 2026-07-29 by the
+real-photo-derived sources in `../characters/joel-v1/`. The current runtime
+files are `final/player-joel-sheet-v1.png`,
+`../../public/assets/player-joel-sheet-v1.webp`, and
+`../../public/assets/player-joel-portrait.png`. The Nova files below remain
+historical provenance only.
+
+Dad/Papá was added from the real-photo-derived sources in
+`../characters/dad-v1/`. His approved outputs are
+`final/player-dad-sheet-v1.png`,
+`../../public/assets/player-dad-sheet-v1.webp`, and
+`../../public/assets/player-dad-portrait.png`. The shared builder enforces the
+same twelve-frame geometry and `y=418` grounded baseline while preserving his
+approved 6'7" silhouette with a dedicated 405-pixel idle normalization.
+
+Mum/Mamá was added from the approved real-photo-derived sources in
+`../characters/mum-v1/`. Her outputs are
+`final/player-mum-sheet-v1.png`,
+`../../public/assets/player-mum-sheet-v1.webp`, and
+`../../public/assets/player-mum-portrait.png`. The shared builder preserves her
+long-curl silhouette while enforcing the same twelve-frame geometry,
+eight-pixel side margins, and `y=418` grounded baseline.
+
 ## Deliverables
 
 - `ref-sheets/`: the two approved six-cell character identity sheets on flat

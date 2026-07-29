@@ -3,6 +3,7 @@ import { t } from '../i18n.js';
 import { createControlIcon } from './createControlIcon.js';
 import { createHelpColumnLayout } from './helpLayout.js';
 import { bindButtonInput } from './buttonInput.js';
+import { getCharacter, getCharacterName } from '../content/characters.js';
 import {
   FOOTBALL_TOUCH_MOVEMENT_MODES,
   getFootballTouchMovementMode,
@@ -29,15 +30,26 @@ const createCloseControl = (scene, x, y, depth, onClose) => {
 
 const createAboutContent = (scene, language, appInfo, depth) => {
   const buildLabel = appInfo?.build && appInfo.build !== 'web' ? ` (${appInfo.build})` : '';
+  const creatorCharacter = getCharacter('dad');
+  const creatorPortrait = scene.add.image(478, 414, creatorCharacter.portraitTexture)
+    .setDisplaySize(180, 180)
+    .setFlipX(creatorCharacter.nativeFacing !== 1)
+    .setDepth(depth);
   return [
     scene.add.text(640, 274, 'JOEL FOOTBALL', textStyle(48, '#ffffff', {
       fontFamily: 'Arial Black, Arial Rounded MT Bold, sans-serif',
       stroke: '#10213e',
       strokeThickness: 8,
     })).setOrigin(0.5).setDepth(depth),
-    scene.add.text(640, 354, t(language, 'about.credit'), textStyle(22, '#bff8ff')).setOrigin(0.5).setDepth(depth),
-    scene.add.text(640, 411, t(language, 'about.dedication'), textStyle(25, '#ffdc72', { fontStyle: 'bold' })).setOrigin(0.5).setDepth(depth),
-    scene.add.text(640, 492, `${t(language, 'about.version')} ${appInfo?.version ?? '1.0.0'}${buildLabel}`, textStyle(18, '#a9bdd8')).setOrigin(0.5).setDepth(depth),
+    creatorPortrait,
+    scene.add.text(710, 351, t(language, 'about.credit'), textStyle(22, '#bff8ff', {
+      wordWrap: { width: 360 },
+    })).setOrigin(0.5).setDepth(depth),
+    scene.add.text(710, 407, t(language, 'about.creatorCharacter', {
+      name: getCharacterName(creatorCharacter, language),
+    }), textStyle(18, '#ffffff', { fontStyle: 'bold' })).setOrigin(0.5).setDepth(depth),
+    scene.add.text(710, 452, t(language, 'about.dedication'), textStyle(22, '#ffdc72', { fontStyle: 'bold' })).setOrigin(0.5).setDepth(depth),
+    scene.add.text(710, 500, `${t(language, 'about.version')} ${appInfo?.version ?? '1.0.0'}${buildLabel}`, textStyle(18, '#a9bdd8')).setOrigin(0.5).setDepth(depth),
   ];
 };
 
@@ -223,10 +235,14 @@ export const createInfoOverlay = (scene, {
     : kind === 'install'
       ? createInstallContent(scene, language, depth + 0.2, onClose)
       : createAboutContent(scene, language, appInfo, depth + 0.2);
+  const creatorCharacter = kind === 'about' ? getCharacter('dad') : null;
   const objects = [shade, panel, title, ...closeObjects, ...content];
   return {
     kind,
     appInfo: appInfo ?? null,
+    creatorCharacter: creatorCharacter
+      ? { id: creatorCharacter.id, name: getCharacterName(creatorCharacter, language) }
+      : null,
     layout: helpLayout,
     destroy: () => objects.forEach((object) => object.destroy()),
   };

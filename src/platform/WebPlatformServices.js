@@ -123,7 +123,7 @@ export class WebPlatformServices extends PlatformServices {
     }
 
     const serviceWorkerUrl = `${import.meta.env.BASE_URL}sw.js`;
-    await serviceWorker.register(`${serviceWorkerUrl}?v=3`, {
+    await serviceWorker.register(`${serviceWorkerUrl}?v=8`, {
       scope: import.meta.env.BASE_URL,
       updateViaCache: 'none',
     }).catch(() => {});

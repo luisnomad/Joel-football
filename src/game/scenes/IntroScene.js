@@ -192,7 +192,7 @@ export class IntroScene extends Phaser.Scene {
 
   startMatch() {
     arcadeAudio.unlock();
-    arcadeAudio.click();
+    arcadeAudio.menuEnter();
     this.scene.start('Customize');
   }
 
@@ -202,7 +202,7 @@ export class IntroScene extends Phaser.Scene {
 
   startMiniGames() {
     arcadeAudio.unlock();
-    arcadeAudio.click();
+    arcadeAudio.menuEnter();
     this.scene.start('MiniGames');
   }
 
@@ -212,13 +212,13 @@ export class IntroScene extends Phaser.Scene {
 
   startPowerLab() {
     arcadeAudio.unlock();
-    arcadeAudio.click();
+    arcadeAudio.menuEnter();
     this.scene.start('PowerLab');
   }
 
   startSettings() {
     arcadeAudio.unlock();
-    arcadeAudio.click();
+    arcadeAudio.menuEnter();
     this.scene.start('Settings');
   }
 
@@ -251,6 +251,7 @@ export class IntroScene extends Phaser.Scene {
       install: this.installState,
       modal: this.infoOverlay?.kind ?? null,
       modalAppInfo: this.infoOverlay?.appInfo ?? null,
+      modalCreatorCharacter: this.infoOverlay?.creatorCharacter ?? null,
       audio: arcadeAudio.diagnostics(),
       actions: [
         'open football setup',

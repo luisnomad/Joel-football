@@ -385,13 +385,13 @@ export class CustomizeScene extends Phaser.Scene {
   }
 
   openPowerLab() {
-    arcadeAudio.click();
+    arcadeAudio.menuEnter();
     this.scene.start('PowerLab', { returnScene: 'Customize' });
   }
 
   startMatch() {
     arcadeAudio.unlock();
-    arcadeAudio.click();
+    arcadeAudio.menuEnter();
     this.scene.start('MatchLoading');
   }
 

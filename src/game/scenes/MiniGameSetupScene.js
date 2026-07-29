@@ -173,6 +173,24 @@ export class MiniGameSetupScene extends Phaser.Scene {
     const player = getCharacter(this.profile.playerCharacterId);
     const opponent = getCharacter(this.profile.opponentId);
     const isComputerMode = this.profile.discHockey.mode === 'computer';
+    const isLocalMode = this.profile.discHockey.mode === 'local';
+    const isCrazyMode = this.profile.discHockey.mode === 'crazy';
+    const headerLabels = {
+      left: getCharacterLabel(player, this.language),
+      right: isCrazyMode
+        ? t(this.language, 'discHockey.crazySquad')
+        : getCharacterLabel(opponent, this.language),
+    };
+    [
+      { x: 260, label: headerLabels.left },
+      { x: 1020, label: headerLabels.right },
+    ].forEach(({ x, label }) => {
+      this.add.rectangle(x, 34, 190, 50, 0x07131c, 0.99);
+      this.add.text(x, 34, label, textStyle(21, '#ffd66b', {
+        stroke: '#10161c',
+        strokeThickness: 5,
+      })).setOrigin(0.5);
+    });
     this.add.rectangle(325, 350, 555, 450, 0x07131c, 0.96)
       .setStrokeStyle(4, 0xffc64a, 0.52);
     this.add.text(325, 145, t(this.language, 'discHockeySetup.lineup'), textStyle(23, '#ffd66b'))
@@ -185,16 +203,20 @@ export class MiniGameSetupScene extends Phaser.Scene {
       onPrevious: () => this.rotateLineup('player', -1),
       onNext: () => this.rotateLineup('player', 1),
     });
-    this.createCharacterSelector({
-      x: 455,
-      y: 300,
-      label: this.profile.discHockey.mode === 'local'
-        ? t(this.language, 'discHockeySetup.playerTwo')
-        : t(this.language, 'discHockeySetup.computer'),
-      character: opponent,
-      onPrevious: () => this.rotateLineup('opponent', -1),
-      onNext: () => this.rotateLineup('opponent', 1),
-    });
+    if (isCrazyMode) {
+      this.createCrazyRivalsPreview(455, 300);
+    } else {
+      this.createCharacterSelector({
+        x: 455,
+        y: 300,
+        label: isLocalMode
+          ? t(this.language, 'discHockeySetup.playerTwo')
+          : t(this.language, 'discHockeySetup.computer'),
+        character: opponent,
+        onPrevious: () => this.rotateLineup('opponent', -1),
+        onNext: () => this.rotateLineup('opponent', 1),
+      });
+    }
     this.add.text(325, 480, t(this.language, 'discHockeySetup.objective'), {
       ...textStyle(15, '#d8eaff'),
       align: 'center',
@@ -209,20 +231,28 @@ export class MiniGameSetupScene extends Phaser.Scene {
     this.add.text(935, 176, t(this.language, 'discHockeySetup.mode'), textStyle(14, '#b9cde5'))
       .setOrigin(0.5);
     this.createChoiceButton({
-      x: 800,
+      x: 750,
       y: 216,
-      width: 220,
+      width: 165,
       label: t(this.language, 'discHockeySetup.vsComputer'),
       active: isComputerMode,
       onPress: () => this.setDiscHockeySettings({ mode: 'computer' }),
     });
     this.createChoiceButton({
-      x: 1070,
+      x: 935,
       y: 216,
-      width: 220,
+      width: 165,
       label: t(this.language, 'discHockeySetup.twoPlayers'),
-      active: !isComputerMode,
+      active: isLocalMode,
       onPress: () => this.setDiscHockeySettings({ mode: 'local' }),
+    });
+    this.createChoiceButton({
+      x: 1120,
+      y: 216,
+      width: 165,
+      label: t(this.language, 'discHockeySetup.crazy'),
+      active: isCrazyMode,
+      onPress: () => this.setDiscHockeySettings({ mode: 'crazy' }),
     });
     this.add.text(935, 274, t(this.language, 'discHockeySetup.arena'), textStyle(14, '#b9cde5'))
       .setOrigin(0.5);
@@ -247,11 +277,24 @@ export class MiniGameSetupScene extends Phaser.Scene {
       372,
       t(
         this.language,
-        isComputerMode ? 'kickfallSetup.difficulty' : 'discHockeySetup.localReady',
+        isLocalMode ? 'discHockeySetup.localReady' : 'kickfallSetup.difficulty',
       ),
       textStyle(14, '#b9cde5'),
     ).setOrigin(0.5);
-    if (isComputerMode) {
+    if (isCrazyMode) {
+      this.add.rectangle(935, 414, 440, 48, 0x6f1718, 0.96)
+        .setStrokeStyle(3, 0xff6f3c, 0.8);
+      this.add.text(
+        935,
+        414,
+        t(this.language, 'discHockeySetup.crazyLocked'),
+        {
+          ...textStyle(14, '#fff0c2'),
+          align: 'center',
+          wordWrap: { width: 410 },
+        },
+      ).setOrigin(0.5);
+    } else if (isComputerMode) {
       ['easy', 'normal', 'hard'].forEach((difficulty, index) => (
         this.createDifficultyButton(780 + index * 155, 414, difficulty, { width: 132 })
       ));
@@ -272,9 +315,11 @@ export class MiniGameSetupScene extends Phaser.Scene {
     this.add.text(
       935,
       466,
-      !isComputerMode
-        ? ''
-        : t(this.language, `discHockeySetup.difficulty.${this.profile.difficultyByGame.discHockey}`),
+      isCrazyMode
+        ? t(this.language, 'discHockeySetup.crazyHint')
+        : isLocalMode
+          ? ''
+          : t(this.language, `discHockeySetup.difficulty.${this.profile.difficultyByGame.discHockey}`),
       {
         ...textStyle(14, '#c7d8ed'),
         align: 'center',
@@ -286,9 +331,11 @@ export class MiniGameSetupScene extends Phaser.Scene {
       .setStrokeStyle(2, 0xffc64a, 0.32);
     this.add.text(935, 528, t(
       this.language,
-      isComputerMode
-        ? 'discHockeySetup.controls.computer'
-        : 'discHockeySetup.controls.local',
+      isCrazyMode
+        ? 'discHockeySetup.controls.crazy'
+        : isComputerMode
+          ? 'discHockeySetup.controls.computer'
+          : 'discHockeySetup.controls.local',
     ), {
       ...textStyle(13, '#ffd66b'),
       align: 'center',
@@ -303,6 +350,29 @@ export class MiniGameSetupScene extends Phaser.Scene {
       label: t(this.language, 'discHockeySetup.play'),
       color: 0xc83b25,
       onPress: () => this.playDiscHockey(),
+    });
+  }
+
+  createCrazyRivalsPreview(x, y) {
+    this.add.text(
+      x,
+      y - 96,
+      t(this.language, 'discHockeySetup.crazyRivals'),
+      textStyle(16, '#ffb16a'),
+    ).setOrigin(0.5);
+    [
+      [-42, -34],
+      [42, -34],
+      [-42, 42],
+      [42, 42],
+    ].forEach(([offsetX, offsetY], index) => {
+      this.add.circle(x + offsetX, y + offsetY, 34, 0x7b1c1f, 0.94)
+        .setStrokeStyle(3, index % 2 === 0 ? 0xffc64a : 0xff6f3c, 0.82);
+      this.add.text(x + offsetX, y + offsetY, '?', {
+        ...textStyle(33, '#fff3c5'),
+        stroke: '#431014',
+        strokeThickness: 5,
+      }).setOrigin(0.5);
     });
   }
 
@@ -399,7 +469,7 @@ export class MiniGameSetupScene extends Phaser.Scene {
   rotateLineup(side, direction) {
     const isPlayer = side === 'player';
     const currentId = isPlayer ? this.profile.playerCharacterId : this.profile.opponentId;
-    const excludedId = isPlayer ? this.profile.opponentId : this.profile.playerCharacterId;
+    const excludedId = isPlayer ? null : this.profile.playerCharacterId;
     const next = cycleCharacter({ id: currentId, direction, excludedId });
     if (isPlayer) playerProfileStore.setPlayerCharacter(next.id);
     else playerProfileStore.setOpponent(next.id);
@@ -434,13 +504,13 @@ export class MiniGameSetupScene extends Phaser.Scene {
 
   playKickfall(level) {
     arcadeAudio.unlock();
-    arcadeAudio.click();
+    arcadeAudio.menuEnter();
     this.scene.start('MiniGameLoading', { gameId: 'kickfall', level });
   }
 
   playDiscHockey() {
     arcadeAudio.unlock();
-    arcadeAudio.click();
+    arcadeAudio.menuEnter();
     this.game.registry.get('platformActions')?.lockLandscape?.();
     const currentProfile = playerProfileStore.get();
     this.scene.start('MiniGameLoading', {
@@ -469,13 +539,21 @@ export class MiniGameSetupScene extends Phaser.Scene {
         language: this.language,
         playMode: profile.discHockey.mode,
         themeId: profile.discHockey.themeId,
-        difficulty: profile.difficultyByGame.discHockey,
+        difficulty: profile.discHockey.mode === 'crazy'
+          ? 'hard'
+          : profile.difficultyByGame.discHockey,
         playerCharacterId: profile.playerCharacterId,
         opponentId: profile.opponentId,
+        headerLineup: {
+          left: getCharacterLabel(getCharacter(profile.playerCharacterId), this.language),
+          right: profile.discHockey.mode === 'crazy'
+            ? t(this.language, 'discHockey.crazySquad')
+            : getCharacterLabel(getCharacter(profile.opponentId), this.language),
+        },
         coordinateSystem: `origin top-left; +x right; +y down; logical canvas ${this.stageLayout.width}x${this.stageLayout.height}`,
         actions: [
           'choose both players',
-          'choose computer or two players',
+          'choose computer, two players, or Crazy Mode',
           'choose Ice or Neon arena',
           'set difficulty',
           'play Disc Hockey',

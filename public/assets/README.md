@@ -16,9 +16,13 @@ included in the project.
 | `arena-neon.webp` | 1920x1080 | no | Imagegen-derived genuine night arena: newly illustrated synthwave architecture, crowd, skyline, lighting, and violet pitch. The generated PNG lives under `source-assets/arena-neon.png`. |
 | `arena-beach.webp` | 1920x1080 | no | Imagegen-derived genuine beach arena: bamboo terraces, ocean sunset, islands, palms, and a flat sand pitch. The generated PNG lives under `source-assets/arena-beach.png`. |
 | `goal-side.svg` | 180x320 viewBox | yes | Runtime goal: a deliberately narrow left-side profile. Display at 150x235, origin `(0.5, 1)`, center `(75, 636)`, then mirror at `(1205, 636)`. |
-| `player-nova.png` | 512x512 | yes | Left/human boy's idle cutout, facing right. Start near 185-205 px display height. |
+| `player-joel-portrait.png` | 512x512 | yes | Joel's real-photo-derived cartoon portrait/full-body selector cutout, facing right. |
+| `player-dad-portrait.png` | 512x512 | yes | Dad/Papá's real-photo-derived full-body selector and About-screen creator portrait, facing right. |
+| `player-mum-portrait.png` | 512x512 | yes | Mum/Mamá's guardian-approved full-body selector and Hockey engraving source, facing right. |
 | `player-vex.png` | 512x512 | yes | Right/provider boy's idle cutout, facing left. Start near 185-205 px display height. |
-| `player-nova-sheet-v2.webp` | 1280x1440 | yes | Runtime 4x3 animation sheet for Joel; twelve 320x480 frames. |
+| `player-joel-sheet-v1.webp` | 1280x1440 | yes | Runtime 4x3 animation sheet for Joel's real-photo-derived likeness; twelve 320x480 frames. |
+| `player-dad-sheet-v1.webp` | 1280x1440 | yes | Runtime 4x3 animation sheet for Dad/Papá (Luis Nomad); twelve 320x480 frames with a dedicated 405 px 6'7" idle normalization. |
+| `player-mum-sheet-v1.webp` | 1280x1440 | yes | Runtime 4x3 animation sheet for Mum/Mamá; twelve 320x480 frames on the shared adult geometry. |
 | `player-vex-sheet-v2.webp` | 1280x1440 | yes | Runtime 4x3 animation sheet for Vex; twelve 320x480 frames. |
 | `ball.png` | 256x256 | yes | Rotation-safe ball. Start near 58-66 px display diameter. |
 | `ball-neon.svg` | 96x96 viewBox | yes | Cosmetic football variant with the same competitive physics as `ball.png`. |
@@ -70,11 +74,22 @@ right upright at x≈1154. The diamond net is clipped entirely inside the frame.
   silhouettes.
 - Arena palette: cyan sky, deep teal structure, coral rails, warm gold accents,
   emerald turf, and cream highlights.
-- Nova palette: deep teal, coral, cream, gold, and chestnut brown.
+- Joel palette: deep teal, coral, cream, and gold; his face and dense dark
+  curls are based on guardian-supplied family photos.
+- Dad/Papá palette: deep navy, golden yellow, royal blue, and cream. His
+  photo-derived likeness uses deliberately dark-brown hair and beard with no
+  gray, including in the tiny Disc Hockey engraving. His long-legged 6'7"
+  silhouette uses a catalog-driven 1.10 visual scale in Football and Kickfall
+  while keeping the same gameplay colliders and grounded foot lines. Hockey
+  deliberately keeps every pusher at the same regulation diameter.
+- Mum/Mamá palette: sapphire blue, midnight navy, warm gold, and cream. Her
+  approved photo-derived likeness preserves her long dark curls, warm smile,
+  and gentle makeup. She uses the shared Football and Kickfall display scale
+  and the regulation Hockey pusher diameter.
 - Vex palette: royal violet, cyan, navy, cream, gold, and sandy blond.
-- Both rivals are friendly, entirely fictional Caucasian boys with clearly
-  different faces, hair, colors, and silhouettes. Neither depicts a real person
-  or an existing character.
+- Joel is a guardian-approved cartoon likeness of the real child the game is
+  named for. Bob remains fictional. The remaining family roster members use
+  their own approved photo-derived likenesses.
 - Ball and power art deliberately reuse both rivals' colors to bind the set.
 - Match Playground object SVGs are hand-authored, compact, unbranded, and use
   silhouettes that stay readable while rotating at gameplay size.

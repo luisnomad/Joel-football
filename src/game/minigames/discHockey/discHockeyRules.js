@@ -1,6 +1,6 @@
 import { getDiscHockeyCollisionMap } from './discHockeyCollisionMaps.js';
 
-export const DISC_HOCKEY_MODES = Object.freeze(['computer', 'local']);
+export const DISC_HOCKEY_MODES = Object.freeze(['computer', 'local', 'crazy']);
 export const DISC_HOCKEY_THEMES = Object.freeze(['ice', 'neon']);
 export const DISC_HOCKEY_MATCH_SECONDS = 3 * 60;
 export const DISC_HOCKEY_PUCK_SURFACE = Object.freeze({
@@ -17,6 +17,46 @@ export const DISC_HOCKEY_HUMAN_CONTROL = Object.freeze({
   touchResponse: 200,
 });
 
+export const DISC_HOCKEY_IMPACT_AUDIO = Object.freeze({
+  minimumVolumeScale: 0.5,
+  fullVolumeSpeed: 900,
+});
+
+export const DISC_HOCKEY_CRAZY_POWER = Object.freeze({
+  maximum: 100,
+  passivePerSecond: 1,
+  intentionalHitGain: 6,
+  defensiveSaveGain: 14,
+  intentionalClosingSpeed: 120,
+  defensiveSaveMinimumSpeed: 120,
+  contactCooldownSeconds: 0.32,
+  rechargeDelaySeconds: 0.45,
+  poweredPuckSpeed: 1450,
+  poweredPuckMaximumSpeed: 1550,
+  knockbackSpeed: 860,
+  knockbackSeconds: 0.28,
+});
+
+export const DISC_HOCKEY_CRAZY_ROLES = Object.freeze([
+  'striker',
+  'interceptor',
+  'defender',
+  'goalkeeper',
+]);
+
+export const DISC_HOCKEY_CREASE_RULE = Object.freeze({
+  warningSeconds: 1,
+  violationSeconds: 4,
+  penaltySeconds: 1.25,
+  extraCreaseDepth: 36,
+  puckSafetyDepth: 300,
+  boundaryHysteresis: 8,
+  ejectionSeconds: 0.5,
+  ejectionPushSeconds: 0.32,
+  ejectionSpeed: 650,
+  maximumEjectionAngleDegrees: 24,
+});
+
 export const getDiscHockeyHumanMotion = (touchTracking) => (
   touchTracking
     ? {
@@ -30,6 +70,14 @@ export const getDiscHockeyHumanMotion = (touchTracking) => (
       direct: false,
     }
 );
+
+export const releaseDiscHockeyControl = (player = {}) => ({
+  ...player,
+  vx: 0,
+  vy: 0,
+  target: null,
+  pointerId: null,
+});
 
 export const DISC_HOCKEY_ARENA = Object.freeze({
   left: 100,
@@ -75,8 +123,129 @@ export const DISC_HOCKEY_AI = Object.freeze({
   }),
 });
 
+export const DISC_HOCKEY_CRAZY_AI = Object.freeze({
+  reactionSeconds: 0.025,
+  cornerRelease: Object.freeze({
+    minimumPuckSpeed: 120,
+    horizontalClearance: 190,
+    verticalClearance: 160,
+    inwardPuckSpeed: 520,
+    verticalPuckSpeed: 320,
+    retreatSeconds: 0.55,
+  }),
+  striker: Object.freeze({
+    maxSpeed: 780,
+    response: 22,
+    aggressive: true,
+  }),
+  support: Object.freeze({
+    maxSpeed: DISC_HOCKEY_AI.hard.maxSpeed,
+    response: 12,
+    aggressive: false,
+  }),
+});
+
+export const getDiscHockeyCrazyRoleMotion = (role) => (
+  role === 'striker'
+    ? DISC_HOCKEY_CRAZY_AI.striker
+    : DISC_HOCKEY_CRAZY_AI.support
+);
+
 const finite = (value, fallback = 0) => Number.isFinite(Number(value)) ? Number(value) : fallback;
 const clamp = (value, minimum, maximum) => Math.min(maximum, Math.max(minimum, value));
+
+export const createDiscHockeyCornerBankPuck = ({ puck, corner }) => {
+  const verticalDirection = corner === 'bottom' ? -1 : 1;
+  return {
+    ...puck,
+    vx: -Math.max(
+      DISC_HOCKEY_CRAZY_AI.cornerRelease.inwardPuckSpeed,
+      Math.abs(finite(puck?.vx)),
+    ),
+    vy: verticalDirection * Math.max(
+      DISC_HOCKEY_CRAZY_AI.cornerRelease.verticalPuckSpeed,
+      Math.abs(finite(puck?.vy)),
+    ),
+  };
+};
+
+export const getDiscHockeyImpactVolume = (impactSpeed) => {
+  const strength = clamp(
+    Math.max(0, finite(impactSpeed)) / DISC_HOCKEY_IMPACT_AUDIO.fullVolumeSpeed,
+    0,
+    1,
+  );
+  return DISC_HOCKEY_IMPACT_AUDIO.minimumVolumeScale
+    + strength * (1 - DISC_HOCKEY_IMPACT_AUDIO.minimumVolumeScale);
+};
+
+export const evaluateDiscHockeyCrease = ({
+  player,
+  puck,
+  collisionMap = getDiscHockeyCollisionMap('ice'),
+  previousSeconds = 0,
+  deltaSeconds = 0,
+}) => {
+  const side = player?.side === 'right' ? 'right' : 'left';
+  const goalLine = side === 'left'
+    ? collisionMap.goalLineLeft
+    : collisionMap.goalLineRight;
+  const radius = Math.max(1, finite(player?.radius, DISC_HOCKEY_ARENA.playerRadius));
+  const boundaryHysteresis = finite(previousSeconds) > 0
+    ? DISC_HOCKEY_CREASE_RULE.boundaryHysteresis
+    : 0;
+  const creaseEdge = side === 'left'
+    ? goalLine + radius + DISC_HOCKEY_CREASE_RULE.extraCreaseDepth + boundaryHysteresis
+    : goalLine - radius - DISC_HOCKEY_CREASE_RULE.extraCreaseDepth - boundaryHysteresis;
+  const playerY = finite(player?.y, DISC_HOCKEY_ARENA.centerY);
+  const verticalReach = radius + boundaryHysteresis;
+  const inGoalLane = playerY + verticalReach >= collisionMap.goalTop
+    && playerY - verticalReach <= collisionMap.goalBottom;
+  const inCrease = inGoalLane && (
+    side === 'left'
+      ? finite(player?.x, DISC_HOCKEY_ARENA.centerX) <= creaseEdge
+      : finite(player?.x, DISC_HOCKEY_ARENA.centerX) >= creaseEdge
+  );
+  const puckThreatEdge = side === 'left'
+    ? goalLine + DISC_HOCKEY_CREASE_RULE.puckSafetyDepth
+    : goalLine - DISC_HOCKEY_CREASE_RULE.puckSafetyDepth;
+  const puckThreatening = side === 'left'
+    ? finite(puck?.x, DISC_HOCKEY_ARENA.centerX) <= puckThreatEdge
+    : finite(puck?.x, DISC_HOCKEY_ARENA.centerX) >= puckThreatEdge;
+  const camping = inCrease && !puckThreatening;
+  const accumulatedSeconds = camping
+    ? Math.max(0, finite(previousSeconds)) + Math.max(0, finite(deltaSeconds))
+    : 0;
+  const violated = accumulatedSeconds >= DISC_HOCKEY_CREASE_RULE.violationSeconds;
+  const seconds = violated
+    ? 0
+    : Math.min(DISC_HOCKEY_CREASE_RULE.violationSeconds, accumulatedSeconds);
+  return {
+    side,
+    inCrease,
+    puckThreatening,
+    camping,
+    warning: camping && seconds >= DISC_HOCKEY_CREASE_RULE.warningSeconds,
+    violated,
+    seconds,
+  };
+};
+
+export const getDiscHockeyEjectionVelocity = ({
+  side = 'left',
+  randomSample = 0.5,
+}) => {
+  const sample = clamp(finite(randomSample, 0.5), 0, 1);
+  const angleDegrees = (sample * 2 - 1)
+    * DISC_HOCKEY_CREASE_RULE.maximumEjectionAngleDegrees;
+  const angleRadians = angleDegrees * Math.PI / 180;
+  const inwardDirection = side === 'right' ? -1 : 1;
+  return {
+    angleDegrees,
+    vx: inwardDirection * Math.cos(angleRadians) * DISC_HOCKEY_CREASE_RULE.ejectionSpeed,
+    vy: Math.sin(angleRadians) * DISC_HOCKEY_CREASE_RULE.ejectionSpeed,
+  };
+};
 
 export const formatDiscHockeyTime = (seconds) => {
   const wholeSeconds = Math.ceil(Math.max(0, finite(seconds)));
@@ -90,6 +259,21 @@ export const getDiscHockeyMatchResult = (score) => {
   if (left > right) return 'left';
   if (right > left) return 'right';
   return 'draw';
+};
+
+export const resolveDiscHockeyGoalCharacterId = ({
+  scoringSide,
+  leftCharacterId,
+  rightCharacterId,
+  isCrazyMode = false,
+  lastPuckTouch = null,
+}) => {
+  if (scoringSide === 'left') return leftCharacterId ?? null;
+  if (scoringSide !== 'right') return null;
+  if (!isCrazyMode) return rightCharacterId ?? null;
+  return lastPuckTouch?.side === 'right'
+    ? lastPuckTouch.characterId ?? null
+    : null;
 };
 
 export const sanitizeDiscHockeyMode = (value) => (
@@ -335,7 +519,9 @@ export const resolvePlayerPuckCollision = ({
   const dy = puck.y - player.y;
   const minimumDistance = player.radius + puck.radius;
   const rawDistance = Math.hypot(dx, dy);
-  if (rawDistance >= minimumDistance) return { collided: false, puck: { ...puck } };
+  if (rawDistance >= minimumDistance) {
+    return { collided: false, impactSpeed: 0, puck: { ...puck } };
+  }
 
   const distance = Math.max(0.0001, rawDistance);
   const nx = rawDistance > 0.0001 ? dx / distance : (player.side === 'right' ? -1 : 1);
@@ -350,6 +536,7 @@ export const resolvePlayerPuckCollision = ({
   );
   return {
     collided: true,
+    impactSpeed: Math.max(0, -relativeNormalSpeed),
     puck: {
       ...puck,
       x: puck.x + nx * (overlap + 0.5),
@@ -485,4 +672,420 @@ export const chooseDiscHockeyAiTarget = ({
     arena,
     collisionMap,
   });
+};
+
+export const selectDiscHockeyCrazyRoster = ({
+  candidateIds = [],
+  playerId = null,
+  randomSamples = [],
+  count = 4,
+}) => {
+  const pool = [...new Set(candidateIds)].filter((id) => id && id !== playerId);
+  const selected = [];
+  const requestedCount = Math.min(Math.max(0, Math.floor(finite(count, 4))), pool.length);
+  for (let index = 0; index < requestedCount; index += 1) {
+    const sample = clamp(
+      finite(randomSamples[index], (index * 0.61803398875) % 1),
+      0,
+      0.999999,
+    );
+    const poolIndex = Math.floor(sample * pool.length);
+    selected.push(pool.splice(poolIndex, 1)[0]);
+  }
+  return selected;
+};
+
+export const getDiscHockeyIntentionalHit = ({ player, puck }) => {
+  const dx = finite(puck?.x) - finite(player?.x);
+  const dy = finite(puck?.y) - finite(player?.y);
+  const distance = Math.max(0.0001, Math.hypot(dx, dy));
+  const nx = dx / distance;
+  const ny = dy / distance;
+  const playerClosingSpeed = finite(player?.vx) * nx + finite(player?.vy) * ny;
+  const puckAlongNormal = finite(puck?.vx) * nx + finite(puck?.vy) * ny;
+  const relativeClosingSpeed = playerClosingSpeed - puckAlongNormal;
+  return {
+    intentional: playerClosingSpeed >= DISC_HOCKEY_CRAZY_POWER.intentionalClosingSpeed
+      && relativeClosingSpeed > 0,
+    playerClosingSpeed,
+    relativeClosingSpeed,
+    normal: { x: nx, y: ny },
+  };
+};
+
+export const isDiscHockeyDefensiveSave = ({
+  player,
+  puck,
+  intentionalHit = getDiscHockeyIntentionalHit({ player, puck }),
+  arena = DISC_HOCKEY_ARENA,
+}) => (
+  player?.side === 'left'
+  && intentionalHit.intentional
+  && finite(puck?.x, arena.centerX) < arena.centerX
+  && finite(puck?.vx) <= -DISC_HOCKEY_CRAZY_POWER.defensiveSaveMinimumSpeed
+);
+
+export const addDiscHockeyCrazyPower = ({
+  energy = 0,
+  deltaSeconds = 0,
+  gain = 0,
+}) => clamp(
+  finite(energy)
+    + Math.max(0, finite(deltaSeconds)) * DISC_HOCKEY_CRAZY_POWER.passivePerSecond
+    + Math.max(0, finite(gain)),
+  0,
+  DISC_HOCKEY_CRAZY_POWER.maximum,
+);
+
+export const createDiscHockeyPoweredPuck = ({
+  puck,
+  serial = 1,
+  fallbackDirection = 1,
+}) => {
+  const speed = Math.hypot(finite(puck?.vx), finite(puck?.vy));
+  const directionX = speed > 0.001 ? finite(puck?.vx) / speed : (fallbackDirection < 0 ? -1 : 1);
+  const directionY = speed > 0.001 ? finite(puck?.vy) / speed : 0;
+  const poweredSpeed = Math.max(DISC_HOCKEY_CRAZY_POWER.poweredPuckSpeed, speed);
+  return {
+    ...puck,
+    vx: directionX * poweredSpeed,
+    vy: directionY * poweredSpeed,
+    powered: true,
+    powerSerial: Math.max(1, Math.floor(finite(serial, 1))),
+  };
+};
+
+export const getDiscHockeyPoweredKnockback = ({ puck, player }) => {
+  const speed = Math.max(0.0001, Math.hypot(finite(puck?.vx), finite(puck?.vy)));
+  const directionX = finite(puck?.vx) / speed;
+  const directionY = finite(puck?.vy) / speed;
+  const radialX = finite(player?.x) - finite(puck?.x);
+  const radialY = finite(player?.y) - finite(puck?.y);
+  const cross = directionX * radialY - directionY * radialX;
+  const side = cross === 0
+    ? (finite(player?.y) >= DISC_HOCKEY_ARENA.centerY ? 1 : -1)
+    : Math.sign(cross);
+  const sideX = -directionY * side;
+  const sideY = directionX * side;
+  const combinedX = sideX * 0.9 + directionX * 0.28;
+  const combinedY = sideY * 0.9 + directionY * 0.28;
+  const magnitude = Math.max(0.0001, Math.hypot(combinedX, combinedY));
+  return {
+    vx: combinedX / magnitude * DISC_HOCKEY_CRAZY_POWER.knockbackSpeed,
+    vy: combinedY / magnitude * DISC_HOCKEY_CRAZY_POWER.knockbackSpeed,
+    seconds: DISC_HOCKEY_CRAZY_POWER.knockbackSeconds,
+  };
+};
+
+export const shouldEndDiscHockeyPoweredShot = ({
+  before,
+  after,
+  scorer = null,
+  arena = DISC_HOCKEY_ARENA,
+}) => Boolean(
+  scorer
+  || (
+    finite(before?.x) > arena.centerX
+    && finite(before?.vx) > 0
+    && finite(after?.vx) <= 0
+    && finite(after?.x) > arena.centerX
+  )
+);
+
+const crazyRoleScore = (player, point, retainedRole) => (
+  Math.hypot(finite(player.x) - point.x, finite(player.y) - point.y)
+  - (player.crazyRole === retainedRole ? 72 : 0)
+);
+
+const removeBestCrazyPlayer = (available, point, role) => {
+  let bestIndex = 0;
+  let bestScore = Infinity;
+  available.forEach((player, index) => {
+    const score = crazyRoleScore(player, point, role);
+    if (score < bestScore) {
+      bestIndex = index;
+      bestScore = score;
+    }
+  });
+  return available.splice(bestIndex, 1)[0];
+};
+
+const avoidCrazyShotLane = ({
+  target,
+  role,
+  puck,
+  arena,
+  playerRadius,
+}) => {
+  if (role === 'striker' || target.x >= puck.x || puck.x <= arena.centerX + 35) return target;
+  const goalY = arena.centerY;
+  const amount = clamp(
+    (puck.x - target.x) / Math.max(1, puck.x - arena.left),
+    0,
+    1,
+  );
+  const laneY = puck.y + (goalY - puck.y) * amount;
+  const clearance = playerRadius * 2.15;
+  if (Math.abs(target.y - laneY) >= clearance) return target;
+  const direction = target.y >= laneY ? 1 : -1;
+  return {
+    ...target,
+    y: clamp(
+      laneY + direction * clearance,
+      arena.top + playerRadius,
+      arena.bottom - playerRadius,
+    ),
+  };
+};
+
+const getCrazyCornerRecovery = ({
+  puck,
+  collisionMap,
+  arena,
+}) => {
+  const puckX = finite(puck?.x);
+  const puckY = finite(puck?.y);
+  const nearOpponentEnd = puckX >= collisionMap.goalLineRight - 150;
+  if (!nearOpponentEnd) return null;
+  const puckRadius = Math.max(1, finite(puck?.radius, arena.puckRadius));
+  const goalLipClearance = arena.playerRadius + puckRadius;
+  if (
+    puckY <= collisionMap.bounds.top + 130
+    || puckY <= collisionMap.goalTop + goalLipClearance
+  ) return 'top';
+  if (
+    puckY >= collisionMap.bounds.bottom - 130
+    || puckY >= collisionMap.goalBottom - goalLipClearance
+  ) return 'bottom';
+  return null;
+};
+
+const chooseCrazyCornerRecoveryTarget = ({
+  role,
+  player,
+  puck,
+  corner,
+  arena,
+  collisionMap,
+  forceRelease = false,
+}) => {
+  const verticalDirection = corner === 'top' ? 1 : -1;
+  if (role === 'striker') {
+    const puckSpeed = Math.hypot(finite(puck?.vx), finite(puck?.vy));
+    if (
+      forceRelease
+      || puckSpeed >= DISC_HOCKEY_CRAZY_AI.cornerRelease.minimumPuckSpeed
+    ) {
+      return {
+        x: finite(puck?.x) - DISC_HOCKEY_CRAZY_AI.cornerRelease.horizontalClearance,
+        y: finite(puck?.y)
+          + verticalDirection * DISC_HOCKEY_CRAZY_AI.cornerRelease.verticalClearance,
+      };
+    }
+    const contactDistance = player.radius + finite(puck?.radius, arena.puckRadius) - 7;
+    return {
+      x: finite(puck?.x) - contactDistance * 0.66,
+      y: finite(puck?.y) + verticalDirection * contactDistance * 0.75,
+    };
+  }
+  if (role === 'goalkeeper') {
+    return {
+      x: Math.min(
+        collisionMap.goalLineRight - player.radius
+          - DISC_HOCKEY_CREASE_RULE.extraCreaseDepth - 34,
+        finite(puck?.x) - 195,
+      ),
+      y: arena.centerY,
+    };
+  }
+  if (role === 'defender') {
+    return {
+      x: arena.centerX + 310,
+      y: arena.centerY + verticalDirection * 120,
+    };
+  }
+  return {
+    x: arena.centerX + player.radius + 70,
+    y: arena.centerY + verticalDirection * 105,
+  };
+};
+
+export const chooseDiscHockeyCrazyTargets = ({
+  players = [],
+  puck,
+  human,
+  arena = DISC_HOCKEY_ARENA,
+  collisionMap = getDiscHockeyCollisionMap('ice'),
+}) => {
+  if (players.length === 0) return [];
+  const available = [...players];
+  const goalkeeperAnchor = {
+    x: collisionMap.goalLineRight - arena.playerRadius - 70,
+    y: arena.centerY,
+  };
+  const retainedCornerStrikerIndex = available.findIndex(
+    (player) => finite(player?.cornerReleaseSeconds) > 0,
+  );
+  const striker = retainedCornerStrikerIndex >= 0
+    ? available.splice(retainedCornerStrikerIndex, 1)[0]
+    : removeBestCrazyPlayer(available, puck, 'striker');
+  const goalkeeper = available.length > 0
+    ? removeBestCrazyPlayer(available, goalkeeperAnchor, 'goalkeeper')
+    : striker;
+  const defender = available.length > 0
+    ? removeBestCrazyPlayer(available, {
+      x: Math.max(arena.centerX + 250, finite(puck?.x) + 155),
+      y: finite(puck?.y, arena.centerY),
+    }, 'defender')
+    : goalkeeper;
+  const interceptor = available[0] ?? defender;
+  const roleByPlayer = new Map([
+    [striker, 'striker'],
+    [goalkeeper, 'goalkeeper'],
+    [defender, 'defender'],
+    [interceptor, 'interceptor'],
+  ]);
+  const predictedY = clamp(
+    finite(puck?.y, arena.centerY) + finite(puck?.vy) * 0.3,
+    arena.top + arena.playerRadius,
+    arena.bottom - arena.playerRadius,
+  );
+  const puckThreatening = finite(puck?.x, arena.centerX) > arena.centerX + 90
+    || finite(puck?.vx) > 150;
+  const cornerRecovery = getCrazyCornerRecovery({ puck, collisionMap, arena });
+
+  return players.map((player) => {
+    const role = roleByPlayer.get(player) ?? 'interceptor';
+    const retainedReleaseCorner = role === 'striker'
+      && finite(player?.cornerReleaseSeconds) > 0
+      ? player.cornerReleaseCorner
+      : null;
+    const activeCornerRecovery = retainedReleaseCorner ?? cornerRecovery;
+    const releasingCorner = Boolean(retainedReleaseCorner)
+      || Math.hypot(finite(puck?.vx), finite(puck?.vy))
+        >= DISC_HOCKEY_CRAZY_AI.cornerRelease.minimumPuckSpeed;
+    let target;
+    if (activeCornerRecovery) {
+      target = chooseCrazyCornerRecoveryTarget({
+        role,
+        player,
+        puck,
+        corner: activeCornerRecovery,
+        arena,
+        collisionMap,
+        forceRelease: Boolean(retainedReleaseCorner),
+      });
+    } else if (role === 'striker') {
+      target = chooseDiscHockeyAiTarget({
+        puck,
+        player,
+        difficulty: 'hard',
+        arena,
+        collisionMap,
+      });
+    } else if (role === 'goalkeeper') {
+      target = {
+        x: puckThreatening
+          ? clamp(
+            finite(puck?.x) + 185,
+            collisionMap.goalLineRight - player.radius - 115,
+            collisionMap.goalLineRight - player.radius - 24,
+          )
+          : collisionMap.goalLineRight - player.radius
+            - DISC_HOCKEY_CREASE_RULE.extraCreaseDepth - 34,
+        y: predictedY,
+      };
+    } else if (role === 'defender') {
+      target = {
+        x: clamp(
+          finite(puck?.x) + 165,
+          arena.centerX + player.radius + 210,
+          collisionMap.goalLineRight - player.radius - 135,
+        ),
+        y: clamp(
+          predictedY + (predictedY >= arena.centerY ? -82 : 82),
+          arena.top + player.radius,
+          arena.bottom - player.radius,
+        ),
+      };
+    } else {
+      target = {
+        x: clamp(
+          finite(puck?.x) + 78,
+          arena.centerX + player.radius,
+          arena.centerX + 205,
+        ),
+        y: clamp(
+          (finite(puck?.y, arena.centerY) + finite(human?.y, arena.centerY)) / 2
+            + (finite(puck?.y) >= arena.centerY ? -105 : 105),
+          arena.top + player.radius,
+          arena.bottom - player.radius,
+        ),
+      };
+    }
+    target = avoidCrazyShotLane({
+      target,
+      role,
+      puck,
+      arena,
+      playerRadius: player.radius,
+    });
+    return {
+      player,
+      role,
+      cornerRecovery: activeCornerRecovery,
+      cornerPhase: role === 'striker' && activeCornerRecovery
+        ? releasingCorner ? 'release' : 'jab'
+        : null,
+      target: clampDiscPlayerPosition({
+        side: 'right',
+        x: target.x,
+        y: target.y,
+        radius: player.radius,
+        arena,
+        collisionMap,
+      }),
+    };
+  });
+};
+
+export const separateDiscHockeyPushers = ({
+  players = [],
+  minimumGap = 6,
+  collisionMap = getDiscHockeyCollisionMap('ice'),
+}) => {
+  const separated = players.map((player) => ({ ...player }));
+  for (let pass = 0; pass < 3; pass += 1) {
+    for (let first = 0; first < separated.length; first += 1) {
+      for (let second = first + 1; second < separated.length; second += 1) {
+        const a = separated[first];
+        const b = separated[second];
+        const dx = b.x - a.x;
+        const dy = b.y - a.y;
+        const distance = Math.hypot(dx, dy);
+        const required = a.radius + b.radius + minimumGap;
+        if (distance >= required) continue;
+        const nx = distance > 0.001 ? dx / distance : 0;
+        const ny = distance > 0.001 ? dy / distance : (second % 2 === 0 ? 1 : -1);
+        const shift = (required - distance) / 2;
+        const firstPosition = clampDiscPlayerPosition({
+          side: a.side,
+          x: a.x - nx * shift,
+          y: a.y - ny * shift,
+          radius: a.radius,
+          collisionMap,
+        });
+        const secondPosition = clampDiscPlayerPosition({
+          side: b.side,
+          x: b.x + nx * shift,
+          y: b.y + ny * shift,
+          radius: b.radius,
+          collisionMap,
+        });
+        separated[first] = { ...a, ...firstPosition };
+        separated[second] = { ...b, ...secondPosition };
+      }
+    }
+  }
+  return separated;
 };

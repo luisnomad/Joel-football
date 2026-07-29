@@ -92,9 +92,11 @@ The Mini-games journey currently offers two separately loaded games:
   collide and stack; deliberate kicks send diminishing impulse through
   connected queues. Gates and traps react to the reusable force system.
 - **Disc Hockey**, a three-minute top-down match against three computer
-  difficulties or a second local player on the same tablet. Each character
-  disc stays on its own half while the red puck remains free to cross the
-  field. Its white-ice and yellow/red neon arenas share identical physics.
+  difficulties, a second local player, or four coordinated Hard rivals in
+  Crazy Mode / Modo Loco. Crazy Power charges through play and unleashes one
+  rival-scattering Super Shot. Its white-ice and yellow/red neon arenas share
+  identical physics, velocity-sensitive contact audio, and a four-second
+  crease rule that ejects goal campers and empties Crazy Power.
 
 Kickfall's playable scene is a dynamic Vite import and its backdrop, ramp,
 gate, and ball art live under `public/assets/minigames/kickfall/`. Neither the
@@ -113,6 +115,16 @@ Lobs adapt to the defender's distance. A nearby defender produces the bounded
 maximum-height arc, clearing their head by a wide margin and forcing them to
 retreat toward the projected landing point. As distance increases, the launch
 trades height for horizontal speed while still targeting space beyond them.
+
+## Create a character from photos
+
+The repository includes the project-scoped Codex skill
+`$create-game-character` under
+`.agents/skills/create-game-character/`. Attach the person's photos and invoke
+the skill to run the privacy-safe identity, anchor approval, twelve-pose atlas,
+roster integration, geometry audit, screenshot review, and complete test
+workflow. It deliberately pauses for human likeness approval before generating
+all poses and again before deployment.
 
 ## Verify
 
@@ -181,7 +193,8 @@ the default sibling repository path on another machine. The former
   Storage cache. Data-saver and 2G connections cache only the immediately
   useful files.
 - Full-quality sources live in `source-assets/sound`; optimized 128 kbps MP3
-  tracks are generated with `npm run optimize:audio`. This requires `ffmpeg`.
+  tracks and encoded effects are generated with `npm run optimize:audio`. This
+  requires `ffmpeg`.
 
 ## Architecture
 

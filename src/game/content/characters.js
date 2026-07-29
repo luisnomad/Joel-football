@@ -10,8 +10,8 @@ export const CHARACTERS = Object.freeze([
     labels: Object.freeze({ en: 'JOEL', es: 'JOEL' }),
     portraitTexture: 'joel',
     sheetTexture: 'joel-sheet',
-    portraitAsset: 'player-nova.png',
-    sheetAsset: 'player-nova-sheet-v2.webp',
+    portraitAsset: 'player-joel-portrait.png',
+    sheetAsset: 'player-joel-sheet-v1.webp',
     nativeFacing: 1,
     accent: 0x6ef4ff,
     stats: Object.freeze({ speed: 1.08, jump: 1.04, kick: 1, dash: 1, power: 1 }),
@@ -73,6 +73,36 @@ export const CHARACTERS = Object.freeze([
     stats: Object.freeze({ speed: 0.98, jump: 1, kick: 1.06, dash: 0.98, power: 1.08 }),
   }),
   Object.freeze({
+    id: 'dad',
+    name: 'Dad',
+    label: 'DAD',
+    names: Object.freeze({ en: 'Dad', es: 'Papá' }),
+    labels: Object.freeze({ en: 'DAD', es: 'PAPÁ' }),
+    portraitTexture: 'dad',
+    sheetTexture: 'dad-sheet',
+    portraitAsset: 'player-dad-portrait.png',
+    sheetAsset: 'player-dad-sheet-v1.webp',
+    nativeFacing: 1,
+    accent: 0xffc43d,
+    visualScale: 1.2,
+    stats: Object.freeze({ speed: 0.98, jump: 0.98, kick: 1.04, dash: 0.98, power: 1.08 }),
+  }),
+  Object.freeze({
+    id: 'mum',
+    name: 'Mum',
+    label: 'MUM',
+    names: Object.freeze({ en: 'Mum', es: 'Mamá' }),
+    labels: Object.freeze({ en: 'MUM', es: 'MAMÁ' }),
+    portraitTexture: 'mum',
+    sheetTexture: 'mum-sheet',
+    portraitAsset: 'player-mum-portrait.png',
+    sheetAsset: 'player-mum-sheet-v1.webp',
+    nativeFacing: 1,
+    accent: 0x6ca8ff,
+    visualScale: 1.2,
+    stats: Object.freeze({ speed: 1.02, jump: 1.04, kick: 1.02, dash: 1.04, power: 1.04 }),
+  }),
+  Object.freeze({
     id: 'juanjo',
     name: 'Uncle Juanjo',
     label: 'UNCLE JUANJO',
@@ -94,6 +124,10 @@ export const getCharacterName = (character, language = 'en') => (
 
 export const getCharacterLabel = (character, language = 'en') => (
   character?.labels?.[language] ?? character?.label ?? ''
+);
+
+export const getCharacterVisualScale = (character) => (
+  Math.min(1.2, Math.max(0.85, Number(character?.visualScale) || 1))
 );
 
 export const getCharacter = (id, fallbackId = DEFAULT_PLAYER_CHARACTER_ID) => (

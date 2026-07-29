@@ -1,6 +1,10 @@
 import Phaser from 'phaser';
 import { FIXED_STEP, GAME_HEIGHT, GAME_WIDTH } from '../../constants.js';
-import { getCharacter, getCharacterName } from '../../content/characters.js';
+import {
+  CHARACTERS,
+  getCharacter,
+  getCharacterName,
+} from '../../content/characters.js';
 import { t } from '../../i18n.js';
 import { getSceneStageLayout } from '../../layout/tabletStage.js';
 import { arcadeAudio } from '../../services/ArcadeAudio.js';
@@ -10,21 +14,40 @@ import { createButton } from '../../ui/createButton.js';
 import { getDiscHockeyCollisionMap } from './discHockeyCollisionMaps.js';
 import {
   DISC_HOCKEY_ARENA,
+  DISC_HOCKEY_CRAZY_AI,
+  DISC_HOCKEY_CRAZY_POWER,
+  DISC_HOCKEY_CREASE_RULE,
   DISC_HOCKEY_MATCH_SECONDS,
   DISC_HOCKEY_PUCK_SURFACE,
+  addDiscHockeyCrazyPower,
+  chooseDiscHockeyCrazyTargets,
   chooseDiscHockeyAiTarget,
   clampDiscPlayerPosition,
   closestPointOnCollisionContour,
+  createDiscHockeyCornerBankPuck,
+  createDiscHockeyPoweredPuck,
   detectDiscHockeyGoal,
+  evaluateDiscHockeyCrease,
   formatDiscHockeyTime,
   getDiscHockeyAiTuning,
+  getDiscHockeyCrazyRoleMotion,
+  getDiscHockeyEjectionVelocity,
   getDiscHockeyHumanMotion,
+  getDiscHockeyImpactVolume,
+  getDiscHockeyIntentionalHit,
   getDiscHockeyMatchResult,
+  getDiscHockeyPoweredKnockback,
+  isDiscHockeyDefensiveSave,
   moveDiscDirectlyTowardTarget,
   moveDiscTowardTarget,
+  releaseDiscHockeyControl,
+  resolveDiscHockeyGoalCharacterId,
   resolvePlayerPuckCollision,
   sanitizeDiscHockeyMode,
   sanitizeDiscHockeyTheme,
+  selectDiscHockeyCrazyRoster,
+  separateDiscHockeyPushers,
+  shouldEndDiscHockeyPoweredShot,
   stepPuck,
 } from './discHockeyRules.js';
 
@@ -67,15 +90,35 @@ const setButtonDepth = (button, depth) => {
   return button;
 };
 
-const playerSpawn = (side) => ({
-  x: side === 'left' ? 330 : 950,
-  y: DISC_HOCKEY_ARENA.centerY,
+const CRAZY_SPAWNS = Object.freeze([
+  Object.freeze({ x: 735, y: DISC_HOCKEY_ARENA.centerY }),
+  Object.freeze({ x: 865, y: 235 }),
+  Object.freeze({ x: 930, y: 520 }),
+  Object.freeze({ x: 1070, y: DISC_HOCKEY_ARENA.centerY }),
+]);
+
+const playerSpawn = (side, options = {}) => ({
+  x: options.x ?? (side === 'left' ? 330 : 950),
+  y: options.y ?? DISC_HOCKEY_ARENA.centerY,
   vx: 0,
   vy: 0,
   radius: DISC_HOCKEY_ARENA.playerRadius,
   side,
   target: null,
   pointerId: null,
+  creaseSeconds: 0,
+  penaltySeconds: 0,
+  ejectionSeconds: 0,
+  ejectionVx: 0,
+  ejectionVy: 0,
+  ejectionOriginY: DISC_HOCKEY_ARENA.centerY,
+  crazyRole: options.crazyRole ?? null,
+  cornerReleaseSeconds: 0,
+  cornerReleaseCorner: null,
+  knockbackSeconds: 0,
+  knockbackVx: 0,
+  knockbackVy: 0,
+  lastPoweredHitSerial: 0,
 });
 
 const puckSpawn = () => ({
@@ -84,6 +127,8 @@ const puckSpawn = () => ({
   vx: 0,
   vy: 0,
   radius: DISC_HOCKEY_ARENA.puckRadius,
+  powered: false,
+  powerSerial: 0,
 });
 
 export class DiscHockeyScene extends Phaser.Scene {
@@ -96,11 +141,21 @@ export class DiscHockeyScene extends Phaser.Scene {
     this.profile = playerProfileStore.get();
     this.language = this.profile.language;
     this.playMode = sanitizeDiscHockeyMode(data.mode ?? this.profile.discHockey.mode);
+    this.isCrazyMode = this.playMode === 'crazy';
     this.themeId = sanitizeDiscHockeyTheme(data.themeId ?? this.profile.discHockey.themeId);
     this.collisionMap = getDiscHockeyCollisionMap(this.themeId);
-    this.difficulty = this.profile.difficultyByGame.discHockey;
+    this.difficulty = this.isCrazyMode
+      ? 'hard'
+      : this.profile.difficultyByGame.discHockey;
     this.leftCharacter = getCharacter(this.profile.playerCharacterId);
-    this.rightCharacter = getCharacter(this.profile.opponentId);
+    this.rightCharacters = this.isCrazyMode
+      ? selectDiscHockeyCrazyRoster({
+        candidateIds: CHARACTERS.map(({ id }) => id),
+        playerId: this.leftCharacter.id,
+        randomSamples: Array.from({ length: 4 }, () => Phaser.Math.RND.frac()),
+      }).map((id) => getCharacter(id))
+      : [getCharacter(this.profile.opponentId)];
+    this.rightCharacter = this.rightCharacters[0];
     this.phase = 'loading';
     this.accumulator = 0;
     this.pointerOwners = new Map();
@@ -130,7 +185,13 @@ export class DiscHockeyScene extends Phaser.Scene {
     this.score = { left: 0, right: 0 };
     this.matchSecondsRemaining = DISC_HOCKEY_MATCH_SECONDS;
     this.leftPlayer = playerSpawn('left');
-    this.rightPlayer = playerSpawn('right');
+    this.rightPlayers = this.isCrazyMode
+      ? CRAZY_SPAWNS.map((position, index) => playerSpawn('right', {
+        ...position,
+        crazyRole: ['striker', 'interceptor', 'defender', 'goalkeeper'][index],
+      }))
+      : [playerSpawn('right')];
+    this.rightPlayer = this.rightPlayers[0];
     this.puck = puckSpawn();
     this.phase = 'countdown';
     this.countdown = 2.4;
@@ -140,8 +201,24 @@ export class DiscHockeyScene extends Phaser.Scene {
     this.suspended = false;
     this.pauseReason = null;
     this.collisionSoundCooldown = 0;
+    this.lastCollisionSound = null;
+    this.lastPuckTouch = null;
+    this.creaseViolations = { left: 0, right: 0 };
+    this.lastCreaseViolation = null;
+    this.creaseNoticeSeconds = 0;
+    this.rightTeamCreaseSeconds = 0;
     this.aiThinkTimer = 0;
     this.aiTarget = { x: this.rightPlayer.x, y: this.rightPlayer.y };
+    this.aiTargets = this.rightPlayers.map(({ x, y }) => ({ x, y }));
+    this.crazyPower = {
+      energy: 0,
+      armed: false,
+      contactCooldownSeconds: 0,
+      rechargeDelaySeconds: 0,
+      lastGain: null,
+      lastDrain: null,
+      shotSerial: 0,
+    };
     this.touchPromptSeconds = 5;
     this.matter.world.setGravity(0, 0);
     this.game.registry.get('platformActions')?.lockLandscape?.();
@@ -222,7 +299,10 @@ export class DiscHockeyScene extends Phaser.Scene {
 
   createPlayerVisuals() {
     this.leftVisual = this.createDiscVisual(this.leftPlayer, this.leftCharacter);
-    this.rightVisual = this.createDiscVisual(this.rightPlayer, this.rightCharacter);
+    this.rightVisuals = this.rightPlayers.map((player, index) => (
+      this.createDiscVisual(player, this.rightCharacters[index] ?? this.rightCharacter)
+    ));
+    this.rightVisual = this.rightVisuals[0];
   }
 
   createDiscVisual(player, character) {
@@ -250,7 +330,7 @@ export class DiscHockeyScene extends Phaser.Scene {
     )
       .setDisplaySize(displaySize, displaySize)
       .setDepth(3.3);
-    return { shadow, base, engraving };
+    return { shadow, base, engraving, displaySize };
   }
 
   createEngravingTexture(character, side) {
@@ -356,7 +436,11 @@ export class DiscHockeyScene extends Phaser.Scene {
       fontSize: '21px',
       color: scoreColor,
     }).setOrigin(0.5);
-    this.rightNameText = this.add.text(1020, 34, getCharacterName(this.rightCharacter, this.language).toUpperCase(), {
+    this.rightNameText = this.add.text(1020, 34, (
+      this.isCrazyMode
+        ? t(this.language, 'discHockey.crazySquad')
+        : getCharacterName(this.rightCharacter, this.language).toUpperCase()
+    ), {
       fontFamily: 'Arial Black, sans-serif',
       fontSize: '21px',
       color: scoreColor,
@@ -396,11 +480,54 @@ export class DiscHockeyScene extends Phaser.Scene {
       strokeThickness: 10,
       align: 'center',
     }).setOrigin(0.5).setDepth(20);
+    this.creaseWarningGraphics = this.add.graphics().setDepth(14);
+    this.creasePenaltyGraphics = this.add.graphics().setDepth(16);
+    const creaseWarningStyle = {
+      fontFamily: 'Arial Black, sans-serif',
+      fontSize: '18px',
+      color: '#fff4a6',
+      stroke: '#7c160f',
+      strokeThickness: 6,
+      align: 'center',
+    };
+    this.creaseWarningTexts = {
+      left: this.add.text(0, 0, '', creaseWarningStyle).setOrigin(0.5).setDepth(15).setVisible(false),
+      right: this.add.text(0, 0, '', creaseWarningStyle).setOrigin(0.5).setDepth(15).setVisible(false),
+    };
+    this.creaseNoticeText = this.add.text(
+      GAME_WIDTH / 2,
+      170,
+      '',
+      {
+        fontFamily: 'Arial Black, sans-serif',
+        fontSize: '34px',
+        color: '#ffcf55',
+        stroke: '#8b160f',
+        strokeThickness: 8,
+        align: 'center',
+      },
+    ).setOrigin(0.5).setDepth(21).setVisible(false);
+    this.crazyEffectsGraphics = this.add.graphics().setDepth(13);
+    this.crazyPowerHudGraphics = this.add.graphics().setDepth(25);
+    this.crazyPowerText = this.add.text(
+      GAME_WIDTH / 2,
+      662,
+      '',
+      {
+        fontFamily: 'Arial Black, sans-serif',
+        fontSize: '14px',
+        color: '#ffd4a1',
+        stroke: '#4a0f12',
+        strokeThickness: 5,
+      },
+    ).setOrigin(0.5).setDepth(26).setVisible(this.isCrazyMode);
     this.touchPrompt = this.add.text(GAME_WIDTH / 2, DISC_HOCKEY_ARENA.bottom - 18, t(
       this.language,
-      this.playMode === 'local'
-        ? 'discHockeySetup.controls.local'
-        : 'discHockeySetup.controls.computer',
+      this.isCrazyMode
+        ? 'discHockeySetup.controls.crazy'
+        : this.playMode === 'local'
+          ? 'discHockeySetup.controls.local'
+          : 'discHockeySetup.controls.computer',
     ), {
       fontFamily: 'Arial Rounded MT Bold, sans-serif',
       fontSize: '14px',
@@ -589,9 +716,12 @@ export class DiscHockeyScene extends Phaser.Scene {
   releasePointer(pointer) {
     const side = this.pointerOwners.get(pointer.id);
     if (!side) return;
-    const player = side === 'left' ? this.leftPlayer : this.rightPlayer;
-    player.pointerId = null;
-    player.target = null;
+    if (side === 'left') {
+      this.leftPlayer = releaseDiscHockeyControl(this.leftPlayer);
+    } else {
+      this.rightPlayer = releaseDiscHockeyControl(this.rightPlayer);
+      this.rightPlayers = [this.rightPlayer];
+    }
     this.pointerOwners.delete(pointer.id);
   }
 
@@ -624,6 +754,8 @@ export class DiscHockeyScene extends Phaser.Scene {
     this.simulationSeconds += dt;
     this.collisionSoundCooldown = Math.max(0, this.collisionSoundCooldown - dt);
     this.touchPromptSeconds = Math.max(0, this.touchPromptSeconds - dt);
+    this.creaseNoticeSeconds = Math.max(0, this.creaseNoticeSeconds - dt);
+    if (this.creaseNoticeSeconds <= 0) this.creaseNoticeText?.setVisible(false);
 
     if (this.phase === 'countdown') {
       this.countdown = Math.max(0, this.countdown - dt);
@@ -653,21 +785,32 @@ export class DiscHockeyScene extends Phaser.Scene {
     }
 
     if (this.phase !== 'playing') return;
+    this.updateCrazyPower(dt);
     this.stepPlayers(dt);
+    this.updateCreaseRule(dt);
+    const puckBeforeBoards = this.puck;
     this.puck = stepPuck({
       puck: this.puck,
       deltaSeconds: dt,
       collisionMap: this.collisionMap,
     });
-    [this.leftPlayer, this.rightPlayer].forEach((player) => {
-      const collision = resolvePlayerPuckCollision({ player, puck: this.puck });
-      if (!collision.collided) return;
-      this.puck = this.limitPuckSpeed(collision.puck);
-      if (this.collisionSoundCooldown <= 0) {
-        arcadeAudio.kick(false);
-        this.collisionSoundCooldown = 0.09;
+    if (this.puck.powered) {
+      if (shouldEndDiscHockeyPoweredShot({
+        before: puckBeforeBoards,
+        after: this.puck,
+      })) {
+        this.puck = { ...this.puck, powered: false };
+      } else {
+        const speed = Math.max(0.0001, Math.hypot(this.puck.vx, this.puck.vy));
+        const maintainedSpeed = Math.max(speed, DISC_HOCKEY_CRAZY_POWER.poweredPuckSpeed);
+        this.puck = {
+          ...this.puck,
+          vx: this.puck.vx / speed * maintainedSpeed,
+          vy: this.puck.vy / speed * maintainedSpeed,
+        };
       }
-    });
+    }
+    this.resolvePuckContacts();
     this.puck = this.limitPuckSpeed(this.puck);
     const signedSpeed = Math.sign(this.puck.vx || this.puck.vy)
       * Math.hypot(this.puck.vx, this.puck.vy);
@@ -688,11 +831,90 @@ export class DiscHockeyScene extends Phaser.Scene {
       left: this.keys.leftLeft,
       right: this.keys.leftRight,
     });
-    const leftTarget = this.leftPlayer.target ?? leftKeyboardTarget ?? {
-      x: this.leftPlayer.x,
-      y: this.leftPlayer.y,
-    };
-    this.leftPlayer = this.moveHumanPlayer(this.leftPlayer, leftTarget, dt);
+    const leftTarget = this.leftPlayer.target ?? leftKeyboardTarget;
+    this.leftPlayer = leftTarget
+      ? this.moveHumanPlayer(this.leftPlayer, leftTarget, dt)
+      : { ...this.leftPlayer, vx: 0, vy: 0 };
+
+    if (this.isCrazyMode) {
+      this.aiThinkTimer -= dt;
+      if (this.aiThinkTimer <= 0) {
+        const assignments = chooseDiscHockeyCrazyTargets({
+          players: this.rightPlayers,
+          puck: this.puck,
+          human: this.leftPlayer,
+          collisionMap: this.collisionMap,
+        });
+        this.rightPlayers = assignments.map(({
+          player,
+          role,
+          target,
+          cornerRecovery,
+          cornerPhase,
+        }) => ({
+          ...player,
+          crazyRole: role,
+          cornerRecovery,
+          cornerPhase,
+          aiTarget: target,
+        }));
+        this.aiTargets = assignments.map(({
+          role,
+          target,
+          cornerRecovery,
+          cornerPhase,
+        }) => ({
+          role,
+          cornerRecovery,
+          cornerPhase,
+          ...target,
+        }));
+        this.aiThinkTimer = DISC_HOCKEY_CRAZY_AI.reactionSeconds;
+      }
+      this.rightPlayers = this.rightPlayers.map((player) => {
+        const activePlayer = {
+          ...player,
+          cornerReleaseSeconds: Math.max(
+            0,
+            (Number(player.cornerReleaseSeconds) || 0) - dt,
+          ),
+        };
+        if (player.knockbackSeconds > 0) {
+          const position = clampDiscPlayerPosition({
+            side: 'right',
+            x: player.x + player.knockbackVx * dt,
+            y: player.y + player.knockbackVy * dt,
+            radius: player.radius,
+            collisionMap: this.collisionMap,
+          });
+          return {
+            ...activePlayer,
+            ...position,
+            vx: player.knockbackVx,
+            vy: player.knockbackVy,
+            knockbackSeconds: Math.max(0, player.knockbackSeconds - dt),
+          };
+        }
+        if (player.penaltySeconds > 0) return { ...activePlayer, vx: 0, vy: 0 };
+        const motion = getDiscHockeyCrazyRoleMotion(player.crazyRole);
+        return moveDiscTowardTarget({
+          disc: activePlayer,
+          target: player.aiTarget ?? { x: player.x, y: player.y },
+          deltaSeconds: dt,
+          maxSpeed: motion.maxSpeed,
+          response: motion.response,
+          side: 'right',
+          collisionMap: this.collisionMap,
+        });
+      });
+      this.rightPlayers = separateDiscHockeyPushers({
+        players: this.rightPlayers,
+        collisionMap: this.collisionMap,
+      });
+      this.rightPlayer = this.rightPlayers[0];
+      this.aiTarget = this.aiTargets[0] ?? { x: this.rightPlayer.x, y: this.rightPlayer.y };
+      return;
+    }
 
     let rightTarget;
     if (this.playMode === 'local') {
@@ -702,13 +924,16 @@ export class DiscHockeyScene extends Phaser.Scene {
         left: this.keys.rightLeft,
         right: this.keys.rightRight,
       });
-      rightTarget = this.rightPlayer.target ?? keyboard ?? {
-        x: this.rightPlayer.x,
-        y: this.rightPlayer.y,
-      };
-      this.rightPlayer = this.moveHumanPlayer(this.rightPlayer, rightTarget, dt);
+      rightTarget = this.rightPlayer.target ?? keyboard;
+      this.rightPlayer = rightTarget
+        ? this.moveHumanPlayer(this.rightPlayer, rightTarget, dt)
+        : { ...this.rightPlayer, vx: 0, vy: 0 };
       return;
     } else {
+      if (this.rightPlayer.penaltySeconds > 0) {
+        this.rightPlayer = { ...this.rightPlayer, vx: 0, vy: 0 };
+        return;
+      }
       const tuning = getDiscHockeyAiTuning(this.difficulty);
       this.aiThinkTimer -= dt;
       if (this.aiThinkTimer <= 0) {
@@ -732,7 +957,177 @@ export class DiscHockeyScene extends Phaser.Scene {
     }
   }
 
+  resolvePuckContacts() {
+    [this.leftPlayer, ...this.rightPlayers].forEach((player, playerIndex) => {
+      if (player.ejectionSeconds > 0 || player.penaltySeconds > 0) return;
+      const puckBeforeContact = this.puck;
+      const collision = resolvePlayerPuckCollision({
+        player,
+        puck: puckBeforeContact,
+      });
+      if (!collision.collided) return;
+
+      if (this.isCrazyMode && puckBeforeContact.powered && player.side === 'right') {
+        if (player.lastPoweredHitSerial === puckBeforeContact.powerSerial) return;
+        const knockback = getDiscHockeyPoweredKnockback({
+          puck: puckBeforeContact,
+          player,
+        });
+        const rightIndex = playerIndex - 1;
+        this.rightPlayers[rightIndex] = {
+          ...player,
+          knockbackSeconds: knockback.seconds,
+          knockbackVx: knockback.vx,
+          knockbackVy: knockback.vy,
+          lastPoweredHitSerial: puckBeforeContact.powerSerial,
+        };
+        this.rightPlayer = this.rightPlayers[0];
+        this.game.events.emit('platform:haptic', 'medium');
+        return;
+      }
+
+      const intentionalHit = getDiscHockeyIntentionalHit({
+        player,
+        puck: puckBeforeContact,
+      });
+      this.puck = this.limitPuckSpeed(collision.puck);
+      if (
+        this.isCrazyMode
+        && player.side === 'right'
+        && player.crazyRole === 'striker'
+        && player.cornerRecovery
+      ) {
+        const rightIndex = playerIndex - 1;
+        this.puck = this.limitPuckSpeed(createDiscHockeyCornerBankPuck({
+          puck: this.puck,
+          corner: player.cornerRecovery,
+        }));
+        this.rightPlayers[rightIndex] = {
+          ...this.rightPlayers[rightIndex],
+          cornerReleaseSeconds: DISC_HOCKEY_CRAZY_AI.cornerRelease.retreatSeconds,
+          cornerReleaseCorner: player.cornerRecovery,
+        };
+      }
+      this.lastPuckTouch = {
+        side: player.side,
+        characterId: player.side === 'left'
+          ? this.leftCharacter.id
+          : this.rightCharacters[playerIndex - 1]?.id ?? null,
+      };
+      let poweredActivation = false;
+      if (this.isCrazyMode && player.side === 'left' && intentionalHit.intentional) {
+        if (this.crazyPower.armed) {
+          const shotSerial = this.crazyPower.shotSerial + 1;
+          this.puck = createDiscHockeyPoweredPuck({
+            puck: collision.puck,
+            serial: shotSerial,
+            fallbackDirection: 1,
+          });
+          this.crazyPower = {
+            ...this.crazyPower,
+            energy: 0,
+            armed: false,
+            contactCooldownSeconds: DISC_HOCKEY_CRAZY_POWER.contactCooldownSeconds,
+            rechargeDelaySeconds: DISC_HOCKEY_CRAZY_POWER.rechargeDelaySeconds,
+            lastDrain: 'powered-shot',
+            shotSerial,
+          };
+          arcadeAudio.poweredShot();
+          this.game.events.emit('platform:haptic', 'heavy');
+          poweredActivation = true;
+        } else if (this.crazyPower.contactCooldownSeconds <= 0) {
+          const defensiveSave = isDiscHockeyDefensiveSave({
+            player,
+            puck: puckBeforeContact,
+            intentionalHit,
+          });
+          this.gainCrazyPower(
+            defensiveSave
+              ? DISC_HOCKEY_CRAZY_POWER.defensiveSaveGain
+              : DISC_HOCKEY_CRAZY_POWER.intentionalHitGain,
+            defensiveSave ? 'defensive-save' : 'intentional-hit',
+          );
+        }
+      }
+      if (!poweredActivation && this.collisionSoundCooldown <= 0) {
+        const volumeScale = getDiscHockeyImpactVolume(collision.impactSpeed);
+        arcadeAudio.hockeyShot(this.themeId, volumeScale);
+        this.lastCollisionSound = {
+          impactSpeed: round(collision.impactSpeed, 2),
+          volumeScale: round(volumeScale, 3),
+        };
+        this.collisionSoundCooldown = 0.28;
+      }
+    });
+  }
+
+  updateCrazyPower(dt) {
+    if (!this.isCrazyMode) return;
+    this.crazyPower.contactCooldownSeconds = Math.max(
+      0,
+      this.crazyPower.contactCooldownSeconds - dt,
+    );
+    this.crazyPower.rechargeDelaySeconds = Math.max(
+      0,
+      this.crazyPower.rechargeDelaySeconds - dt,
+    );
+    if (
+      this.crazyPower.armed
+      || this.crazyPower.rechargeDelaySeconds > 0
+      || this.leftPlayer.penaltySeconds > 0
+    ) return;
+    const energy = addDiscHockeyCrazyPower({
+      energy: this.crazyPower.energy,
+      deltaSeconds: dt,
+    });
+    this.setCrazyPowerEnergy(energy, 'passive');
+  }
+
+  gainCrazyPower(gain, source) {
+    if (!this.isCrazyMode || this.crazyPower.armed) return;
+    const energy = addDiscHockeyCrazyPower({
+      energy: this.crazyPower.energy,
+      gain,
+    });
+    this.crazyPower.lastGain = {
+      source,
+      amount: gain,
+      atSeconds: round(this.simulationSeconds, 2),
+    };
+    this.setCrazyPowerEnergy(energy, source);
+  }
+
+  setCrazyPowerEnergy(energy, source) {
+    if (!this.isCrazyMode) return;
+    const wasArmed = this.crazyPower.armed;
+    const nextEnergy = Phaser.Math.Clamp(
+      energy,
+      0,
+      DISC_HOCKEY_CRAZY_POWER.maximum,
+    );
+    this.crazyPower.energy = nextEnergy;
+    this.crazyPower.armed = nextEnergy >= DISC_HOCKEY_CRAZY_POWER.maximum;
+    if (!wasArmed && this.crazyPower.armed) {
+      arcadeAudio.powerUp();
+      this.game.events.emit('platform:haptic', 'success');
+    }
+  }
+
+  drainCrazyPower(reason) {
+    if (!this.isCrazyMode) return;
+    this.crazyPower = {
+      ...this.crazyPower,
+      energy: 0,
+      armed: false,
+      rechargeDelaySeconds: reason === 'crease-violation'
+        ? DISC_HOCKEY_CREASE_RULE.penaltySeconds
+        : DISC_HOCKEY_CRAZY_POWER.rechargeDelaySeconds,
+      lastDrain: reason,
+    };
+  }
+
   moveHumanPlayer(player, target, dt) {
+    if (player.penaltySeconds > 0) return { ...player, vx: 0, vy: 0 };
     const motion = getDiscHockeyHumanMotion(player.pointerId !== null);
     if (motion.direct) {
       return moveDiscDirectlyTowardTarget({
@@ -757,34 +1152,192 @@ export class DiscHockeyScene extends Phaser.Scene {
 
   limitPuckSpeed(puck) {
     const speed = Math.hypot(puck.vx, puck.vy);
-    if (speed <= 920) return puck;
-    const scale = 920 / speed;
+    const maximumSpeed = puck.powered
+      ? DISC_HOCKEY_CRAZY_POWER.poweredPuckMaximumSpeed
+      : 920;
+    if (speed <= maximumSpeed) return puck;
+    const scale = maximumSpeed / speed;
     return { ...puck, vx: puck.vx * scale, vy: puck.vy * scale };
+  }
+
+  updateCreaseRule(dt) {
+    this.leftPlayer = this.updateSingleCreasePlayer(this.leftPlayer, 'left', dt);
+
+    if (!this.isCrazyMode) {
+      this.rightPlayer = this.updateSingleCreasePlayer(this.rightPlayer, 'right', dt);
+      this.rightPlayers = [this.rightPlayer];
+      return;
+    }
+
+    this.rightPlayers = this.rightPlayers.map((player) => (
+      player.penaltySeconds > 0
+        ? this.advanceCreasePenalty(player, 'right', dt)
+        : player
+    ));
+    const occupancy = this.rightPlayers.map((player) => ({
+      player,
+      rule: evaluateDiscHockeyCrease({
+        player,
+        puck: this.puck,
+        collisionMap: this.collisionMap,
+      }),
+    }));
+    const campers = occupancy.filter(({ player, rule }) => (
+      player.penaltySeconds <= 0 && rule.inCrease
+    ));
+    const puckThreatening = occupancy.some(({ rule }) => rule.puckThreatening);
+    this.rightTeamCreaseSeconds = campers.length > 0 && !puckThreatening
+      ? this.rightTeamCreaseSeconds + dt
+      : 0;
+    this.rightPlayers = this.rightPlayers.map((player) => ({
+      ...player,
+      creaseSeconds: campers.some(({ player: camper }) => camper === player)
+        ? this.rightTeamCreaseSeconds
+        : 0,
+    }));
+    if (this.rightTeamCreaseSeconds >= DISC_HOCKEY_CREASE_RULE.violationSeconds) {
+      const camperIndices = occupancy
+        .map(({ player }, index) => (
+          campers.some(({ player: camper }) => camper === player) ? index : -1
+        ))
+        .filter((index) => index >= 0);
+      const offenderIndex = camperIndices.reduce((deepestIndex, index) => (
+        this.rightPlayers[index].x > this.rightPlayers[deepestIndex].x
+          ? index
+          : deepestIndex
+      ), camperIndices[0]);
+      this.rightPlayers[offenderIndex] = this.penalizeCreasePlayer(
+        this.rightPlayers[offenderIndex],
+        'right',
+      );
+      this.rightTeamCreaseSeconds = 0;
+      this.rightPlayers = this.rightPlayers.map((player) => ({
+        ...player,
+        creaseSeconds: 0,
+      }));
+    }
+    this.rightPlayer = this.rightPlayers[0];
+  }
+
+  updateSingleCreasePlayer(player, side, dt) {
+    if (player.penaltySeconds > 0) {
+      return this.advanceCreasePenalty(player, side, dt);
+    }
+    const rule = evaluateDiscHockeyCrease({
+      player,
+      puck: this.puck,
+      collisionMap: this.collisionMap,
+      previousSeconds: player.creaseSeconds,
+      deltaSeconds: dt,
+    });
+    const updated = { ...player, creaseSeconds: rule.seconds };
+    return rule.violated
+      ? this.penalizeCreasePlayer(updated, side)
+      : updated;
+  }
+
+  advanceCreasePenalty(player, side, dt) {
+    const ejectionSeconds = Math.max(0, player.ejectionSeconds - dt);
+    const isPushing = player.ejectionSeconds > (
+      DISC_HOCKEY_CREASE_RULE.ejectionSeconds
+        - DISC_HOCKEY_CREASE_RULE.ejectionPushSeconds
+    );
+    const position = isPushing
+      ? clampDiscPlayerPosition({
+        side,
+        x: player.x + player.ejectionVx * dt,
+        y: player.y + player.ejectionVy * dt,
+        radius: player.radius,
+        collisionMap: this.collisionMap,
+      })
+      : { x: player.x, y: player.y };
+    return {
+      ...player,
+      ...position,
+      vx: isPushing ? player.ejectionVx : 0,
+      vy: isPushing ? player.ejectionVy : 0,
+      creaseSeconds: 0,
+      penaltySeconds: Math.max(0, player.penaltySeconds - dt),
+      ejectionSeconds,
+    };
+  }
+
+  penalizeCreasePlayer(player, side) {
+    const ejection = getDiscHockeyEjectionVelocity({
+      side,
+      randomSample: Phaser.Math.RND.frac(),
+    });
+    this.creaseViolations[side] += 1;
+    if (side === 'left') this.drainCrazyPower('crease-violation');
+    this.lastCreaseViolation = {
+      side,
+      atSeconds: round(this.simulationSeconds, 2),
+      penaltySeconds: DISC_HOCKEY_CREASE_RULE.penaltySeconds,
+      ejectionAngleDegrees: round(ejection.angleDegrees, 2),
+      energyEmptied: side === 'left' && this.isCrazyMode,
+    };
+    this.creaseNoticeSeconds = 1.15;
+    this.creaseNoticeText
+      ?.setText(t(this.language, 'discHockey.creaseViolation'))
+      .setVisible(true);
+    this.game.events.emit('platform:haptic', 'heavy');
+    arcadeAudio.impact();
+    return {
+      ...player,
+      vx: 0,
+      vy: 0,
+      creaseSeconds: 0,
+      penaltySeconds: DISC_HOCKEY_CREASE_RULE.penaltySeconds,
+      ejectionSeconds: DISC_HOCKEY_CREASE_RULE.ejectionSeconds,
+      ejectionVx: ejection.vx,
+      ejectionVy: ejection.vy,
+      ejectionOriginY: player.y,
+    };
   }
 
   scoreGoal(side) {
     if (this.phase !== 'playing') return;
+    if (this.puck.powered) this.puck = { ...this.puck, powered: false };
+    if (this.isCrazyMode && side === 'left' && this.crazyPower.armed) {
+      this.drainCrazyPower('player-goal');
+    }
     this.score = { ...this.score, [side]: this.score[side] + 1 };
     this.phase = 'goal';
     this.goalPause = 1.15;
     this.announcementText
       .setText(t(this.language, 'discHockey.goal'))
       .setColor(this.themeId === 'neon' ? '#ffcf35' : '#c52920');
-    arcadeAudio.goal();
+    arcadeAudio.goal(resolveDiscHockeyGoalCharacterId({
+      scoringSide: side,
+      leftCharacterId: this.leftCharacter.id,
+      rightCharacterId: this.rightCharacter.id,
+      isCrazyMode: this.isCrazyMode,
+      lastPuckTouch: this.lastPuckTouch,
+    }));
     this.game.events.emit('platform:haptic', 'success');
     this.updateHud();
   }
 
   resetRound() {
     const left = playerSpawn('left');
-    const right = playerSpawn('right');
     left.pointerId = this.leftPlayer?.pointerId ?? null;
-    right.pointerId = this.rightPlayer?.pointerId ?? null;
     this.leftPlayer = left;
-    this.rightPlayer = right;
+    this.rightPlayers = this.isCrazyMode
+      ? CRAZY_SPAWNS.map((position, index) => playerSpawn('right', {
+        ...position,
+        crazyRole: ['striker', 'interceptor', 'defender', 'goalkeeper'][index],
+      }))
+      : [playerSpawn('right')];
+    if (!this.isCrazyMode) {
+      this.rightPlayers[0].pointerId = this.rightPlayer?.pointerId ?? null;
+    }
+    this.rightPlayer = this.rightPlayers[0];
     this.puck = puckSpawn();
-    this.aiTarget = { x: right.x, y: right.y };
+    this.lastPuckTouch = null;
+    this.aiTarget = { x: this.rightPlayer.x, y: this.rightPlayer.y };
+    this.aiTargets = this.rightPlayers.map(({ x, y, crazyRole: role }) => ({ x, y, role }));
     this.aiThinkTimer = 0;
+    this.rightTeamCreaseSeconds = 0;
     this.pendingWinner = null;
     this.announcementText?.setColor(this.themeId === 'neon' ? '#ffcf35' : '#173d5b');
     this.updateVisuals();
@@ -792,7 +1345,21 @@ export class DiscHockeyScene extends Phaser.Scene {
 
   restartMatch() {
     this.score = { left: 0, right: 0 };
+    this.creaseViolations = { left: 0, right: 0 };
+    this.lastCreaseViolation = null;
+    this.creaseNoticeSeconds = 0;
+    this.rightTeamCreaseSeconds = 0;
+    this.creaseNoticeText?.setVisible(false);
     this.matchSecondsRemaining = DISC_HOCKEY_MATCH_SECONDS;
+    this.crazyPower = {
+      energy: 0,
+      armed: false,
+      contactCooldownSeconds: 0,
+      rechargeDelaySeconds: 0,
+      lastGain: null,
+      lastDrain: null,
+      shotSerial: 0,
+    };
     this.hidePause();
     this.hideResult();
     this.isPaused = false;
@@ -844,10 +1411,12 @@ export class DiscHockeyScene extends Phaser.Scene {
     const resultTitle = winner === 'draw'
       ? t(this.language, 'discHockey.draw')
       : t(this.language, 'discHockey.wins', {
-        name: getCharacterName(
-          winner === 'left' ? this.leftCharacter : this.rightCharacter,
-          this.language,
-        ).toUpperCase(),
+        name: winner === 'right' && this.isCrazyMode
+          ? t(this.language, 'discHockey.crazySquad')
+          : getCharacterName(
+            winner === 'left' ? this.leftCharacter : this.rightCharacter,
+            this.language,
+          ).toUpperCase(),
       });
     this.resultTitle
       .setText(resultTitle)
@@ -876,12 +1445,11 @@ export class DiscHockeyScene extends Phaser.Scene {
   releaseAllPointers() {
     this.pointerOwners.clear();
     if (this.leftPlayer) {
-      this.leftPlayer.pointerId = null;
-      this.leftPlayer.target = null;
+      this.leftPlayer = releaseDiscHockeyControl(this.leftPlayer);
     }
     if (this.rightPlayer) {
-      this.rightPlayer.pointerId = null;
-      this.rightPlayer.target = null;
+      this.rightPlayer = releaseDiscHockeyControl(this.rightPlayer);
+      if (!this.isCrazyMode) this.rightPlayers = [this.rightPlayer];
     }
   }
 
@@ -908,16 +1476,227 @@ export class DiscHockeyScene extends Phaser.Scene {
   updateVisuals() {
     if (!this.leftVisual || !this.rightVisual || !this.puckBody) return;
     [
-      [this.leftPlayer, this.leftVisual],
-      [this.rightPlayer, this.rightVisual],
-    ].forEach(([player, visual]) => {
+      [this.leftPlayer, this.leftVisual, true],
+      ...this.rightPlayers.map((player, index) => [
+        player,
+        this.rightVisuals[index],
+        false,
+      ]),
+    ].forEach(([player, visual, isHuman]) => {
+      if (!visual) return;
       visual.shadow.setPosition(player.x + 2, player.y + 4);
       visual.base.setPosition(player.x, player.y);
       visual.engraving.setPosition(player.x, player.y);
+      const frozen = player.penaltySeconds > 0 && player.ejectionSeconds <= 0;
+      const penaltyAlpha = frozen ? 0.38 : 1;
+      const armed = this.isCrazyMode && isHuman && this.crazyPower.armed && !frozen;
+      const armedScale = armed
+        ? 1 + Math.sin(this.simulationSeconds * 9) * 0.025
+        : 1;
+      visual.shadow.setAlpha(penaltyAlpha);
+      visual.base.setAlpha(penaltyAlpha);
+      visual.engraving.setAlpha(penaltyAlpha);
+      visual.base.setDisplaySize(
+        visual.displaySize * armedScale,
+        visual.displaySize * armedScale,
+      );
+      visual.engraving.setDisplaySize(
+        visual.displaySize * armedScale,
+        visual.displaySize * armedScale,
+      );
+      if (frozen) {
+        const tint = this.themeId === 'neon' ? 0xb9efff : 0xd8f5ff;
+        visual.base.setTint(tint);
+        visual.engraving.setTint(tint);
+      } else if (armed) {
+        visual.base.setTint(0xff7059);
+        visual.engraving.setTint(0xffb09a);
+      } else {
+        visual.base.clearTint();
+        visual.engraving.clearTint();
+      }
     });
     this.puckBody
       .setPosition(this.puck.x, this.puck.y)
       .setRotation(this.puckRotation);
+    if (this.puck.powered) this.puckBody.setTint(0xff3d24);
+    else this.puckBody.clearTint();
+    this.renderCreaseWarnings();
+    this.renderCreasePenaltyHardware();
+    this.renderCrazyPowerEffects();
+  }
+
+  renderCreaseWarnings() {
+    if (!this.creaseWarningGraphics || !this.creaseWarningTexts) return;
+    this.creaseWarningGraphics.clear();
+    Object.values(this.creaseWarningTexts).forEach((text) => text.setVisible(false));
+    if (this.phase !== 'playing' || this.isPaused) return;
+    ['left', 'right'].forEach((side) => {
+      const candidates = side === 'left' ? [this.leftPlayer] : this.rightPlayers;
+      const player = candidates.reduce((mostUrgent, candidate) => (
+        candidate.creaseSeconds > (mostUrgent?.creaseSeconds ?? 0)
+          ? candidate
+          : mostUrgent
+      ), null);
+      if (!player) return;
+      if (player.creaseSeconds < DISC_HOCKEY_CREASE_RULE.warningSeconds) return;
+      const progress = Phaser.Math.Clamp(
+        (player.creaseSeconds - DISC_HOCKEY_CREASE_RULE.warningSeconds)
+          / (DISC_HOCKEY_CREASE_RULE.violationSeconds - DISC_HOCKEY_CREASE_RULE.warningSeconds),
+        0,
+        1,
+      );
+      const color = this.themeId === 'neon' ? 0xff4b2f : 0xd62f28;
+      const ringRadius = player.radius + 10;
+      this.creaseWarningGraphics
+        .lineStyle(3, color, 0.28)
+        .strokeCircle(player.x, player.y, ringRadius)
+        .lineStyle(7, color, 0.96)
+        .beginPath()
+        .arc(
+          player.x,
+          player.y,
+          ringRadius,
+          -Math.PI / 2,
+          -Math.PI / 2 + Math.PI * 2 * progress,
+          false,
+        )
+        .strokePath();
+      const remaining = Math.max(
+        1,
+        Math.ceil(DISC_HOCKEY_CREASE_RULE.violationSeconds - player.creaseSeconds),
+      );
+      this.creaseWarningTexts[side]
+        .setText(`${t(this.language, 'discHockey.creaseMove')}  ${remaining}`)
+        .setPosition(player.x, player.y - player.radius - 31)
+        .setVisible(true);
+    });
+  }
+
+  renderCreasePenaltyHardware() {
+    if (!this.creasePenaltyGraphics) return;
+    const graphics = this.creasePenaltyGraphics;
+    graphics.clear();
+    if (this.phase !== 'playing' || this.isPaused) return;
+    [this.leftPlayer, ...this.rightPlayers].forEach((player) => {
+      if (player.ejectionSeconds > 0) {
+        this.drawGoalPiston(graphics, player);
+      }
+    });
+  }
+
+  drawGoalPiston(graphics, player) {
+    const side = player.side;
+    const goalLine = side === 'left'
+      ? this.collisionMap.goalLineLeft
+      : this.collisionMap.goalLineRight;
+    const originX = goalLine + (side === 'left' ? -50 : 50);
+    const originY = player.ejectionOriginY;
+    const progress = Phaser.Math.Clamp(
+      1 - player.ejectionSeconds / DISC_HOCKEY_CREASE_RULE.ejectionSeconds,
+      0,
+      1,
+    );
+    const pushRatio = DISC_HOCKEY_CREASE_RULE.ejectionPushSeconds
+      / DISC_HOCKEY_CREASE_RULE.ejectionSeconds;
+    const extension = progress <= pushRatio
+      ? Phaser.Math.Easing.Cubic.Out(progress / pushRatio)
+      : 1 - Phaser.Math.Easing.Cubic.In((progress - pushRatio) / (1 - pushRatio));
+    const inwardDirection = side === 'left' ? 1 : -1;
+    const contactX = player.x - inwardDirection * (player.radius + 7);
+    const contactY = player.y;
+    const headX = Phaser.Math.Linear(originX, contactX, extension);
+    const headY = Phaser.Math.Linear(originY, contactY, extension);
+
+    graphics
+      .fillStyle(0x202a30, 1)
+      .fillCircle(originX, originY, 23)
+      .lineStyle(4, 0xc7d7de, 0.95)
+      .strokeCircle(originX, originY, 20)
+      .fillStyle(0x73828a, 1)
+      .fillCircle(originX, originY, 13)
+      .fillStyle(0x172128, 1)
+      .fillCircle(originX, originY, 6);
+
+    if (extension <= 0.015) return;
+    graphics
+      .lineStyle(28, 0x1b2429, 1)
+      .lineBetween(originX, originY, headX, headY)
+      .lineStyle(20, 0x8b9ba3, 1)
+      .lineBetween(originX, originY, headX, headY)
+      .lineStyle(8, 0xdce9ee, 0.92)
+      .lineBetween(originX, originY - 2, headX, headY - 2);
+
+    [0.34, 0.67].forEach((amount) => {
+      const x = Phaser.Math.Linear(originX, headX, amount);
+      const y = Phaser.Math.Linear(originY, headY, amount);
+      graphics
+        .fillStyle(0x263239, 1)
+        .fillCircle(x, y, 12)
+        .lineStyle(3, 0xb8c8cf, 0.9)
+        .strokeCircle(x, y, 9);
+    });
+    graphics
+      .fillStyle(0x202a30, 1)
+      .fillCircle(headX, headY, 22)
+      .lineStyle(5, 0xe2edf1, 1)
+      .strokeCircle(headX, headY, 17)
+      .fillStyle(0x77878f, 1)
+      .fillCircle(headX, headY, 12);
+  }
+
+  renderCrazyPowerEffects() {
+    if (!this.crazyEffectsGraphics) return;
+    const graphics = this.crazyEffectsGraphics;
+    graphics.clear();
+    if (!this.isCrazyMode || this.isPaused || this.phase === 'result') return;
+    const striker = this.rightPlayers.find(({ crazyRole }) => crazyRole === 'striker');
+    if (striker) {
+      const markerY = striker.y - striker.radius - 11;
+      graphics
+        .lineStyle(5, 0x4a1110, 0.9)
+        .lineBetween(striker.x - 11, markerY - 9, striker.x, markerY)
+        .lineBetween(striker.x, markerY, striker.x + 11, markerY - 9)
+        .lineStyle(3, 0xff6a2b, 1)
+        .lineBetween(striker.x - 10, markerY - 11, striker.x, markerY - 2)
+        .lineBetween(striker.x, markerY - 2, striker.x + 10, markerY - 11);
+    }
+    if (this.crazyPower.armed) {
+      const pulse = 0.58 + Math.sin(this.simulationSeconds * 10) * 0.22;
+      graphics
+        .lineStyle(12, 0xff2f25, 0.12 + pulse * 0.12)
+        .strokeCircle(this.leftPlayer.x, this.leftPlayer.y, this.leftPlayer.radius + 14)
+        .lineStyle(5, 0xff7845, 0.74 + pulse * 0.2)
+        .strokeCircle(this.leftPlayer.x, this.leftPlayer.y, this.leftPlayer.radius + 9)
+        .lineStyle(2, 0xffe0a3, 0.9)
+        .strokeCircle(this.leftPlayer.x, this.leftPlayer.y, this.leftPlayer.radius + 4);
+    }
+    if (this.puck.powered) {
+      const speed = Math.max(1, Math.hypot(this.puck.vx, this.puck.vy));
+      const directionX = this.puck.vx / speed;
+      const directionY = this.puck.vy / speed;
+      graphics
+        .lineStyle(18, 0xff241d, 0.18)
+        .lineBetween(
+          this.puck.x,
+          this.puck.y,
+          this.puck.x - directionX * 145,
+          this.puck.y - directionY * 145,
+        )
+        .lineStyle(8, 0xff7a2e, 0.62)
+        .lineBetween(
+          this.puck.x,
+          this.puck.y,
+          this.puck.x - directionX * 105,
+          this.puck.y - directionY * 105,
+        )
+        .fillStyle(0xffd35a, 0.92)
+        .fillCircle(
+          this.puck.x - directionX * 38,
+          this.puck.y - directionY * 38,
+          7,
+        );
+    }
   }
 
   updateHud() {
@@ -928,6 +1707,46 @@ export class DiscHockeyScene extends Phaser.Scene {
       && !this.isPaused
       && this.phase !== 'result',
     );
+    this.renderCrazyPowerHud();
+  }
+
+  renderCrazyPowerHud() {
+    if (!this.crazyPowerHudGraphics || !this.crazyPowerText) return;
+    const graphics = this.crazyPowerHudGraphics;
+    graphics.clear();
+    this.crazyPowerText.setVisible(this.isCrazyMode);
+    if (!this.isCrazyMode) return;
+    const ratio = Phaser.Math.Clamp(
+      this.crazyPower.energy / DISC_HOCKEY_CRAZY_POWER.maximum,
+      0,
+      1,
+    );
+    const pulse = this.crazyPower.armed
+      ? 0.82 + Math.sin(this.simulationSeconds * 9) * 0.18
+      : 0.72;
+    const x = GAME_WIDTH / 2 - 220;
+    const y = 678;
+    graphics
+      .fillStyle(0x10090b, 0.9)
+      .fillRoundedRect(x - 8, y - 8, 456, 34, 11)
+      .lineStyle(3, this.crazyPower.armed ? 0xffd05b : 0x8d3029, pulse)
+      .strokeRoundedRect(x - 8, y - 8, 456, 34, 11)
+      .fillStyle(0x321419, 0.96)
+      .fillRoundedRect(x, y, 440, 18, 7);
+    if (ratio > 0) {
+      graphics
+        .fillStyle(this.crazyPower.armed ? 0xff5a2d : 0xd9272f, 0.96)
+        .fillRoundedRect(x, y, Math.max(12, 440 * ratio), 18, 7)
+        .fillStyle(0xffbd42, this.crazyPower.armed ? 0.9 : 0.58)
+        .fillRoundedRect(x + 3, y + 3, Math.max(6, 434 * ratio), 5, 3);
+    }
+    this.crazyPowerText
+      .setText(
+        this.crazyPower.armed
+          ? t(this.language, 'discHockey.superShot')
+          : `${t(this.language, 'discHockey.crazyPower')}  ${Math.floor(this.crazyPower.energy)}%`,
+      )
+      .setColor(this.crazyPower.armed ? '#fff0a8' : '#ffd4a1');
   }
 
   installDebugHelpers() {
@@ -950,6 +1769,14 @@ export class DiscHockeyScene extends Phaser.Scene {
       },
       setTime: (seconds = DISC_HOCKEY_MATCH_SECONDS) => {
         this.matchSecondsRemaining = Math.max(0, Number(seconds) || 0);
+        this.updateHud();
+      },
+      setCrazyPower: (energy = 0) => {
+        this.setCrazyPowerEnergy(
+          Phaser.Math.Clamp(Number(energy) || 0, 0, DISC_HOCKEY_CRAZY_POWER.maximum),
+          'debug',
+        );
+        this.updateVisuals();
         this.updateHud();
       },
       finishMatch: () => this.finishMatch(),
@@ -1000,26 +1827,50 @@ export class DiscHockeyScene extends Phaser.Scene {
       y,
       collisionMap: this.collisionMap,
     }).distance);
-    const playerState = (player, character, controller) => ({
-      id: character.id,
-      name: getCharacterName(character, this.language),
-      controller,
-      x: round(player.x),
-      y: round(player.y),
-      vx: round(player.vx, 2),
-      vy: round(player.vy, 2),
-      radius: player.radius,
-      pointerId: player.pointerId,
-      target: player.target ? {
-        x: round(player.target.x),
-        y: round(player.target.y),
-        wallClearance: wallDistance(player.target),
-      } : null,
-      wallClearance: wallDistance(player),
-      legalHalf: player.side === 'left'
-        ? { left: this.collisionMap.bounds.left, right: DISC_HOCKEY_ARENA.centerX }
-        : { left: DISC_HOCKEY_ARENA.centerX, right: this.collisionMap.bounds.right },
-    });
+    const playerState = (player, character, controller, visual) => {
+      const crease = evaluateDiscHockeyCrease({
+        player,
+        puck: this.puck,
+        collisionMap: this.collisionMap,
+        previousSeconds: player.creaseSeconds,
+      });
+      return {
+        id: character.id,
+        name: getCharacterName(character, this.language),
+        controller,
+        x: round(player.x),
+        y: round(player.y),
+        vx: round(player.vx, 2),
+        vy: round(player.vy, 2),
+        radius: player.radius,
+        visualDiameter: round(visual?.base?.displayWidth ?? 0),
+        pointerId: player.pointerId,
+        target: player.target ? {
+          x: round(player.target.x),
+          y: round(player.target.y),
+          wallClearance: wallDistance(player.target),
+        } : null,
+        wallClearance: wallDistance(player),
+        legalHalf: player.side === 'left'
+          ? { left: this.collisionMap.bounds.left, right: DISC_HOCKEY_ARENA.centerX }
+          : { left: DISC_HOCKEY_ARENA.centerX, right: this.collisionMap.bounds.right },
+        crease: {
+          inCrease: crease.inCrease,
+          puckThreatening: crease.puckThreatening,
+          camping: crease.camping,
+          warning: crease.warning,
+          seconds: round(player.creaseSeconds, 2),
+          penaltySeconds: round(player.penaltySeconds, 2),
+          ejectionSeconds: round(player.ejectionSeconds, 2),
+          ejecting: player.ejectionSeconds > 0,
+          frozen: player.penaltySeconds > 0 && player.ejectionSeconds <= 0,
+          ejectionVelocity: {
+            x: round(player.ejectionVx, 2),
+            y: round(player.ejectionVy, 2),
+          },
+        },
+      };
+    };
     return {
       mode: this.isPaused ? 'paused' : this.phase,
       minigame: 'discHockey',
@@ -1032,8 +1883,8 @@ export class DiscHockeyScene extends Phaser.Scene {
         selectedOnly: true,
       },
       collisionMap: collisionMapState,
-      difficulty: this.playMode === 'computer' ? this.difficulty : null,
-      computerAi: this.playMode === 'computer' ? {
+      difficulty: this.playMode === 'local' ? null : this.difficulty,
+      computerAi: this.playMode === 'local' ? null : {
         target: {
           x: round(this.aiTarget.x),
           y: round(this.aiTarget.y),
@@ -1043,7 +1894,22 @@ export class DiscHockeyScene extends Phaser.Scene {
           maxSpeed: getDiscHockeyAiTuning(this.difficulty).maxSpeed,
           pressX: getDiscHockeyAiTuning(this.difficulty).pressX,
         },
-      } : null,
+        squad: this.isCrazyMode
+          ? this.rightPlayers.map((player, index) => ({
+            ...getDiscHockeyCrazyRoleMotion(player.crazyRole),
+            id: this.rightCharacters[index]?.id,
+            role: player.crazyRole,
+            cornerRecovery: player.cornerRecovery ?? null,
+            cornerPhase: player.cornerPhase ?? null,
+            cornerReleaseSeconds: round(player.cornerReleaseSeconds, 2),
+            target: player.aiTarget ? {
+              x: round(player.aiTarget.x),
+              y: round(player.aiTarget.y),
+            } : null,
+            knockbackSeconds: round(player.knockbackSeconds, 2),
+          }))
+          : null,
+      },
       coordinateSystem: 'origin top-left; +x right; +y down; logical landscape canvas 1280x720',
       orientation: {
         requested: 'landscape',
@@ -1062,12 +1928,21 @@ export class DiscHockeyScene extends Phaser.Scene {
         scoreboardPaddingPercent: 5,
       },
       players: {
-        left: playerState(this.leftPlayer, this.leftCharacter, 'human'),
+        left: playerState(this.leftPlayer, this.leftCharacter, 'human', this.leftVisual),
         right: playerState(
           this.rightPlayer,
           this.rightCharacter,
           this.playMode === 'local' ? 'human' : `computer-${this.difficulty}`,
+          this.rightVisual,
         ),
+        rightSquad: this.isCrazyMode
+          ? this.rightPlayers.map((player, index) => playerState(
+            player,
+            this.rightCharacters[index],
+            `computer-hard-${player.crazyRole}`,
+            this.rightVisuals[index],
+          ))
+          : null,
       },
       puck: {
         x: round(this.puck.x),
@@ -1078,6 +1953,8 @@ export class DiscHockeyScene extends Phaser.Scene {
         radius: this.puck.radius,
         color: 'red',
         sprite: THEME_ART[this.themeId].puckTexture,
+        powered: this.puck.powered === true,
+        powerSerial: this.puck.powerSerial ?? 0,
         surface: {
           damping: DISC_HOCKEY_PUCK_SURFACE.damping,
           softDamping: DISC_HOCKEY_PUCK_SURFACE.softDamping,
@@ -1086,11 +1963,44 @@ export class DiscHockeyScene extends Phaser.Scene {
         },
       },
       activePointers: [...this.pointerOwners.entries()].map(([id, side]) => ({ id, side })),
+      antiCamping: {
+        warningSeconds: DISC_HOCKEY_CREASE_RULE.warningSeconds,
+        violationSeconds: DISC_HOCKEY_CREASE_RULE.violationSeconds,
+        penaltySeconds: DISC_HOCKEY_CREASE_RULE.penaltySeconds,
+        boundaryHysteresis: DISC_HOCKEY_CREASE_RULE.boundaryHysteresis,
+        ejectionSeconds: DISC_HOCKEY_CREASE_RULE.ejectionSeconds,
+        ejectionPushSeconds: DISC_HOCKEY_CREASE_RULE.ejectionPushSeconds,
+        ejectionSpeed: DISC_HOCKEY_CREASE_RULE.ejectionSpeed,
+        maximumEjectionAngleDegrees:
+          DISC_HOCKEY_CREASE_RULE.maximumEjectionAngleDegrees,
+        rightTeamSeconds: round(this.rightTeamCreaseSeconds, 2),
+        violations: { ...this.creaseViolations },
+        lastViolation: this.lastCreaseViolation
+          ? { ...this.lastCreaseViolation }
+          : null,
+      },
       keyboard: this.playMode === 'local'
         ? { playerOne: 'Arrow keys', playerTwo: 'WASD' }
         : { playerOne: 'Arrow keys', playerTwo: null },
       pauseReason: this.pauseReason,
       audio: arcadeAudio.diagnostics(),
+      lastCollisionSound: this.lastCollisionSound
+        ? { ...this.lastCollisionSound }
+        : null,
+      crazyPower: this.isCrazyMode ? {
+        energy: round(this.crazyPower.energy, 2),
+        armed: this.crazyPower.armed,
+        contactCooldownSeconds: round(this.crazyPower.contactCooldownSeconds, 2),
+        rechargeDelaySeconds: round(this.crazyPower.rechargeDelaySeconds, 2),
+        lastGain: this.crazyPower.lastGain ? { ...this.crazyPower.lastGain } : null,
+        lastDrain: this.crazyPower.lastDrain,
+        shotSerial: this.crazyPower.shotSerial,
+        charging: {
+          passivePerSecond: DISC_HOCKEY_CRAZY_POWER.passivePerSecond,
+          intentionalHitGain: DISC_HOCKEY_CRAZY_POWER.intentionalHitGain,
+          defensiveSaveGain: DISC_HOCKEY_CRAZY_POWER.defensiveSaveGain,
+        },
+      } : null,
       actions: this.phase === 'result'
         ? ['rematch', 'match setup']
         : this.isPaused ? ['resume', 'restart match', 'leave Disc Hockey'] : [

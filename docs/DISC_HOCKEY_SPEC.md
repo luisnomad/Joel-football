@@ -4,8 +4,9 @@
 
 Add a fast, child-friendly, top-down disc hockey mini-game to Joel Football.
 Each side moves a round engraved character pusher, strikes a themed puck, and scores through
-the rival goal. A match supports either one local player against the computer
-or two local players sharing one tablet.
+the rival goal. A match supports one local player against the computer, two
+local players sharing one tablet, or one player facing four coordinated Hard
+computer rivals in Crazy Mode / Modo Loco.
 
 ## Bundle and scene boundaries
 
@@ -26,7 +27,9 @@ or two local players sharing one tablet.
   Disc Hockey setup, and either can be cycled without creating a second lineup
   store.
 - Persist an independent Disc Hockey difficulty (`easy`, `normal`, `hard`),
-  play mode (`computer`, `local`), and arena theme (`ice`, `neon`).
+  play mode (`computer`, `local`, `crazy`), and arena theme (`ice`, `neon`).
+  Crazy Mode is computer-only and always uses Hard tuning; setup presents no
+  difficulty override while it is selected.
 - Kickfall keeps its campaign-specific resume flow. Disc Hockey starts a fresh
   match from its setup screen.
 
@@ -35,8 +38,9 @@ or two local players sharing one tablet.
 - The authored logical arena is 1280 × 720 in landscape.
 - The scoreboard reserves approximately the top 5% of the screen. Static
   audience bands sit beyond the rink along its long edges.
-- Player 1 starts on the left and may never cross the center line. Player 2 or
-  the computer starts on the right and follows the mirrored restriction.
+- Player 1 starts on the left and may never cross the center line. Player 2,
+  the standard computer, or all four Crazy rivals start on the right and
+  follow the mirrored restriction.
 - Character discs collide with the puck and with their own rink boundaries,
   but the two character discs cannot enter the other side.
 - The table uses air-hockey motion: normal strikes lose speed very slowly and
@@ -51,6 +55,19 @@ or two local players sharing one tablet.
   puck diameter overlaps the recess while the whole puck fits vertically
   inside its mouth.
 - After a goal, play pauses briefly and resets both players and the puck.
+- A symmetric anti-camping crease rule prevents either pusher from sealing its
+  own painted goal indefinitely. Occupancy uses the pusher's full circular
+  footprint at the painted goal lips, with an 8 px exit hysteresis once timing
+  begins so held mouse/touch sampling cannot restart the clock. Deep goal
+  occupancy counts only while the puck is outside that defensive goal's
+  300 px threat zone. After one second,
+  a visible `3`, `2`, `1` warning gives the defender three more seconds to
+  react. At four seconds, a telescoping goal piston pushes the pusher inward
+  at a bounded random angle of up to 24 degrees. The piston retracts, then the
+  translucent frozen pusher remains immobile until the 1.25-second penalty
+  expires. The score and puck remain untouched.
+- In Crazy Mode, a confirmed Player 1 crease violation also empties and
+  disarms the Crazy Power bar. The visible warning alone has no energy cost.
 - A match contains three minutes of active play. Countdown, goal celebration,
   app suspension, and manual pause time do not consume the match clock.
 - The higher score at 0:00 wins; equal scores produce a draw. Rematch and
@@ -89,6 +106,51 @@ or two local players sharing one tablet.
   pin the puck head-on.
 - The AI obeys the same half-rink boundary and movement limits as a human.
 
+### Crazy squad coordination
+
+- Four unique rivals are selected randomly while excluding Player 1's
+  character. The three support roles use Hard movement tuning.
+- The squad continually assigns striker, interceptor, defender, and
+  goalkeeper roles. A small retention bonus prevents needless role jitter.
+- The active striker is the squad's overdrive attacker: it reacts every
+  25 ms, accelerates more sharply, and tops out at 780 px/s versus the
+  supports' 500 px/s. A small orange downward chevron identifies the current
+  threat without adding a glow around the pusher.
+- The striker approaches from behind the puck to attack toward Player 1, so
+  its extra closing speed produces materially harder shots rather than merely
+  faster defensive movement.
+  The interceptor reads the human and predicted puck path, the defender
+  protects the dangerous central channel, and the goalkeeper moves into the
+  deep crease only while the puck genuinely threatens its goal.
+- Non-strikers reserve clearance from the current attacking lane, and a
+  separation pass keeps teammate pushers from stacking over one another.
+- Corner retrieval uses two phases: the striker first makes a close angled
+  bank jab with at least 520 px/s inward and 320 px/s away from the wall, then
+  retreats 190 px inward and 160 px away from the wall as soon as the puck
+  reaches 120 px/s. The striker retains that release assignment for 0.55
+  seconds even after the puck leaves the formal corner zone. This clears the
+  rebound lane instead of continuously following through and pinning the puck
+  against the curved wall or merely moving the pin down the side rail.
+- Right-side crease time is team-aware, preventing four rivals from bypassing
+  anti-camping by rotating through the painted goal.
+
+## Crazy Power and Super Shot
+
+- A bottom-centred bar appears only in Crazy Mode. It gains 1% per second,
+  6% for an intentional puck hit, and 14% for an intentional defensive save.
+  A contact cooldown prevents energy farming from overlapping physics frames.
+- Intentional contact requires the human pusher to move into the puck with at
+  least 120 px/s closing speed. A puck striking a stationary pusher does not
+  count or consume an armed shot.
+- At 100%, `power_up_1.mp3` plays once and Player 1 receives a pulsing
+  red-orange rim and hue. The next intentional contact empties the bar, plays
+  `powered_up_shot.mp3`, and transfers the effect to the puck.
+- A powered puck maintains at least 1450 px/s, retains power through side-wall
+  ricochets, and knocks each rival sideways without losing momentum. It ends
+  when it scores or rebounds from the opponent's goal-side back wall.
+- A computer goal preserves a fully armed comeback shot through the round
+  reset. A Player 1 goal disarms unused full charge.
+
 ## Arena themes
 
 ### Ice
@@ -126,7 +188,8 @@ mapped areas.
 ## Audio and orientation
 
 - Reuse the main football music rotation, audience ambience, ball impact,
-  whistle, click, success, and impact sounds. No new audio payload is added.
+  whistle, click, success, and impact sounds. Hockey adds theme-specific
+  contact cues plus `power_up_1.mp3` and `powered_up_shot.mp3` for Crazy Power.
 - Entering Disc Hockey requests landscape orientation through the platform
   service. Android also retains its manifest-level landscape enforcement.
 - Web orientation lock is requested when the browser permits it (normally
@@ -136,15 +199,24 @@ mapped areas.
 ## Diagnostics and verification
 
 - `window.render_game_to_text()` reports mode, theme, play mode, phase,
-  score, three-minute clock, match result, both players (including controller and pointer id),
+  score, three-minute clock, match result, both standard players (including controller and pointer id),
   puck position/velocity/speed and air-table coefficients, the computer's
-  current target/tuning, arena bounds, and legal half bounds.
+  current target/tuning, arena bounds, legal half bounds, crease timers,
+  penalties, and violation counts. Crazy diagnostics add all four rivals,
+  their roles/targets/knockback, per-role speed/response/aggression tuning,
+  energy and charge sources, armed state, powered-puck state, and team crease
+  time.
 - `window.advanceTime(ms)` advances Disc Hockey in fixed deterministic steps.
 - Pure tests cover profile sanitization, half-rink clamping, circle collision,
-  goals, direct touch following, clock formatting, AI difficulty tuning, and
-  timed match result rules.
+  goals, direct touch following, clock formatting, AI difficulty tuning,
+  velocity-scaled contact audio, anti-camping crease evaluation, Crazy roster
+  selection, coordinated AI targets, striker overdrive, intentional contacts, charging,
+  powered-shot termination/knockback, and timed match result rules.
 - Browser validation covers lazy loading, setup selections, a live match,
   independent simultaneous pointers, half restrictions, scoring/reset, pause,
-  result/rematch, both themes, and console errors.
+  result/rematch, warning/ejection/recovery for both goals, legitimate defense,
+  Crazy setup in both languages, standard-sized four-rival play, a forceful
+  overdrive-striker attack fixture, charging, arming, powered contact,
+  knockback, camping drain, both themes, and console errors.
 - Production output is inspected to confirm separate Kickfall and Disc Hockey
   JavaScript chunks.

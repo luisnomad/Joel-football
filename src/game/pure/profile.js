@@ -30,7 +30,7 @@ export const sanitizeDifficultyByGame = (candidate, legacyDifficulty = 'normal')
   discHockey: sanitizeDifficulty(candidate?.discHockey),
 });
 
-export const DISC_HOCKEY_MODES = Object.freeze(['computer', 'local']);
+export const DISC_HOCKEY_MODES = Object.freeze(['computer', 'local', 'crazy']);
 export const DISC_HOCKEY_THEMES = Object.freeze(['ice', 'neon']);
 export const sanitizeDiscHockeySettings = (candidate) => ({
   mode: DISC_HOCKEY_MODES.includes(candidate?.mode) ? candidate.mode : 'computer',

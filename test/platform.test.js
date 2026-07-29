@@ -103,7 +103,7 @@ describe('WebPlatformServices', () => {
 
     await service.registerServiceWorker();
 
-    expect(register).toHaveBeenCalledWith('/sw.js?v=3', {
+    expect(register).toHaveBeenCalledWith('/sw.js?v=8', {
       scope: '/',
       updateViaCache: 'none',
     });

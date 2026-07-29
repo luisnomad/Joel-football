@@ -19,14 +19,6 @@ CONTACT_CELL_BLEED = 64
 GROUNDED_FRAMES = frozenset({0, 1, 4, 5, 6, 7, 8, 9, 10, 11})
 
 PLAYERS = {
-    "joel": {
-        "legacy": ROOT / "source-assets/animation/legacy/player-nova-sheet.png",
-        "selected": ROOT / "source-assets/animation/selected/joel",
-        "source_out": ROOT / "source-assets/animation/final/player-nova-sheet-v2.png",
-        "runtime_out": ROOT / "public/assets/player-nova-sheet-v2.webp",
-        "run_height": 357,
-        "kick_height": 347,
-    },
     "vex": {
         "legacy": ROOT / "source-assets/animation/legacy/player-vex-sheet.png",
         "selected": ROOT / "source-assets/animation/selected/vex",
@@ -38,6 +30,56 @@ PLAYERS = {
 }
 
 CONTACT_SHEET_PLAYERS = {
+    "joel": {
+        "sheet": ROOT / "source-assets/characters/joel-v1/pose-sheet.png",
+        "source_out": ROOT / "source-assets/animation/final/player-joel-sheet-v1.png",
+        "runtime_out": ROOT / "public/assets/player-joel-sheet-v1.webp",
+        "portrait_out": ROOT / "public/assets/player-joel-portrait.png",
+        "recover_cell_bleed": True,
+        # Match the compact airborne scale used by the other photo-derived
+        # characters without shrinking Joel's recognizable head.
+        "frame_heights": {2: 350},
+    },
+    "dad": {
+        "sheet": ROOT / "source-assets/characters/dad-v1/pose-sheet.png",
+        "source_out": ROOT / "source-assets/animation/final/player-dad-sheet-v1.png",
+        "runtime_out": ROOT / "public/assets/player-dad-sheet-v1.webp",
+        "portrait_out": ROOT / "public/assets/player-dad-portrait.png",
+        "recover_cell_bleed": True,
+        # Luis is 6'7". Keep Dad's collider and shared y=418 foot line
+        # unchanged, but give his long-legged artwork a visibly taller
+        # normalization than the rest of the roster.
+        "idle_height": 405,
+        "max_frame_height": 405,
+        "frame_heights": {2: 375},
+    },
+    "mum": {
+        "sheet": ROOT / "source-assets/characters/mum-v1/pose-sheet.png",
+        "source_out": ROOT / "source-assets/animation/final/player-mum-sheet-v1.png",
+        "runtime_out": ROOT / "public/assets/player-mum-sheet-v1.webp",
+        "portrait_out": ROOT / "public/assets/player-mum-portrait.png",
+        "recover_cell_bleed": True,
+        # Mum's generated action poses used inconsistent internal scale. Keep
+        # adjacent run and kick frames steady, but preserve enough action-pose
+        # presence that bent limbs do not make her read as a miniature beside
+        # the approved idle. Jump receives a smaller boost because its source
+        # head is already relatively large. These factors affect atlas packing
+        # only; gameplay geometry remains shared.
+        "frame_heights": {2: 350},
+        "frame_scales": {
+            1: 0.934,
+            2: 0.873,
+            3: 0.910,
+            4: 0.922,
+            5: 0.984,
+            6: 0.934,
+            7: 0.972,
+            8: 0.903,
+            9: 0.897,
+            10: 0.950,
+            11: 0.957,
+        },
+    },
     "juan": {
         "sheet": ROOT / "source-assets/animation/selected/juan/contact-sheet.png",
         "source_out": ROOT / "source-assets/animation/final/player-juan-sheet-v3.png",
@@ -153,6 +195,18 @@ def keep_largest_alpha_component(
 def resize_to_height(image: Image.Image, target_height: int) -> Image.Image:
     target_width = max(1, round(image.width * target_height / image.height))
     return image.resize((target_width, target_height), Image.Resampling.LANCZOS)
+
+
+def resize_by_scale(image: Image.Image, scale: float) -> Image.Image:
+    if not 0.5 <= scale <= 1.5:
+        raise ValueError(f"Frame scale {scale} is outside the safe 0.5–1.5 range")
+    return image.resize(
+        (
+            max(1, round(image.width * scale)),
+            max(1, round(image.height * scale)),
+        ),
+        Image.Resampling.LANCZOS,
+    )
 
 
 def enforce_horizontal_margin(content: Image.Image) -> Image.Image:
@@ -293,7 +347,9 @@ def build_contact_sheet_player(player_name: str, player: dict[str, object]) -> N
         recover_cell_bleed=bool(player.get("recover_cell_bleed", False)),
     )
     idle = source_cells[0]
-    scale = 380 / idle.height
+    idle_height = int(player.get("idle_height", 380))
+    max_frame_height = int(player.get("max_frame_height", 380))
+    scale = idle_height / idle.height
     atlas = Image.new("RGBA", (CELL_WIDTH * 4, CELL_HEIGHT * 3), (0, 0, 0, 0))
 
     for frame, source_frame in enumerate(CONTACT_POSE_MAP):
@@ -304,9 +360,15 @@ def build_contact_sheet_player(player_name: str, player: dict[str, object]) -> N
         frame_height = dict(player.get("frame_heights", {})).get(frame)
         if frame_height is not None:
             content = resize_to_height(content, int(frame_height))
-        if content.height > 380:
-            content = resize_to_height(content, 380)
+        if content.height > max_frame_height:
+            content = resize_to_height(content, max_frame_height)
         content = enforce_horizontal_margin(content)
+        frame_scale = float(
+            dict(player.get("frame_scales", {})).get(frame, 1.0)
+        )
+        if frame_scale != 1:
+            content = resize_by_scale(content, frame_scale)
+            content = enforce_horizontal_margin(content)
         # Resampling can leave a fully transparent outer row. Trim once more
         # so the visible pixels, not the nominal bitmap edge, hit the baseline.
         content = content.crop(alpha_bbox(content))
@@ -322,6 +384,30 @@ def build_contact_sheet_player(player_name: str, player: dict[str, object]) -> N
     runtime_out.parent.mkdir(parents=True, exist_ok=True)
     atlas.save(source_out, format="PNG", optimize=True)
     atlas.save(runtime_out, format="WEBP", lossless=True, quality=90, method=6)
+
+    portrait_out_value = player.get("portrait_out")
+    if portrait_out_value is not None:
+        idle_cell = atlas.crop((0, 0, CELL_WIDTH, CELL_HEIGHT))
+        idle_content = idle_cell.crop(alpha_bbox(idle_cell))
+        scale = min(470 / idle_content.height, 460 / idle_content.width)
+        portrait_content = idle_content.resize(
+            (
+                max(1, round(idle_content.width * scale)),
+                max(1, round(idle_content.height * scale)),
+            ),
+            Image.Resampling.LANCZOS,
+        )
+        portrait = Image.new("RGBA", (512, 512), (0, 0, 0, 0))
+        portrait.alpha_composite(
+            portrait_content,
+            (
+                (portrait.width - portrait_content.width) // 2,
+                492 - portrait_content.height,
+            ),
+        )
+        portrait_out = Path(portrait_out_value)
+        portrait_out.parent.mkdir(parents=True, exist_ok=True)
+        portrait.save(portrait_out, format="PNG", optimize=True)
 
 
 def main() -> None:

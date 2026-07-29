@@ -37,11 +37,19 @@ import { createAudioAssetCache } from '../src/game/services/AudioAssetCache.js';
 import {
   AUDIO_ASSET_URLS,
   AUDIO_SCENE_POLICIES,
+  GAME_EFFECT_URLS,
   MUSIC_TRACKS,
   WHISTLE_EFFECT_URL,
   resolveAudioScenePolicy,
+  resolveGoalEffectId,
 } from '../src/game/services/ArcadeAudio.js';
-import { CHARACTERS, cycleCharacter, getCharacter, sanitizeLineup } from '../src/game/content/characters.js';
+import {
+  CHARACTERS,
+  cycleCharacter,
+  getCharacter,
+  getCharacterVisualScale,
+  sanitizeLineup,
+} from '../src/game/content/characters.js';
 import {
   ARENA_THEMES,
   BALL_TYPES,
@@ -245,24 +253,59 @@ describe('Kickfall progression persistence', () => {
 
 describe('opponent selection', () => {
   it('offers every family character while skipping the character on the other side', () => {
-    expect(CHARACTERS.map(({ id }) => id)).toEqual(['joel', 'bob', 'lucia', 'luna', 'juan', 'juanjo']);
+    expect(CHARACTERS.map(({ id }) => id)).toEqual(['joel', 'bob', 'lucia', 'luna', 'juan', 'dad', 'mum', 'juanjo']);
     expect(cycleCharacter({ id: 'joel', direction: 1, excludedId: 'bob' }).id).toBe('lucia');
     expect(cycleCharacter({ id: 'joel', direction: -1, excludedId: 'bob' }).id).toBe('juanjo');
     expect(cycleCharacter({ id: 'lucia', direction: 1, excludedId: 'bob' }).id).toBe('luna');
     expect(getCharacter('unknown').id).toBe('joel');
+    expect(getCharacter('joel')).toMatchObject({
+      portraitAsset: 'player-joel-portrait.png',
+      sheetAsset: 'player-joel-sheet-v1.webp',
+      nativeFacing: 1,
+    });
+    expect(getCharacter('dad')).toMatchObject({
+      name: 'Dad',
+      label: 'DAD',
+      names: { en: 'Dad', es: 'Papá' },
+      labels: { en: 'DAD', es: 'PAPÁ' },
+      portraitAsset: 'player-dad-portrait.png',
+      sheetAsset: 'player-dad-sheet-v1.webp',
+      nativeFacing: 1,
+      accent: 0xffc43d,
+      visualScale: 1.2,
+      stats: { speed: 0.98, jump: 0.98, kick: 1.04, dash: 0.98, power: 1.08 },
+    });
+    expect(getCharacterVisualScale(getCharacter('dad'))).toBe(1.2);
+    expect(getCharacter('mum')).toMatchObject({
+      name: 'Mum',
+      label: 'MUM',
+      names: { en: 'Mum', es: 'Mamá' },
+      labels: { en: 'MUM', es: 'MAMÁ' },
+      portraitAsset: 'player-mum-portrait.png',
+      sheetAsset: 'player-mum-sheet-v1.webp',
+      nativeFacing: 1,
+      accent: 0x6ca8ff,
+      visualScale: 1.2,
+      stats: { speed: 1.02, jump: 1.04, kick: 1.02, dash: 1.04, power: 1.04 },
+    });
+    expect(getCharacterVisualScale(getCharacter('joel'))).toBe(1);
+    expect(getCharacterVisualScale({ visualScale: 99 })).toBe(1.2);
+    expect(getCharacterVisualScale({ visualScale: 0.1 })).toBe(0.85);
     expect(CHARACTERS.map(({ id, nativeFacing }) => [id, nativeFacing])).toEqual([
       ['joel', 1],
       ['bob', -1],
       ['lucia', -1],
       ['luna', -1],
       ['juan', 1],
+      ['dad', 1],
+      ['mum', 1],
       ['juanjo', 1],
     ]);
     const validLineups = CHARACTERS.flatMap((player) => (
       CHARACTERS.filter((opponent) => opponent.id !== player.id)
         .map((opponent) => sanitizeLineup({ playerCharacterId: player.id, opponentId: opponent.id }))
     ));
-    expect(validLineups).toHaveLength(30);
+    expect(validLineups).toHaveLength(56);
     expect(validLineups.every((lineup) => lineup.playerCharacterId !== lineup.opponentId)).toBe(true);
   });
 
@@ -271,6 +314,13 @@ describe('opponent selection', () => {
     expect(createDefaultProfile().opponentId).toBe('bob');
     expect(setProfileOpponent(createDefaultProfile(), 'lucia').opponentId).toBe('lucia');
     expect(setProfilePlayerCharacter(createDefaultProfile(), 'lucia').playerCharacterId).toBe('lucia');
+    expect(setProfilePlayerCharacter(
+      setProfileOpponent(createDefaultProfile(), 'luna'),
+      'luna',
+    )).toMatchObject({
+      playerCharacterId: 'luna',
+      opponentId: 'joel',
+    });
     expect(sanitizeProfile({ opponentId: 'unknown' }).opponentId).toBe('bob');
     expect(sanitizeLineup({ playerCharacterId: 'lucia', opponentId: 'lucia' })).toEqual({
       playerCharacterId: 'lucia',
@@ -338,12 +388,36 @@ describe('persistent audio settings', () => {
     expect(updated.audio).toMatchObject({ musicVolume: 0.4, effectsVolume: 0.2, effectsMuted: true });
   });
 
-  it('defines six rotating music tracks and caches the active whistle effect', () => {
+  it('defines six rotating music tracks and caches every mapped game effect', () => {
     expect(MUSIC_TRACKS).toHaveLength(6);
-    expect(AUDIO_ASSET_URLS).toHaveLength(9);
-    expect(new Set(AUDIO_ASSET_URLS).size).toBe(9);
+    expect(Object.keys(GAME_EFFECT_URLS)).toEqual([
+      'button',
+      'menuEnter',
+      'goal1',
+      'goal2',
+      'joelGoal',
+      'powerUp',
+      'poweredShot',
+      'wallBreak',
+      'levelFinished',
+      'hockeyNeon',
+      'hockeyIce',
+    ]);
+    expect(AUDIO_ASSET_URLS).toHaveLength(20);
+    expect(new Set(AUDIO_ASSET_URLS).size).toBe(20);
     expect(AUDIO_ASSET_URLS).toContain(WHISTLE_EFFECT_URL);
+    Object.values(GAME_EFFECT_URLS).forEach((url) => {
+      expect(AUDIO_ASSET_URLS).toContain(url);
+    });
     expect(AUDIO_ASSET_URLS.some((url) => url.includes('bg_audience_goal'))).toBe(false);
+  });
+
+  it("uses Joel's signature goal celebration without advancing the shared stinger rotation", () => {
+    expect(GAME_EFFECT_URLS.joelGoal).toContain('vamos_sound_effect.mp3');
+    expect(resolveGoalEffectId('joel', 0)).toBe('joelGoal');
+    expect(resolveGoalEffectId('joel', 1)).toBe('joelGoal');
+    expect(resolveGoalEffectId('lucia', 0)).toBe('goal1');
+    expect(resolveGoalEffectId('bob', 1)).toBe('goal2');
   });
 
   it('shares music across games and uses crowd ambience in arena matches', () => {

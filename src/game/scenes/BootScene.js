@@ -49,9 +49,9 @@ export class BootScene extends Phaser.Scene {
     this.load.svg('control-high-kick', assetUrl('icons/high-kick.svg'), { width: 128, height: 128 });
     this.load.svg('control-kick', assetUrl('icons/kick.svg'), { width: 128, height: 128 });
     this.load.svg('control-jump', assetUrl('icons/jump.svg'), { width: 128, height: 128 });
-    this.load.image('menu-arcade-cosmic', assetUrl('menu/arcade-cosmic-card-v1.webp'));
+    this.load.image('menu-arcade-cosmic', assetUrl('menu/arcade-cosmic-card-v2.webp'));
     this.load.image('menu-options-workshop', assetUrl('menu/options-workshop-v1.webp'));
-    this.load.image('menu-disc-hockey', assetUrl('menu/disc-hockey-gameplay-card-v1.webp'));
+    this.load.image('menu-disc-hockey', assetUrl('menu/disc-hockey-gameplay-card-v2.webp'));
   }
 
   create() {
@@ -67,6 +67,8 @@ export class BootScene extends Phaser.Scene {
     if (!this.textures.exists('lucia')) this.createFighterFallback('lucia', 0x16bfb5, 0xf2b079);
     if (!this.textures.exists('luna')) this.createFighterFallback('luna', 0x9559e8, 0xf0b27e);
     if (!this.textures.exists('juan')) this.createFighterFallback('juan', 0x23344e, 0xc98765);
+    if (!this.textures.exists('dad')) this.createFighterFallback('dad', 0x244c78, 0xd6a27e);
+    if (!this.textures.exists('mum')) this.createFighterFallback('mum', 0x1f6fd1, 0xc9855c);
     if (!this.textures.exists('juanjo')) this.createFighterFallback('juanjo', 0x4b3038, 0xc98765);
     if (!this.textures.exists('ball')) this.createBallFallback();
     if (!this.textures.exists('flare')) this.createFlareFallback();

@@ -295,7 +295,7 @@ export class PowerLabScene extends Phaser.Scene {
       this.challengeFeedback.setColor('#7ff7d7').setText(
         t(this.language, 'lab.correct', { power: t(this.language, power.nameKey) }),
       );
-      arcadeAudio.success();
+      arcadeAudio.powerUp();
     } else {
       playerProfileStore.lockMath(Date.now());
       this.challenge.status = 'locked';

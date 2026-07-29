@@ -1,6 +1,10 @@
 import Phaser from 'phaser';
 import { FIXED_STEP, GAME_HEIGHT, GAME_WIDTH } from '../../constants.js';
-import { getCharacter, getCharacterName } from '../../content/characters.js';
+import {
+  getCharacter,
+  getCharacterName,
+  getCharacterVisualScale,
+} from '../../content/characters.js';
 import {
   CHARACTER_GROUND_ANCHOR_Y,
   CHARACTER_FRAMES,
@@ -611,7 +615,8 @@ export class KickfallScene extends Phaser.Scene {
     const x = 92;
     const y = playerCenterYOnTier(topTier, x);
     this.player = this.matter.add.sprite(x, y, this.character.sheetTexture, 0);
-    this.player.setDisplaySize(84, 126);
+    const visualScale = getCharacterVisualScale(this.character);
+    this.player.setDisplaySize(84 * visualScale, 126 * visualScale);
     this.player.setRectangle(PLAYER_WIDTH, PLAYER_HEIGHT, { chamfer: { radius: 13 } });
     this.player.setOrigin(0.5, 0.5);
     this.player.setDisplayOrigin(
@@ -636,7 +641,8 @@ export class KickfallScene extends Phaser.Scene {
     const x = this.level.boss.startX;
     const y = playerCenterYOnTier(tier, x);
     const sprite = this.matter.add.sprite(x, y, this.rivalCharacter.sheetTexture, CHARACTER_FRAMES.idle);
-    sprite.setDisplaySize(84, 126);
+    const visualScale = getCharacterVisualScale(this.rivalCharacter);
+    sprite.setDisplaySize(84 * visualScale, 126 * visualScale);
     sprite.setRectangle(PLAYER_WIDTH, PLAYER_HEIGHT, { chamfer: { radius: 13 } });
     sprite.setOrigin(0.5, 0.5);
     sprite.setDisplayOrigin(
@@ -2116,7 +2122,7 @@ export class KickfallScene extends Phaser.Scene {
       boss.sprite.setCollidesWith([]);
       boss.sprite.setVelocity(tier.flow * 5.5, 2);
       this.announcementText.setText(t(this.language, 'kickfall.bossDown')).setColor('#75f6cc');
-      arcadeAudio.goal();
+      arcadeAudio.wallBreak();
     } else {
       this.announcementText.setText(t(this.language, 'kickfall.bossHit')).setColor('#ff9db1');
       boss.kickCooldown = Math.max(boss.kickCooldown, 0.6);
@@ -2134,7 +2140,7 @@ export class KickfallScene extends Phaser.Scene {
     gate.image.destroy();
     gate.healthPips.forEach((pip) => pip.destroy());
     this.spawnGateExplosion(x, y, gate.height);
-    arcadeAudio.impact();
+    arcadeAudio.wallBreak();
     this.game.events.emit('platform:haptic', 'heavy');
     this.cameras.main.flash(55, 255, 205, 95, false);
     this.cameras.main.shake(280, 0.013);
@@ -2466,7 +2472,7 @@ export class KickfallScene extends Phaser.Scene {
       if (this.hasNextLevel) playerProfileStore.unlockKickfallLevel(this.levelNumber + 1);
       this.retryButton.setVisible(true);
       this.continueButton.setVisible(this.hasNextLevel);
-      arcadeAudio.goal();
+      arcadeAudio.levelFinished();
     } else {
       this.retryButton.setVisible(true);
       this.continueButton.setVisible(false);
@@ -3016,6 +3022,19 @@ export class KickfallScene extends Phaser.Scene {
         } : null,
         visualFrame: this.visualFrame,
         animationPose: this.animationPose,
+        visualScale: getCharacterVisualScale(this.character),
+        displayWidth: round(this.player.displayWidth, 2),
+        displayHeight: round(this.player.displayHeight, 2),
+        collisionWidth: PLAYER_WIDTH,
+        collisionHeight: PLAYER_HEIGHT,
+        collisionBoundsWidth: round(
+          this.player.body.bounds.max.x - this.player.body.bounds.min.x,
+          2,
+        ),
+        collisionBoundsHeight: round(
+          this.player.body.bounds.max.y - this.player.body.bounds.min.y,
+          2,
+        ),
         platformSurfaceY: round(tierSurfaceY(this.getTier(this.currentTierId), this.player.x), 2),
         visualGroundAnchorY: round(
           this.player.y

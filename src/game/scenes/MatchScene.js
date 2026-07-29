@@ -12,7 +12,12 @@ import { createHeuristicAgentProvider } from '../ai/HeuristicAgentProvider.js';
 import { Ball } from '../entities/Ball.js';
 import { Fighter } from '../entities/Fighter.js';
 import { Goal } from '../entities/Goal.js';
-import { getCharacter, getCharacterLabel, getCharacterName } from '../content/characters.js';
+import {
+  getCharacter,
+  getCharacterLabel,
+  getCharacterName,
+  getCharacterVisualScale,
+} from '../content/characters.js';
 import { InputController } from '../input/InputController.js';
 import { applyAiDifficulty, safeDecide } from '../pure/actions.js';
 import { nextCountdownWhistle } from '../pure/countdownWhistle.js';
@@ -106,6 +111,7 @@ export class MatchScene extends Phaser.Scene {
       textureFacing: this.playerCharacter.nativeFacing,
       name: getCharacterName(this.playerCharacter, this.language),
       stats: this.playerCharacter.stats,
+      visualScale: getCharacterVisualScale(this.playerCharacter),
     });
     this.rightPlayer = new Fighter(this, {
       id: 'vex',
@@ -115,6 +121,7 @@ export class MatchScene extends Phaser.Scene {
       textureFacing: this.opponent.nativeFacing,
       name: getCharacterName(this.opponent, this.language),
       stats: this.opponent.stats,
+      visualScale: getCharacterVisualScale(this.opponent),
     });
     this.players = { left: this.leftPlayer, right: this.rightPlayer };
     this.ball = new Ball(this, GAME_WIDTH / 2, 336, this.profile.ballTypeId);
@@ -420,7 +427,7 @@ export class MatchScene extends Phaser.Scene {
         this.bannerTimer = 1.25;
         const target = consumedPowerId === 'ice' ? this.rightPlayer : fighter;
         this.spawnImpact(target.sprite.x, target.sprite.y - 35, equipped.color, 20);
-        arcadeAudio.success();
+        arcadeAudio.powerUp();
         return;
       }
     }
@@ -781,6 +788,7 @@ export class MatchScene extends Phaser.Scene {
         };
       }
       arcadeAudio.kick(strike.powered);
+      if (strike.powered) arcadeAudio.powerUp();
       if (strike.boosted) this.showBoostedStrike(fighter, strike);
       if (incomingPowerVelocity) {
         this.counterPower(fighter, incomingPowerVelocity);
@@ -1081,7 +1089,9 @@ export class MatchScene extends Phaser.Scene {
     this.announcementText.setText(t(this.language, 'match.goal')).setColor(scoringSide === 'left' ? '#7bf7ff' : '#ffbd79').setFontSize(82);
     this.spawnImpact(this.ball.body.x, this.ball.body.y, scoringSide === 'left' ? 0x63efff : 0xff7a43, 36);
     this.game.events.emit('platform:haptic', scoringSide === 'left' ? 'success' : 'heavy');
-    arcadeAudio.goal();
+    arcadeAudio.goal(
+      scoringSide === 'left' ? this.playerCharacter.id : this.opponent.id,
+    );
     this.cameras.main.flash(180, 255, 255, 255, false, undefined, this);
     this.cameras.main.shake(280, 0.012);
     this.updateHud();

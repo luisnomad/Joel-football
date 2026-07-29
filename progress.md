@@ -2892,3 +2892,607 @@ No follow-up TODO remains for the requested Disc Hockey implementation.
 - Ran the standalone web-game client against the production preview. Its
   screenshot and `render_game_to_text` state agree on the fully rendered
   Football setup screen, with no new browser errors.
+
+#### Additional sound-effects integration (2026-07-29)
+
+- Original prompt for this iteration: map the newly added files under
+  `public/assets/sound` to suitable game events and add them to the game.
+- Audited all nine additions and their durations. Chosen map: ordinary button
+  feedback, forward menu entry, alternating Football/Hockey goal stingers,
+  power earning/activation, Kickfall wall destruction and level victory, plus
+  theme-specific Ice/Neon Hockey contact.
+- Added all nine files to the shared effects media layer, effects-volume/mute
+  handling, cold-cache restoration, normal progressive warming, and
+  diagnostics. The complete reusable audio inventory is now 18 unique files;
+  data-saver mode still warms only the immediately useful subset.
+- Replaced the synthesized generic click with the supplied button cue while
+  retaining synthesis as a browser fallback. Forward journey/game transitions
+  use the separate menu-entry cue.
+- Football and Hockey goals alternate `GOAL_1` and `GOAL_2` while preserving
+  the referee whistle. Kickfall gates and the boss use the wall break; a
+  victorious board uses the three-second finish cue. Hockey uses distinct Ice
+  and Neon hits with a 280 ms anti-chatter cooldown. Power Lab rewards, instant
+  powers, and successful powered ball contact use the new power-up cue.
+- Browser diagnostics and regressions now assert each event family, both
+  Hockey theme variants, cache completeness, and goal-stinger playback.
+- Final verification passes: 161/161 unit tests, production build, focused
+  Disc Hockey browser flow, complete Football/Kickfall/tablet browser suite,
+  standalone deterministic web-game client, visual screenshot inspection,
+  zero browser/page errors, and `git diff --check`.
+
+No follow-up TODO remains for this sound-effects integration.
+
+#### Velocity-scaled Hockey contact volume (2026-07-29)
+
+- Original prompt for this follow-up: make light pusher–puck touches play at
+  50% of the configured effect level and progressively harder hits reach 100%.
+- Added a pure, linear closing-speed curve: 0 px/s maps to 50%, 450 px/s maps
+  to 75%, and 900 px/s or faster maps to 100%. Sideways pusher movement does
+  not falsely increase loudness because only velocity along the contact normal
+  contributes.
+- The scale is relative to the current effects channel, so the existing volume
+  slider and mute setting remain authoritative. Per-play volume is set directly
+  on the selected Ice/Neon media element.
+- Added collision and audio diagnostics for the last impact speed, requested
+  volume scale, and effective media volume.
+- Pure tests cover the curve boundaries and collision-speed extraction. The
+  focused browser flow verifies a damped 39.96 px/s light touch at 52.2% and a
+  real midfield-clamped 1,896 px/s strike at 100%.
+- Final verification passes: 162/162 unit tests, production build, focused
+  Disc Hockey browser flow, complete Football/Kickfall/tablet browser suite,
+  standalone deterministic web-game client, screenshot inspection, zero
+  browser/page errors, and `git diff --check`.
+
+No follow-up TODO remains for velocity-scaled Hockey contact audio.
+
+#### Disc Hockey anti-camping crease rule (2026-07-29)
+
+- Original prompt for this iteration: prevent a player who is ahead from
+  permanently parking their pusher in the center of their own goal.
+- Selected a symmetric four-second crease rule with a visible warning,
+  defensive-puck exception, pusher ejection, and brief movement penalty.
+- The rule detects only deep occupancy inside each theme's painted goal mouth.
+  It applies symmetrically and regardless of score, keeping the behavior
+  predictable instead of switching rules when the lead changes.
+- A puck within 300 logical pixels of the defender's goal resets the timer
+  immediately, preserving legitimate saves. With the puck safely away, a
+  countdown ring and bilingual `MOVE!` / `¡MUÉVETE!` warning appear after
+  one second.
+- Reaching four seconds produces a bilingual crease-violation banner, ejects
+  the pusher physically into the rink, and freezes movement for the remainder
+  of a 1.25-second penalty. The puck, score, match clock, and touch ownership
+  remain intact.
+- Added diagnostics for crease occupancy, nearby-puck exemption, warning and
+  penalty timers, mirrored violation counts, and the last violation.
+- Updated the English/Spanish setup explanation, README, and Disc Hockey spec.
+  Inspected both setup languages plus Neon warning/ejection/frozen and Ice
+  warning captures; all text and effects fit cleanly.
+- Final verification passes: 164/164 unit tests, production build, focused
+  Disc Hockey browser flow, complete Football/Kickfall/tablet browser suite,
+  standalone deterministic web-game client, screenshot inspection, zero
+  browser/page errors, and `git diff --check`.
+
+No follow-up TODO remains for the anti-camping crease rule.
+
+#### Mechanical Hockey ejection and frozen visual (2026-07-29)
+
+- Original prompt for this refinement: visually communicate the frozen pusher
+  and replace the teleport-like ejection with a metallic piece emerging from
+  inside the goal to push the offender in a random direction.
+- Selected a bounded inward random push, telescoping goal piston, and metallic
+  lock treatment. After visual review, the lock was rejected in favor of the
+  earlier translucent frozen-pusher state; the piston remains.
+- Follow-up timing request: extend the camping cycle to four seconds. The first
+  second detects occupancy, then the warning visibly counts `3`, `2`, `1`
+  before ejection.
+- The pusher now moves instead of teleporting: a telescoping metallic piston
+  extends from behind the offender's goal, pushes inward for 320 ms at a
+  random angle bounded to ±24 degrees, and retracts. Both goals mirror the
+  same behavior, and arena collision clamping keeps the movement legal.
+- After the piston retracts, the pusher returns to the preferred translucent,
+  cool-tinted frozen treatment until movement unlocks. The rejected metal
+  crossbars, bolts, lock ring, and `LOCKED` label were removed.
+- Diagnostics distinguish warning, ejection, and frozen states and expose the
+  generated ejection vector. Browser coverage asserts the visible `3 → 2 → 1`
+  sequence, inward motion from both goals, frozen input blocking, and recovery.
+- Final verification passes: 164/164 unit tests, production build, focused
+  Disc Hockey browser flow, complete Football/Kickfall/tablet browser suite,
+  standalone deterministic web-game client, Neon warning/piston/frozen visual
+  inspection, zero browser/page errors, and `git diff --check`.
+
+No follow-up TODO remains for the mechanical Hockey ejection refinement.
+
+#### Disc Hockey Crazy Mode (2026-07-29)
+
+- Original prompt for this iteration: add `Crazy Mode!` / `¡Modo Loco!`, a
+  computer-only fixed-Hard challenge against four random coordinated AI
+  pushers. Add a bottom energy bar charged by intentional hits, defensive
+  saves, and passive recovery; arm the human pusher with `power_up_1`, consume
+  the next intentional hit with `powered_up_shot`, knock rival pushers aside
+  with the unstoppable puck, and empty the energy bar on a camping violation.
+- Follow-up decisions: use a red-orange armed hue/pulse, preserve full charge
+  when the computer scores, end a powered shot on a player goal or the
+  opponent's back wall, and retain side-wall ricochets.
+- Audit complete: the current scene assumes one right pusher throughout AI,
+  collision, visuals, crease state, and diagnostics. Implementation will add a
+  Crazy-only right-side squad while preserving the existing single-player and
+  local-two-player paths.
+- Added the persisted `crazy` setup choice with English/Spanish `Crazy!` /
+  `¡Loco!` presentation, four mystery rivals, fixed-Hard explanation, and
+  Crazy-specific instructions. Matches choose four unique character rivals
+  while excluding the human.
+- Added striker, interceptor, defender, and goalkeeper role auctions with role
+  retention, predicted defensive positioning, attack-lane clearance, legal
+  half clamping, teammate separation, and team-aware right-crease time.
+- Added the bottom Crazy Power bar: 1%/s passive recovery, +6% intentional
+  hits, +14% defensive saves, contact/recharge cooldowns, and a 120 px/s human
+  closing-speed requirement. Incidental incoming-puck collisions neither
+  charge nor consume the armed shot.
+- Full charge plays `power_up_1`, adds a red-orange pusher pulse, and arms one
+  shot. Intentional activation plays the newly cached `powered_up_shot`,
+  transfers a hot trail to a 1450 px/s puck, knocks each rival aside once, and
+  remains active through side-wall bounces until a goal or opponent back wall.
+- Computer goals preserve full comeback charge. Player goals disarm unused
+  full charge. A confirmed human crease violation empties/disarms the bar and
+  blocks passive recharge during the frozen penalty.
+- Fixed a live-review regression where the armed pulse used Phaser's native
+  scale of 1 and enlarged every 106 px pusher sprite to its 256 px source
+  size. The pulse now multiplies the intended display diameter. Diagnostics
+  and browser coverage assert both the 48.4 px physics radius and 104–107 px
+  visual diameter for all four rivals.
+- Pure Hockey coverage now exercises unique roster selection, intentional
+  contact/save classification, charging bounds, powered-puck creation,
+  knockback, back-wall expiry, all four coordinated roles, shot-lane clearance,
+  safe-goalkeeper positioning, and teammate separation. Focused browser
+  coverage passes the complete Crazy setup/charge/arm/shot/knockback/camping
+  flow with zero page errors.
+- Final visual inspection covers English/Spanish Crazy setup, four-rival live
+  play, the corrected standard pusher scale, bright full energy bar, armed
+  red-orange pusher, powered-puck trail, and crease-piston energy drain.
+- Final verification passes: 168/168 unit tests, focused Disc Hockey browser
+  flow, complete Football/Kickfall/tablet browser suite, production build,
+  standalone deterministic web-game client, zero browser/page errors, and
+  `git diff --check`.
+
+No follow-up TODO remains for Disc Hockey Crazy Mode.
+
+#### Input-independent Hockey crease timing (2026-07-29)
+
+- Original bug report: goal-camping detection triggered on time while a
+  finger/mouse remained down, but took much longer after releasing input.
+- Root cause: releasing a pointer cleared its target and ownership but retained
+  the last direct-touch velocity. The keyboard-style fallback then integrated
+  that residual velocity, allowing an apparently parked pusher to drift across
+  the crease boundary and reset the timer.
+- Pointer release now atomically clears ownership/target and both velocity
+  components. Human players with neither pointer nor keyboard input also stop
+  immediately, including Player 2 in local mode.
+- Added a pure immutable release-control unit test and a deterministic browser
+  comparison that starts with identical residual velocity, measures the held
+  timer, releases the pointer, and requires the released timer to match within
+  30 ms.
+- Focused verification passes: 25/25 Disc Hockey unit tests, deterministic
+  held-versus-released browser timing, released-state screenshot inspection,
+  standalone client sanity check, zero page errors, and `git diff --check`.
+  The complete regression suite remains intentionally deferred until the
+  user's queued feedback is clear.
+
+No follow-up TODO remains for input-independent crease timing.
+
+#### Crazy Mode corner-puck recovery (2026-07-29)
+
+- Original bug report: in Crazy Mode, two or more computer pushers can converge
+  on a puck at the rounded opponent corner and collectively pin it against the
+  boards.
+- Root cause: every support role independently tracked the puck or its
+  predicted path. Near an end-board corner, the striker, defender, and
+  goalkeeper targets collapsed into the same narrow contact lane despite the
+  normal teammate-separation pass.
+- Added mirrored top/bottom corner recovery. Within the last 150 px of the
+  opponent end and 130 px of a corner, the nearest striker becomes the sole
+  retriever and approaches from an inward diagonal for a banked release. The
+  goalkeeper returns to center, while the defender and interceptor immediately
+  open into a spaced recovery formation away from the puck.
+- Exposed the active corner-recovery side in the Crazy squad diagnostics.
+  Focused pure coverage checks both mirrored corners, one-and-only-one nearby
+  retriever, diagonal approach direction, and more than 180 px of support
+  clearance.
+- Focused verification passes: 27/27 Disc Hockey unit tests, the full
+  deterministic Disc Hockey browser flow, live bottom-corner escape, visual
+  inspection of `output/disc-hockey/09b-crazy-corner-recovery.png`, standalone
+  web-game client sanity, zero browser/page errors, and `git diff --check`.
+  The complete cross-game regression suite remains intentionally deferred
+  until the user's queued feedback is clear.
+
+No follow-up TODO remains for Crazy Mode corner-puck recovery.
+
+#### Real-photo-derived Joel character V1 (2026-07-29)
+
+- Replaced the fictional Joel with a real-photo-derived likeness based on four
+  guardian-supplied reference photographs. The private photographs remain
+  outside the repository; the approved generated anchor, transparent source,
+  exact 4×3 pose sheet, identity contract, and prompt provenance live under
+  `source-assets/characters/joel-v1/`.
+- Added a manifest-driven Joel build to
+  `scripts/build-character-animation-atlases.py`. It uses bleed-aware source
+  recovery, normalizes all twelve 320×480 frames, grounds standing poses at
+  `y=418`, and writes the versioned runtime atlas plus a 512×512 transparent
+  selector portrait.
+- Replaced Joel across Football, Kickfall, and Disc Hockey, including the intro
+  hero, selectors, tiny Hockey engraving, baked Kickfall/Hockey menu cards,
+  startup splash, web manifest icons, Android launcher/adaptive icons, and
+  native portrait/landscape splashes. Runtime asset filenames and the service
+  worker were versioned to prevent stale cache-first artwork.
+- Added `scripts/build-title-character-brand-assets.py` so approved title
+  masters reproducibly generate all web and Android branding sizes.
+- Installed the reusable personal Codex skill `$onboard-game-character` with a
+  repository contract and automated atlas auditor. A hypothetical second
+  person was used to forward-test its audit, generation, integration, privacy,
+  geometry, and human-approval gates.
+- Geometry audit passes: 1280×1440 atlas, twelve non-empty frames, complete
+  hair/hands/shoes, safe transparent side margins, and identical `y=418`
+  grounded baselines. Visual review covers the intro, selectors, all Football
+  actions, Kickfall, standard and Crazy Hockey, menu cards, web splash, icon,
+  and native Android splash.
+- Release-gate verification passes: 171/171 unit tests, production build,
+  complete Football/Kickfall/tablet browser suite, complete deterministic Disc
+  Hockey browser suite, required standalone web-game client, zero page errors,
+  and `git diff --check`.
+
+Tablet deployment remains intentionally pending Joel/guardian likeness
+approval.
+
+#### Dad / Papá character V1 and onboarding-agent field test (2026-07-29)
+
+- Used the installed `$onboard-game-character` workflow with four private
+  photographs of Luis Nomad to add the new `dad` roster member. English uses
+  Dad/DAD and Spanish uses Papá/PAPÁ. The photographs remain outside the
+  repository.
+- Luis approved the original tall adult cartoon anchor with a deep navy,
+  golden-yellow, royal-blue, and cream kit. The superseded compact experiment
+  remains archived as provenance only. Dark-brown scalp hair, moustache, and
+  beard are an explicit identity invariant; gray, silver, blond, and
+  salt-and-pepper hair are prohibited in every pose.
+- Regenerated a consistent twelve-pose 4×3 sheet from the approved tall
+  anchor, removed its flat magenta background locally, added it to the shared
+  atlas builder with bleed-aware recovery, and produced the versioned runtime
+  atlas and 512×512 portrait.
+- The atlas auditor passes: 1280×1440, twelve non-empty 320×480 frames, every
+  grounded frame ending at `y=418`, minimum eight-pixel side margin, complete
+  hair/hands/shoes, and a size-corrected jump. Dad's idle art uses a dedicated
+  405-pixel 6'7" normalization versus the standard 380 pixels, while his
+  gameplay collider remains unchanged. Hash comparison proved no previously
+  approved character atlas changed during the build.
+- Added a bounded catalog-level `visualScale` parameter after live review
+  showed that Dad's narrower tall-adult proportions still felt smaller than
+  Joel's oversized head-soccer silhouette. Dad now renders at 1.20× in
+  Football and Kickfall. Football retains the same authored compound collider
+  area as his opponent, Kickfall retains the same 44×82 body, all feet stay on
+  their shared ground/platform lines, and Hockey ignores this parameter to
+  preserve one regulation pusher diameter.
+- Dad is selectable as player or opponent in Football, Kickfall, and Disc
+  Hockey; can appear as a Crazy rival; and is excluded from the Crazy squad
+  when Dad is the human player. His gold accent and sturdy stats are
+  speed/jump/dash 0.98, kick 1.04, and power 1.08.
+- The About panel now shows Dad's portrait beside the existing creator credit
+  and explicitly labels `Luis Nomad · Dad` / `Luis Nomad · Papá`, while keeping
+  NotJustPrompts.ai and the dedication to Joel.
+- Live screenshot review caught a baked `JOEL / BOB` scoreboard in the Hockey
+  setup that disagreed with selected characters. It is now covered by dynamic
+  localized lineup labels, including DAD, PAPÁ, and CRAZY SQUAD/EQUIPO LOCO.
+- The agent field test exposed two reusable lessons now added to the skill:
+  update every serialized/browser-only roster fixture, and audit baked lineup
+  labels separately from catalog-driven portraits.
+- Visual validation passes for the portrait selectors, Football idle/run/jump
+  and three-stage kick, Kickfall ground/run/kick, normal Hockey engraving,
+  Crazy-rival engraving, About panel, and dynamic Hockey header. Feet share the
+  Football pitch and Kickfall platform baselines; Hockey keeps the standard
+  104–107 px visual diameter.
+- Release-gate verification passes: 173/173 unit tests, production build,
+  complete Football/Kickfall/tablet browser journey, complete deterministic
+  Disc Hockey browser journey, standalone web-game client state/error sanity,
+  atlas audit, zero page errors, and `git diff --check`. The existing Phaser
+  chunk-size warning remains informational.
+
+Luis approved the tall identity anchor. Tablet deployment remains intentionally
+pending the final combined pre-deployment review.
+
+#### Crazy Mode goal-lip dead-zone recovery (2026-07-29)
+
+- Reproduced the reported Ice-arena pile-up at the upper-right goal lip with a
+  stationary puck and three Crazy rivals accumulating around it.
+- Root cause: the goal is wide enough for the puck, but outside its narrow
+  central strip there is not enough wall clearance for a full-size pusher to
+  take the normal behind-the-puck approach.
+- Extended the existing one-retriever board recovery to both goal lips using
+  the actual puck and pusher radii. One striker now takes a diagonal bank
+  approach while the goalkeeper, defender, and interceptor vacate the pocket;
+  the goalkeeper's recovery anchor stays at least 195 px behind the puck.
+- Added mirrored pure regressions for the upper and lower goal lips plus an
+  end-to-end Ice-arena cluster. In the captured browser run, the three support
+  players cleared by more than 180 logical pixels and the puck resolved within
+  1.8 seconds instead of remaining pinned.
+- Verification passes: 175/175 unit tests, the complete deterministic Disc
+  Hockey browser journey, production build with separate Hockey/Kickfall
+  chunks, required standalone web-game client screenshot/state review,
+  complete Football/Kickfall/touch browser suite, and `git diff --check`.
+
+Tablet deployment remains pending the existing combined Joel/Dad artwork
+review; this fix has not overridden that release gate.
+
+#### Held-pointer crease timing at goal lips (2026-07-29)
+
+- Reproduced the reported delay at the painted goal lip with real browser
+  mouse-down and CDP touch ownership held continuously through the four-second
+  camping window.
+- The previous crease test used only the pusher center vertically and reset all
+  accumulated time on a tiny boundary crossing. Held input continually samples
+  those edge coordinates, so harmless mouse/finger movement could repeatedly
+  restart the clock even though the circular pusher still occupied the goal.
+- Crease occupancy now uses the full circular pusher footprint vertically and
+  retains an active timer through an 8 px spatial exit hysteresis. A genuinely
+  departed pusher still resets immediately beyond that margin, and a
+  threatening puck still clears the timer immediately.
+- Added pure upper-lip, boundary-jitter, and true-exit regressions. Browser
+  coverage holds a real mouse pointer and a real touch pointer at the lip and
+  requires both to trigger the same piston violation after 4.05 seconds while
+  ownership remains active.
+- Verification passes: 175/175 unit tests, complete deterministic Disc Hockey
+  browser journey, held-touch ejection screenshot inspection, production build
+  with separate Hockey/Kickfall chunks, standalone web-game client
+  screenshot/state review, and `git diff --check`.
+- The broad cross-game browser suite currently stops in separate concurrent Mum
+  animation work: first at the enhanced-run-cycle assertion and, on retry,
+  while decoding that changing atlas. No Hockey or crease assertion failed.
+
+Tablet deployment remains pending the existing combined character-art review.
+
+#### Project-owned character-creation agent (2026-07-29)
+
+- Added the repository-scoped `$create-game-character` skill under
+  `.agents/skills/create-game-character/`, the official Codex discovery
+  location for workflows that should travel with a project.
+- The agent owns the complete photo-to-roster workflow: privacy-safe intake,
+  written identity contract, single-anchor human approval, twelve-pose
+  generation, chroma removal, atlas packing, catalog/runtime integration,
+  cached and baked surface audits, visual-scale fairness checks, full browser
+  coverage, and final person/guardian approval before deployment.
+- Added project-specific references for image-generation prompts, source and
+  runtime naming, atlas geometry, optional `visualScale`, Football/Kickfall
+  collider invariants, regulation Hockey pusher size, localization, fixtures,
+  branding, caching, privacy, and release gates.
+- Added deterministic atlas and package auditors. The package auditor checks
+  canonical source files, transparent corners, portrait size/clearance,
+  lossless and runtime atlas geometry, catalog and builder registration, and
+  prompt/privacy/runtime provenance.
+- Validation passes: official skill `quick_validate.py`, Python compilation,
+  complete Dad package audit, complete Joel package audit, and
+  `git diff --check`. The Dad forward test caught and corrected an overly
+  narrow pose-sheet provenance matcher before Joel also passed.
+
+The agent is ready for the next user-supplied character photos. Invoke it with
+`$create-game-character`. It intentionally stops for anchor approval and again
+before any deployment.
+
+#### Mum character identity gate (2026-07-29)
+
+- Started the project-owned `$create-game-character` workflow for Joel's mum
+  from three private front/profile/three-quarter family photographs.
+- The photographs remain outside the repository. Only the written identity and
+  kit contract, exact prompt provenance, generated anchor, and transparent
+  derivative are stored under `source-assets/characters/mum-v1/`.
+- The proposed roster identity is `mum`, localized as `Mum` / `Mamá`, with a
+  sapphire, midnight-navy, and warm-gold kit, native right-facing artwork, and
+  gentle makeup: softly defined brows, thin brown liner/mascara, subtle blush,
+  and muted rose lips.
+- Generated one full-body likeness candidate and removed its flat magenta
+  background. A neutral-background audit found a small curl-edge fringe in the
+  first derivative; the canonical transparent anchor uses the prescribed
+  one-pixel matte contraction and preserves the complete face, hair, hands,
+  kit, shoes, and studs.
+
+The user approved Mum's identity anchor on 2026-07-29. The twelve-pose sheet,
+atlas package, roster integration, and release validation may now proceed.
+
+- Generated Mum's exact 4×3 source sheet in the required human-friendly order:
+  idle, three running stages, jump, kick contact, chilena source, dash, stun,
+  anticipation, bicycle kick, and recovery.
+- The sheet contains twelve separated complete figures with a stable adult
+  likeness, kit, makeup, hair language, head/body ratio, shoes, and lighting.
+  Neutral-background inspection confirmed intact curls, hands, and soles.
+- As with the approved anchor, the first keyed sheet showed a faint one-pixel
+  magenta edge around a few moving curls. The canonical transparent sheet uses
+  the allowed one-pixel matte contraction; the uncontracted derivative is kept
+  as provenance.
+- User review caught that the standing/idle source faced opposite Mum's
+  screen-right action poses. Only the complete idle cell was horizontally
+  mirrored in both canonical chroma and transparent sheets. The initial
+  341-pixel conceptual crop left boot-bleed remnants; visual inspection caught
+  that intermediate mistake, and the final 384×360 replacement includes the
+  full silhouette without touching row 2. Atlas bounds returned to their
+  original 121×380 idle geometry and the portrait now uses the corrected
+  direction.
+- Packed the corrected sources into a lossless 1280×1440 atlas, twelve runtime
+  frames, a WebP runtime atlas, and a 512×512 selector portrait. Mum is
+  registered after Dad in the data-driven roster as `Mum` / `Mamá`, with
+  native screen-right facing and standard adult visual scale and colliders.
+- Integrated Mum across Football setup and play, Kickfall, normal Disc Hockey,
+  and Crazy Disc Hockey. Existing creator and branding surfaces were left
+  unchanged because Mum is a playable family character, not the app creator.
+- Visual review covers the corrected idle, both facing states, complete
+  Football run/jump/kick/dash/stun/chilena/Big Guy set, Kickfall
+  idle/run/jump/kick, both Hockey modes, and selection screens. Feet align to
+  the Football and Kickfall ground anchors, while Hockey uses the regulation
+  pusher diameter.
+- Final validation passes: 175/175 unit tests, production build, full
+  Football/Kickfall browser journey, deterministic Disc Hockey browser
+  journey, standalone web-game client screenshot/state review, atlas audit,
+  package audit, and `git diff --check`. Browser journeys reported zero page
+  or console errors. Tablet deployment remains deliberately pending Mum's
+  final in-game guardian approval.
+
+#### Mum roster-relative proportion refinement (2026-07-29)
+
+- In-game comparison showed that Mum and Joel had identical authored and
+  runtime idle heights, but Mum's realistic adult head/body ratio and narrower
+  silhouette made her read materially smaller in the head-soccer style.
+- Refined all twelve source poses with a controlled 10–12% increase to Mum's
+  complete head and hair while preserving her adult identity, gentle makeup,
+  kit, body scale, limb lengths, pose order, screen-right direction, and
+  gameplay geometry. The previous corrected sources remain archived.
+- Added a roster-relative parity auditor to the project character agent. It
+  applies catalog `visualScale`, measures the target against roster medians,
+  and renders every idle on one shared ground line for mandatory visual review
+  of head/body ratio and perceived prominence. The agent now explicitly
+  requires comparison with Joel, an adult, and the full roster; equal canvas
+  height alone is no longer sufficient.
+- The head-only candidate measured 137×380 authored pixels versus Joel's
+  133×380, with both at `visualScale: 1`. Unrelated source and runtime atlas
+  hashes remained byte-identical after rebuilding.
+- The first body-width pass reached only about 86 px of runtime idle width and
+  was rejected as still too thin. A stronger body-width candidate reached the
+  target metrics but was also rejected during visual review because it made
+  Mum read much too broad and muscular.
+- The parity auditor now accepts an explicit age cohort. Adult mode enforces at
+  least 85% of roster-median visible width and 90% of median height unless a
+  documented identity/design exception is supplied.
+- At that stage, an experimental candidate used Lucia as the sole body
+  proportion reference, with Mum's own adult face, makeup, voluminous wavy
+  hair, and kit. The slim body remained unchanged while head and hair presence
+  were calibrated across all twelve poses.
+- That final Lucia-proportion candidate was 161×380. At the experimental adult
+  `visualScale: 1.1`, she renders at approximately 103×244 visible pixels
+  versus Lucia's 108×215: comparable overall presence with the same slim
+  cartoon language, while Mum remains visibly taller and adult. Football and
+  Kickfall colliders remain the shared regulation geometry; Hockey ignores
+  cosmetic scale as required.
+- Final user review preferred the original Mum treatment after all. Restored
+  the exact pre-head-refinement chroma and transparent sheets, which already
+  include the corrected screen-right idle, and removed Mum's experimental
+  `visualScale: 1.1`. All later proportion candidates remain archived but are
+  excluded from runtime.
+- The comparison workflow still did its job: it exposed the relative width
+  clearly enough for an informed art-direction choice. Mum's 67.4% median-width
+  ratio is now a documented user-approved exception (`minimum-width-ratio
+  0.65`), rather than an accidental pass. Geometry, grounding, and collider
+  gates remain non-negotiable.
+
+#### Mum animation-scale normalization (2026-07-29)
+
+- Live review found that Mum's approved idle was internally much smaller than
+  several generated action poses. The shared 320×480 cells and ground anchor
+  were correct, but her jump looked larger and adjacent run/kick frames pulsed
+  in perceived size.
+- Measured every runtime pose as an idle-relative visible area and compared the
+  result with the same poses for adult references Juan, Dad, and Juanjo. Mum's
+  actions occupied 1.78–2.23× her idle area before correction, versus adult
+  reference medians of 1.16–1.55×.
+- Added deterministic per-frame packing scales for Mum. The approved source
+  sheet and idle remain unchanged; only runtime action packing is normalized.
+  All frames retain the shared `y=418` ground anchor, safe side margins, and
+  unchanged gameplay colliders.
+- Added `audit_character_motion_parity.py` to the project character agent. It
+  compares all twelve pose footprints with same-cohort atlases, produces a
+  fixed-scale motion board, and requires temporal visual review of the face,
+  torso, run loop, jump, and three-stage kick rather than approving isolated
+  screenshots alone.
+- The normalized atlas, package, roster-parity, and motion-parity audits pass.
+  Unrelated approved atlas hashes remain byte-identical. The service-worker
+  cache version advanced to V7 so installed builds cannot retain the old Mum
+  atlas under its unchanged filename.
+- Final verification passes: 175/175 unit tests, production build, complete
+  Football/Kickfall browser journey, complete Disc Hockey browser journey,
+  standalone web-game client state/screenshot review, skill validation, and
+  `git diff --check`, with zero page or console errors. The Disc Hockey driver
+  now waits through the selector input lock and confirms each expected roster
+  transition, eliminating a five-click timing race exposed during this run.
+
+#### Mum whole-character presence correction (2026-07-29)
+
+- Direct Kickfall comparison with Juanjo confirmed that equal authored height
+  was insufficient: Mum's original narrow silhouette still read as a
+  miniature at runtime.
+- Preserved the exact user-selected source art and normalized motion atlas.
+  Mum now uses uniform `visualScale: 1.2`, making her approximately 85×266
+  visible pixels and about 98% of Juanjo's visible area without widening or
+  redrawing her body. Dad also moves from 1.1 to 1.2; his taller 405-pixel
+  authored idle renders at approximately 284 pixels, preserving the intended
+  6'7" hierarchy above Mum.
+- Football retains the shared compound collider, Kickfall retains its 44×82
+  gameplay body, both modes retain their existing foot anchors, and Hockey
+  continues to ignore cosmetic scale and use one regulation pusher diameter.
+- Subsequent live review showed that the first adult-area normalization had
+  over-corrected the atlas: every non-standing Mum pose read smaller even
+  though frame-to-frame stutter was reduced. Rebalanced the action packing
+  around temporal sequences instead. Run frames now occupy approximately
+  319–329 authored pixels of visible height, kick stages approximately
+  310–321, and jump approximately 306; this restores action presence while
+  keeping adjacent frames steady and avoiding the original oversized jump.
+- Advanced the service-worker cache contract to V8 because the normalized Mum
+  atlas changed under its existing runtime filename.
+- Final verification passes: 177/177 unit tests, production build, complete
+  Football/Kickfall browser journey, complete deterministic Disc Hockey
+  journey, atlas/package/roster/motion audits, official skill validation,
+  standalone web-game client screenshot/state review, unchanged hashes for
+  every unrelated approved atlas, and `git diff --check`. Browser journeys
+  reported zero page or console errors.
+
+#### Cross-game Hockey character selection regression (2026-07-29)
+
+- Fixed the Disc Hockey Player 1 carousel so it no longer hides the character
+  currently stored as Football's opponent. Selecting that character now uses
+  the existing profile-lineup sanitizer to move the conflicting opponent to a
+  valid fallback, matching the established Mini-games/Kickfall behavior.
+- The rival carousel still excludes the active Player 1 character, so a match
+  cannot end up with the same character on both sides.
+- Added a browser regression that stores Luna as the Football opponent, selects
+  Luna from the Disc Hockey setup, and verifies the resulting Hockey lineup is
+  Luna versus Joel. Updated later roster-cycle assertions to cover the complete
+  Player 1 roster rather than relying on the old hidden-character behavior.
+- Validation passes: 175/175 unit tests, deterministic Disc Hockey browser
+  journey with zero page/console errors, production build, standalone
+  web-game client smoke run, screenshot/state review, and `git diff --check`.
+
+#### Crazy Mode overdrive striker (2026-07-29)
+
+- Made the dynamically assigned striker the squad's single overdrive attacker:
+  25 ms target reactions, 780 px/s top speed, and response 22 versus the three
+  Hard-support roles at 500 px/s and response 12. The added closing velocity
+  also produces harder legal puck impacts through the existing collision
+  physics.
+- Added a compact orange downward chevron over the current striker. It makes
+  the threat readable as roles move between rivals without restoring any
+  surrounding pusher glow.
+- Crazy diagnostics now expose each squad member's `aggressive`, `maxSpeed`,
+  and `response` values. Pure tests require exactly the striker to receive the
+  overdrive profile; browser coverage verifies exactly one marked attacker and
+  deterministically proves it closes from x=1020 and sends a stationary puck
+  toward the human goal within 350 ms.
+- The focused 31-test Hockey suite, full 176-test unit suite, production
+  build, required standalone-client smoke run, and complete deterministic
+  Hockey browser journey pass. The browser reported zero page/console errors;
+  the overdrive gameplay screenshot and text state were visually inspected.
+
+#### Crazy striker corner-release follow-up (2026-07-29)
+
+- Live Ice-field feedback exposed that the overdrive striker could make the
+  intended angled corner contact but then keep driving into the puck, pinning
+  it against the curved upper-right wall.
+- Split corner recovery into a bank-jab and release. A slow/stationary puck
+  retains the close angled contact target; once the puck reaches 120 px/s, the
+  striker retreats 190 px inward and 160 px away from that wall so the rebound
+  has a clear escape lane.
+- The first live replay showed that target retreat alone could move the puck
+  down the side rail without bringing it far enough into open ice. Corner
+  contact now guarantees a bank vector of at least 520 px/s inward and 320
+  px/s away from the wall. The same physical striker retains the release role
+  for 0.55 seconds after contact, preventing immediate reacquisition when the
+  puck crosses the formal corner-zone boundary.
+- Added a pure top-corner rebound test plus a deterministic Ice-field browser
+  fixture matching the reported position. It verifies the initial close jab,
+  the symmetric top/bottom bank vector, a retreat target more than 190 px from
+  the moving puck, and actual extraction past x=1000 from the upper-right
+  corner after the rebound.
+- Final verification passes: 177/177 unit tests, the complete deterministic
+  Hockey browser journey with zero page/console errors, required standalone
+  client smoke/state/screenshot review, production build, and diff hygiene.

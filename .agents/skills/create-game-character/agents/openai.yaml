@@ -1,0 +1,4 @@
+interface:
+  display_name: "Create Game Character"
+  short_description: "Turn photos into a validated game character"
+  default_prompt: "Use $create-game-character to turn the attached photos into a fully integrated and validated Joel Football character."

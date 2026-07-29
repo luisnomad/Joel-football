@@ -2,21 +2,42 @@ import { describe, expect, it } from 'vitest';
 import {
   DISC_HOCKEY_AI,
   DISC_HOCKEY_ARENA,
+  DISC_HOCKEY_CRAZY_AI,
+  DISC_HOCKEY_CRAZY_POWER,
+  DISC_HOCKEY_CRAZY_ROLES,
+  DISC_HOCKEY_CREASE_RULE,
   DISC_HOCKEY_HUMAN_CONTROL,
+  DISC_HOCKEY_IMPACT_AUDIO,
   DISC_HOCKEY_MATCH_SECONDS,
   DISC_HOCKEY_PUCK_SURFACE,
+  addDiscHockeyCrazyPower,
+  chooseDiscHockeyCrazyTargets,
   chooseDiscHockeyAiTarget,
   clampDiscPlayerPosition,
   closestPointOnCollisionContour,
   constrainDiscToCollisionMap,
+  createDiscHockeyCornerBankPuck,
+  createDiscHockeyPoweredPuck,
   detectDiscHockeyGoal,
+  evaluateDiscHockeyCrease,
   formatDiscHockeyTime,
   getDiscHockeyAiTuning,
+  getDiscHockeyCrazyRoleMotion,
+  getDiscHockeyEjectionVelocity,
   getDiscHockeyHumanMotion,
+  getDiscHockeyImpactVolume,
+  getDiscHockeyIntentionalHit,
   getDiscHockeyMatchResult,
+  getDiscHockeyPoweredKnockback,
+  isDiscHockeyDefensiveSave,
   moveDiscDirectlyTowardTarget,
   moveDiscTowardTarget,
+  releaseDiscHockeyControl,
+  resolveDiscHockeyGoalCharacterId,
   resolvePlayerPuckCollision,
+  selectDiscHockeyCrazyRoster,
+  separateDiscHockeyPushers,
+  shouldEndDiscHockeyPoweredShot,
   stepPuck,
 } from '../src/game/minigames/discHockey/discHockeyRules.js';
 import {
@@ -29,6 +50,15 @@ import {
   setGameDifficulty,
 } from '../src/game/pure/profile.js';
 import { getMiniGameEntry, MINI_GAME_IDS } from '../src/game/minigames/minigameCatalog.js';
+
+const playerSpawnFixture = (side, x, y) => ({
+  side,
+  x,
+  y,
+  vx: 0,
+  vy: 0,
+  radius: DISC_HOCKEY_ARENA.playerRadius,
+});
 
 describe('Disc Hockey profile and lazy catalog', () => {
   it('keeps independent valid setup choices and sanitizes corrupt values', () => {
@@ -46,6 +76,10 @@ describe('Disc Hockey profile and lazy catalog', () => {
       discHockey: { mode: 'online', themeId: 'pink' },
       difficultyByGame: { discHockey: 'impossible' },
     }).discHockey).toEqual({ mode: 'computer', themeId: 'ice' });
+    expect(setDiscHockeySettings(defaults, { mode: 'crazy' }).discHockey).toEqual({
+      mode: 'crazy',
+      themeId: 'ice',
+    });
   });
 
   it('exposes both mini-games through dynamic loader functions', () => {
@@ -138,6 +172,33 @@ describe('Disc Hockey pure gameplay', () => {
     expect(getDiscHockeyMatchResult({ left: 4, right: 4 })).toBe('draw');
   });
 
+  it('attributes normal goals by side and Crazy goals to the actual squad puck toucher', () => {
+    expect(resolveDiscHockeyGoalCharacterId({
+      scoringSide: 'left',
+      leftCharacterId: 'joel',
+      rightCharacterId: 'lucia',
+    })).toBe('joel');
+    expect(resolveDiscHockeyGoalCharacterId({
+      scoringSide: 'right',
+      leftCharacterId: 'lucia',
+      rightCharacterId: 'joel',
+    })).toBe('joel');
+    expect(resolveDiscHockeyGoalCharacterId({
+      scoringSide: 'right',
+      leftCharacterId: 'lucia',
+      rightCharacterId: 'bob',
+      isCrazyMode: true,
+      lastPuckTouch: { side: 'right', characterId: 'joel' },
+    })).toBe('joel');
+    expect(resolveDiscHockeyGoalCharacterId({
+      scoringSide: 'right',
+      leftCharacterId: 'joel',
+      rightCharacterId: 'bob',
+      isCrazyMode: true,
+      lastPuckTouch: { side: 'left', characterId: 'joel' },
+    })).toBeNull();
+  });
+
   it('uses one identical touch motion profile for both local players', () => {
     const playerOneMotion = getDiscHockeyHumanMotion(true);
     const playerTwoMotion = getDiscHockeyHumanMotion(true);
@@ -146,6 +207,30 @@ describe('Disc Hockey pure gameplay', () => {
       maxSpeed: DISC_HOCKEY_HUMAN_CONTROL.touchMaxSpeed,
       response: DISC_HOCKEY_HUMAN_CONTROL.touchResponse,
       direct: true,
+    });
+  });
+
+  it('stops all residual motion when touch or mouse control is released', () => {
+    const controlled = {
+      side: 'left',
+      x: 150,
+      y: 383,
+      vx: 940,
+      vy: -180,
+      target: { x: 150, y: 383 },
+      pointerId: 77,
+    };
+    expect(releaseDiscHockeyControl(controlled)).toEqual({
+      ...controlled,
+      vx: 0,
+      vy: 0,
+      target: null,
+      pointerId: null,
+    });
+    expect(controlled).toMatchObject({
+      vx: 940,
+      vy: -180,
+      pointerId: 77,
     });
   });
 
@@ -241,12 +326,449 @@ describe('Disc Hockey pure gameplay', () => {
     const puck = { x: 360, y: 300, vx: 0, vy: 0, radius: 25 };
     const hit = resolvePlayerPuckCollision({ player, puck });
     expect(hit.collided).toBe(true);
+    expect(hit.impactSpeed).toBe(240);
     expect(hit.puck.x).toBeGreaterThan(puck.x);
     expect(hit.puck.vx).toBeGreaterThan(player.vx);
     expect(resolvePlayerPuckCollision({
       player,
       puck: { ...puck, x: 500 },
-    }).collided).toBe(false);
+    })).toMatchObject({ collided: false, impactSpeed: 0 });
+  });
+
+  it('scales Hockey contact audio from half volume to full volume by impact speed', () => {
+    expect(DISC_HOCKEY_IMPACT_AUDIO).toEqual({
+      minimumVolumeScale: 0.5,
+      fullVolumeSpeed: 900,
+    });
+    expect(getDiscHockeyImpactVolume(-100)).toBe(0.5);
+    expect(getDiscHockeyImpactVolume(0)).toBe(0.5);
+    expect(getDiscHockeyImpactVolume(450)).toBe(0.75);
+    expect(getDiscHockeyImpactVolume(900)).toBe(1);
+    expect(getDiscHockeyImpactVolume(1800)).toBe(1);
+  });
+
+  it('warns and penalizes symmetric goal camping without punishing active defense', () => {
+    expect(DISC_HOCKEY_CREASE_RULE).toEqual({
+      warningSeconds: 1,
+      violationSeconds: 4,
+      penaltySeconds: 1.25,
+      extraCreaseDepth: 36,
+      puckSafetyDepth: 300,
+      boundaryHysteresis: 8,
+      ejectionSeconds: 0.5,
+      ejectionPushSeconds: 0.32,
+      ejectionSpeed: 650,
+      maximumEjectionAngleDegrees: 24,
+    });
+    const collisionMap = DISC_HOCKEY_COLLISION_MAPS.ice;
+    const leftCamper = {
+      side: 'left',
+      x: collisionMap.goalLineLeft + DISC_HOCKEY_ARENA.playerRadius,
+      y: (collisionMap.goalTop + collisionMap.goalBottom) / 2,
+      radius: DISC_HOCKEY_ARENA.playerRadius,
+    };
+    const safePuck = {
+      x: DISC_HOCKEY_ARENA.centerX,
+      y: DISC_HOCKEY_ARENA.centerY,
+    };
+    expect(evaluateDiscHockeyCrease({
+      player: leftCamper,
+      puck: safePuck,
+      previousSeconds: 0.99,
+      deltaSeconds: 0,
+      collisionMap,
+    })).toMatchObject({
+      inCrease: true,
+      puckThreatening: false,
+      camping: true,
+      warning: false,
+      violated: false,
+    });
+    expect(evaluateDiscHockeyCrease({
+      player: leftCamper,
+      puck: safePuck,
+      previousSeconds: 0.99,
+      deltaSeconds: 0.02,
+      collisionMap,
+    })).toMatchObject({ warning: true, violated: false });
+    expect(evaluateDiscHockeyCrease({
+      player: leftCamper,
+      puck: safePuck,
+      previousSeconds: 3.99,
+      deltaSeconds: 0.02,
+      collisionMap,
+    })).toMatchObject({ violated: true, seconds: 0 });
+    expect(evaluateDiscHockeyCrease({
+      player: leftCamper,
+      puck: { ...safePuck, x: collisionMap.goalLineLeft + 200 },
+      previousSeconds: 2.9,
+      deltaSeconds: 0.2,
+      collisionMap,
+    })).toMatchObject({
+      inCrease: true,
+      puckThreatening: true,
+      camping: false,
+      warning: false,
+      violated: false,
+      seconds: 0,
+    });
+    const rightCamper = {
+      ...leftCamper,
+      side: 'right',
+      x: collisionMap.goalLineRight - DISC_HOCKEY_ARENA.playerRadius,
+    };
+    expect(evaluateDiscHockeyCrease({
+      player: rightCamper,
+      puck: safePuck,
+      previousSeconds: 2,
+      deltaSeconds: 0,
+      collisionMap,
+    })).toMatchObject({
+      side: 'right',
+      inCrease: true,
+      camping: true,
+      warning: true,
+    });
+
+    const upperLipCamper = {
+      ...leftCamper,
+      y: collisionMap.goalTop - leftCamper.radius / 2,
+    };
+    expect(evaluateDiscHockeyCrease({
+      player: upperLipCamper,
+      puck: safePuck,
+      previousSeconds: 0,
+      deltaSeconds: 0.1,
+      collisionMap,
+    })).toMatchObject({
+      inCrease: true,
+      camping: true,
+      seconds: 0.1,
+    });
+
+    const creaseEdge = collisionMap.goalLineLeft
+      + leftCamper.radius
+      + DISC_HOCKEY_CREASE_RULE.extraCreaseDepth;
+    expect(evaluateDiscHockeyCrease({
+      player: { ...leftCamper, x: creaseEdge + 6 },
+      puck: safePuck,
+      previousSeconds: 1.5,
+      deltaSeconds: 0.2,
+      collisionMap,
+    })).toMatchObject({
+      inCrease: true,
+      camping: true,
+      seconds: 1.7,
+    });
+    expect(evaluateDiscHockeyCrease({
+      player: { ...leftCamper, x: creaseEdge + 9 },
+      puck: safePuck,
+      previousSeconds: 1.5,
+      deltaSeconds: 0.2,
+      collisionMap,
+    })).toMatchObject({
+      inCrease: false,
+      camping: false,
+      seconds: 0,
+    });
+  });
+
+  it('ejects goal campers inward with a bounded random angle', () => {
+    const downLeft = getDiscHockeyEjectionVelocity({
+      side: 'left',
+      randomSample: 1,
+    });
+    const straightLeft = getDiscHockeyEjectionVelocity({
+      side: 'left',
+      randomSample: 0.5,
+    });
+    const upRight = getDiscHockeyEjectionVelocity({
+      side: 'right',
+      randomSample: -10,
+    });
+
+    expect(downLeft.angleDegrees).toBe(24);
+    expect(downLeft.vx).toBeGreaterThan(0);
+    expect(downLeft.vy).toBeGreaterThan(0);
+    expect(Math.hypot(downLeft.vx, downLeft.vy)).toBeCloseTo(650, 8);
+    expect(straightLeft).toMatchObject({ angleDegrees: 0, vx: 650, vy: 0 });
+    expect(upRight.angleDegrees).toBe(-24);
+    expect(upRight.vx).toBeLessThan(0);
+    expect(upRight.vy).toBeLessThan(0);
+    expect(Math.hypot(upRight.vx, upRight.vy)).toBeCloseTo(650, 8);
+  });
+
+  it('selects four unique Crazy rivals without selecting the human character', () => {
+    expect(selectDiscHockeyCrazyRoster({
+      candidateIds: ['joel', 'bob', 'lucia', 'luna', 'juan', 'juanjo'],
+      playerId: 'joel',
+      randomSamples: [0, 0.99, 0.5, 0],
+    })).toEqual(['bob', 'juanjo', 'luna', 'lucia']);
+
+    expect(selectDiscHockeyCrazyRoster({
+      candidateIds: ['joel', 'bob', 'lucia', 'luna', 'juan', 'dad', 'mum', 'juanjo'],
+      playerId: 'joel',
+      randomSamples: [0.75, 0, 0.99, 0.5],
+    })).toEqual(['mum', 'bob', 'juanjo', 'juan']);
+
+    const dadAsPlayerRivals = selectDiscHockeyCrazyRoster({
+      candidateIds: ['joel', 'bob', 'lucia', 'luna', 'juan', 'dad', 'mum', 'juanjo'],
+      playerId: 'dad',
+      randomSamples: [0, 0.99, 0.5, 0.25],
+    });
+    expect(dadAsPlayerRivals).toHaveLength(4);
+    expect(new Set(dadAsPlayerRivals).size).toBe(4);
+    expect(dadAsPlayerRivals).not.toContain('dad');
+
+    const mumAsPlayerRivals = selectDiscHockeyCrazyRoster({
+      candidateIds: ['joel', 'bob', 'lucia', 'luna', 'juan', 'dad', 'mum', 'juanjo'],
+      playerId: 'mum',
+      randomSamples: [0.85, 0.2, 0.6, 0],
+    });
+    expect(mumAsPlayerRivals).toHaveLength(4);
+    expect(new Set(mumAsPlayerRivals).size).toBe(4);
+    expect(mumAsPlayerRivals).not.toContain('mum');
+  });
+
+  it('charges Crazy Power only from intentional contacts and recognizes defensive saves', () => {
+    expect(DISC_HOCKEY_CRAZY_POWER).toMatchObject({
+      maximum: 100,
+      passivePerSecond: 1,
+      intentionalHitGain: 6,
+      defensiveSaveGain: 14,
+      intentionalClosingSpeed: 120,
+    });
+    const player = {
+      side: 'left',
+      x: 300,
+      y: 383,
+      vx: 360,
+      vy: 0,
+    };
+    const incomingPuck = {
+      x: 360,
+      y: 383,
+      vx: -240,
+      vy: 0,
+    };
+    const intentional = getDiscHockeyIntentionalHit({
+      player,
+      puck: incomingPuck,
+    });
+    expect(intentional.intentional).toBe(true);
+    expect(isDiscHockeyDefensiveSave({
+      player,
+      puck: incomingPuck,
+      intentionalHit: intentional,
+    })).toBe(true);
+    expect(getDiscHockeyIntentionalHit({
+      player: { ...player, vx: 0 },
+      puck: incomingPuck,
+    }).intentional).toBe(false);
+    expect(addDiscHockeyCrazyPower({
+      energy: 70,
+      deltaSeconds: 10,
+      gain: 14,
+    })).toBe(94);
+    expect(addDiscHockeyCrazyPower({
+      energy: 96,
+      gain: 14,
+    })).toBe(100);
+  });
+
+  it('creates an unstoppable puck, knocks rivals aside, and ends at the back wall', () => {
+    const powered = createDiscHockeyPoweredPuck({
+      puck: { x: 500, y: 383, vx: 300, vy: 0, radius: 25 },
+      serial: 7,
+    });
+    expect(powered).toMatchObject({
+      powered: true,
+      powerSerial: 7,
+      vx: DISC_HOCKEY_CRAZY_POWER.poweredPuckSpeed,
+      vy: 0,
+    });
+    const knockback = getDiscHockeyPoweredKnockback({
+      puck: powered,
+      player: { x: 720, y: 383 },
+    });
+    expect(Math.hypot(knockback.vx, knockback.vy)).toBeCloseTo(
+      DISC_HOCKEY_CRAZY_POWER.knockbackSpeed,
+      5,
+    );
+    expect(Math.abs(knockback.vy)).toBeGreaterThan(Math.abs(knockback.vx));
+    expect(shouldEndDiscHockeyPoweredShot({
+      before: { x: 1080, vx: 900 },
+      after: { x: 1100, vx: -850 },
+    })).toBe(true);
+    expect(shouldEndDiscHockeyPoweredShot({
+      before: { x: 800, vx: 700 },
+      after: { x: 820, vx: 650 },
+    })).toBe(false);
+  });
+
+  it('coordinates four Crazy AI roles and separates overlapping teammates', () => {
+    const players = [
+      { ...playerSpawnFixture('right', 720, 383), crazyRole: 'striker' },
+      { ...playerSpawnFixture('right', 850, 230), crazyRole: 'interceptor' },
+      { ...playerSpawnFixture('right', 930, 520), crazyRole: 'defender' },
+      { ...playerSpawnFixture('right', 1070, 383), crazyRole: 'goalkeeper' },
+    ];
+    const assignments = chooseDiscHockeyCrazyTargets({
+      players,
+      puck: { x: 800, y: 300, vx: 220, vy: 90, radius: 25 },
+      human: { x: 500, y: 430 },
+      collisionMap: DISC_HOCKEY_COLLISION_MAPS.neon,
+    });
+    expect(new Set(assignments.map(({ role }) => role))).toEqual(
+      new Set(DISC_HOCKEY_CRAZY_ROLES),
+    );
+    assignments.forEach(({ target }) => {
+      expect(target.x).toBeGreaterThanOrEqual(
+        DISC_HOCKEY_ARENA.centerX + DISC_HOCKEY_ARENA.playerRadius,
+      );
+    });
+    const attackingAssignments = chooseDiscHockeyCrazyTargets({
+      players,
+      puck: { x: 1000, y: 260, vx: -40, vy: 0, radius: 25 },
+      human: { x: 500, y: 430 },
+      collisionMap: DISC_HOCKEY_COLLISION_MAPS.neon,
+    });
+    attackingAssignments
+      .filter(({ role, target }) => role !== 'striker' && target.x < 1000)
+      .forEach(({ target }) => {
+        const amount = (1000 - target.x) / (1000 - DISC_HOCKEY_ARENA.left);
+        const laneY = 260 + (DISC_HOCKEY_ARENA.centerY - 260) * amount;
+        expect(Math.abs(target.y - laneY)).toBeGreaterThanOrEqual(
+          DISC_HOCKEY_ARENA.playerRadius * 2.1,
+        );
+      });
+    const safeGoalkeeper = chooseDiscHockeyCrazyTargets({
+      players,
+      puck: { x: 400, y: 260, vx: 0, vy: 0, radius: 25 },
+      human: { x: 500, y: 430 },
+      collisionMap: DISC_HOCKEY_COLLISION_MAPS.neon,
+    }).find(({ role }) => role === 'goalkeeper');
+    expect(safeGoalkeeper.target.x).toBeLessThan(
+      DISC_HOCKEY_COLLISION_MAPS.neon.goalLineRight
+        - DISC_HOCKEY_ARENA.playerRadius
+        - DISC_HOCKEY_CREASE_RULE.extraCreaseDepth,
+    );
+    const separated = separateDiscHockeyPushers({
+      players: [
+        playerSpawnFixture('right', 800, 383),
+        playerSpawnFixture('right', 800, 383),
+      ],
+      collisionMap: DISC_HOCKEY_COLLISION_MAPS.neon,
+    });
+    expect(Math.hypot(
+      separated[0].x - separated[1].x,
+      separated[0].y - separated[1].y,
+    )).toBeGreaterThanOrEqual(DISC_HOCKEY_ARENA.playerRadius * 2 + 5.9);
+  });
+
+  it('gives exactly the Crazy striker a meaningful overdrive advantage', () => {
+    const strikerMotion = getDiscHockeyCrazyRoleMotion('striker');
+    expect(strikerMotion).toEqual(DISC_HOCKEY_CRAZY_AI.striker);
+    expect(strikerMotion.aggressive).toBe(true);
+    expect(strikerMotion.maxSpeed).toBeGreaterThan(DISC_HOCKEY_AI.hard.maxSpeed * 1.5);
+    expect(strikerMotion.response).toBeGreaterThan(DISC_HOCKEY_CRAZY_AI.support.response);
+
+    DISC_HOCKEY_CRAZY_ROLES
+      .filter((role) => role !== 'striker')
+      .forEach((role) => {
+        expect(getDiscHockeyCrazyRoleMotion(role)).toEqual(DISC_HOCKEY_CRAZY_AI.support);
+        expect(getDiscHockeyCrazyRoleMotion(role).aggressive).toBe(false);
+      });
+  });
+
+  it.each([
+    {
+      corner: 'bottom',
+      puck: { x: 1100, y: 575, vx: 0, vy: 0, radius: 25 },
+      expectedVerticalApproach: -1,
+    },
+    {
+      corner: 'top',
+      puck: { x: 1100, y: 157, vx: 0, vy: 0, radius: 25 },
+      expectedVerticalApproach: 1,
+    },
+    {
+      corner: 'top',
+      puck: { x: 1135, y: 300, vx: 0, vy: 0, radius: 25 },
+      expectedVerticalApproach: 1,
+    },
+    {
+      corner: 'bottom',
+      puck: { x: 1135, y: 410, vx: 0, vy: 0, radius: 25 },
+      expectedVerticalApproach: -1,
+    },
+  ])('sends only one Crazy AI retriever into the $corner corner', ({
+    corner,
+    puck,
+    expectedVerticalApproach,
+  }) => {
+    const players = [
+      { ...playerSpawnFixture('right', 1040, puck.y), crazyRole: 'striker' },
+      { ...playerSpawnFixture('right', 1000, puck.y - 35), crazyRole: 'interceptor' },
+      { ...playerSpawnFixture('right', 1070, puck.y + 25), crazyRole: 'defender' },
+      { ...playerSpawnFixture('right', 1090, puck.y - 70), crazyRole: 'goalkeeper' },
+    ];
+    const assignments = chooseDiscHockeyCrazyTargets({
+      players,
+      puck,
+      human: { x: 460, y: DISC_HOCKEY_ARENA.centerY },
+      collisionMap: DISC_HOCKEY_COLLISION_MAPS.neon,
+    });
+    const striker = assignments.find(({ role }) => role === 'striker');
+    const support = assignments.filter(({ role }) => role !== 'striker');
+
+    expect(assignments.every(({ cornerRecovery }) => cornerRecovery === corner)).toBe(true);
+    expect(striker.target.x).toBeLessThan(puck.x);
+    expect(Math.sign(striker.target.y - puck.y)).toBe(expectedVerticalApproach);
+    expect(Math.hypot(
+      striker.target.x - puck.x,
+      striker.target.y - puck.y,
+    )).toBeLessThan(100);
+    support.forEach(({ target }) => {
+      expect(Math.hypot(target.x - puck.x, target.y - puck.y)).toBeGreaterThan(180);
+    });
+  });
+
+  it('makes the Crazy striker retreat while a corner-bank rebound escapes', () => {
+    const puck = {
+      x: 1100,
+      y: 157,
+      vx: -320,
+      vy: 280,
+      radius: 25,
+    };
+    const assignments = chooseDiscHockeyCrazyTargets({
+      players: [
+        { ...playerSpawnFixture('right', 1030, 245), crazyRole: 'striker' },
+        { ...playerSpawnFixture('right', 930, 220), crazyRole: 'interceptor' },
+        { ...playerSpawnFixture('right', 980, 470), crazyRole: 'defender' },
+        { ...playerSpawnFixture('right', 1090, 383), crazyRole: 'goalkeeper' },
+      ],
+      puck,
+      human: { x: 460, y: DISC_HOCKEY_ARENA.centerY },
+      collisionMap: DISC_HOCKEY_COLLISION_MAPS.ice,
+    });
+    const striker = assignments.find(({ role }) => role === 'striker');
+
+    expect(striker.cornerRecovery).toBe('top');
+    expect(striker.target.x).toBeLessThan(puck.x - 130);
+    expect(striker.target.y).toBeGreaterThan(puck.y + 110);
+    expect(Math.hypot(
+      striker.target.x - puck.x,
+      striker.target.y - puck.y,
+    )).toBeGreaterThan(190);
+
+    const topBank = createDiscHockeyCornerBankPuck({ puck, corner: 'top' });
+    expect(topBank.vx).toBeLessThanOrEqual(-520);
+    expect(topBank.vy).toBeGreaterThanOrEqual(320);
+    const bottomBank = createDiscHockeyCornerBankPuck({ puck, corner: 'bottom' });
+    expect(bottomBank.vx).toBeLessThanOrEqual(-520);
+    expect(bottomBank.vy).toBeLessThanOrEqual(-320);
   });
 
   it('bounces off boards but leaves the goal mouth open', () => {

@@ -57,7 +57,9 @@ const readAnimationAtlasMetrics = (page) => page.evaluate(async () => {
     return { width: image.naturalWidth, height: image.naturalHeight, frames };
   };
   return {
-    joel: await analyze('player-nova-sheet-v2.webp'),
+    joel: await analyze('player-joel-sheet-v1.webp'),
+    dad: await analyze('player-dad-sheet-v1.webp'),
+    mum: await analyze('player-mum-sheet-v1.webp'),
     vex: await analyze('player-vex-sheet-v2.webp'),
     lucia: await analyze('player-lucia-sheet-v2.webp'),
     luna: await analyze('player-luna-sheet-v2.webp'),
@@ -293,11 +295,13 @@ try {
   assert.equal(tapHighlight, 'rgba(0, 0, 0, 0)', 'the Phaser canvas must not show Android WebView tap highlighting');
   const bootTextureState = await page.evaluate(() => {
     const textures = window.__SKYHEAD_GAME__.textures;
-    return Object.fromEntries(['joel-sheet', 'vex-sheet', 'lucia-sheet', 'luna-sheet', 'juan-sheet', 'juanjo-sheet']
+    return Object.fromEntries(['joel-sheet', 'dad-sheet', 'mum-sheet', 'vex-sheet', 'lucia-sheet', 'luna-sheet', 'juan-sheet', 'juanjo-sheet']
       .map((key) => [key, textures.exists(key)]));
   });
   assert.deepEqual(bootTextureState, {
     'joel-sheet': true,
+    'dad-sheet': false,
+    'mum-sheet': false,
     'vex-sheet': true,
     'lucia-sheet': false,
     'luna-sheet': false,
@@ -331,12 +335,35 @@ try {
   assert.ok(atlasMetrics.lucia.frames[8].top >= 8, 'Lucia run-contact-B hair must have visible top padding');
   assert.ok(atlasMetrics.luna.frames.every((frame) => frame.top >= 8), 'every Luna pose must keep her curls below the frame edge');
   assert.ok(atlasMetrics.juan.frames.every((frame) => frame.top >= 8), 'every Uncle Juan pose must keep his head below the frame edge');
+  assert.ok(atlasMetrics.dad.frames.every((frame) => frame.top >= 8), 'every Dad pose must keep his dark hair below the frame edge');
+  assert.ok(atlasMetrics.mum.frames.every((frame) => frame.top >= 8), 'every Mum pose must keep her curls below the frame edge');
   assert.ok(atlasMetrics.juanjo.frames.every((frame) => frame.top >= 8), 'every Uncle Juanjo pose must keep his hair and glasses below the frame edge');
   const visibleHeight = (frame) => frame.bottom - frame.top;
-  for (const player of ['juan', 'juanjo']) {
+  assert.ok(
+    visibleHeight(atlasMetrics.dad.frames[0]) >= visibleHeight(atlasMetrics.joel.frames[0]) * 1.05,
+    '6-foot-7 Dad must retain a visibly taller idle silhouette than Joel',
+  );
+  for (const player of ['juan', 'dad', 'juanjo']) {
     assert.ok(
       visibleHeight(atlasMetrics[player].frames[2]) >= visibleHeight(atlasMetrics[player].frames[0]) * 0.9,
       `${player} jump must retain at least 90% of its idle silhouette height`,
+    );
+  }
+  const visibleArea = (frame) => (frame.right - frame.left) * visibleHeight(frame);
+  const adultMotionReferences = ['juan', 'dad', 'juanjo'];
+  const mumIdleArea = visibleArea(atlasMetrics.mum.frames[0]);
+  for (let frame = 1; frame < 12; frame += 1) {
+    const referenceRatios = adultMotionReferences
+      .map((player) => (
+        visibleArea(atlasMetrics[player].frames[frame])
+        / visibleArea(atlasMetrics[player].frames[0])
+      ))
+      .sort((a, b) => a - b);
+    const adultMedianRatio = referenceRatios[1];
+    const mumRatio = visibleArea(atlasMetrics.mum.frames[frame]) / mumIdleArea;
+    assert.ok(
+      mumRatio / adultMedianRatio >= 0.85 && mumRatio / adultMedianRatio <= 1.35,
+      `Mum frame ${frame} must keep adult-relative motion scale; got ${mumRatio / adultMedianRatio}`,
     );
   }
   assert.ok(
@@ -427,6 +454,8 @@ try {
       { id: 'lucia', name: 'Lucia' },
       { id: 'luna', name: 'Luna' },
       { id: 'juan', name: 'Uncle Juan' },
+      { id: 'dad', name: 'Dad' },
+      { id: 'mum', name: 'Mum' },
       { id: 'juanjo', name: 'Uncle Juanjo' },
     ],
   });
@@ -809,6 +838,7 @@ try {
   assert.ok(state.visualEffects.sparks >= 24, 'the explosion should spray a dense field of hot sparks');
   assert.ok(state.visualEffects.smoke >= 9, 'the explosion should leave a visible cloud of smoke');
   assert.equal(state.visualEffects.boomText, 1, 'the explosion should include its comic BOOM accent');
+  assert.ok(state.audio.gameEffectPlays.wallBreak >= 1, 'breaking a gate should use the supplied wall-break effect');
   assert.equal(
     await page.evaluate(() => window.__SKYHEAD_GAME__.scene.getScene('Kickfall').announcementText.text),
     '',
@@ -898,6 +928,7 @@ try {
   assert.equal(state.progress.drained, 8);
   assert.equal(state.level.number, 1);
   assert.deepEqual(state.actions, ['retry', 'continue', 'main menu']);
+  assert.ok(state.audio.gameEffectPlays.levelFinished >= 1, 'winning a Kickfall level should use the supplied finish cue');
   await capture(page, `${output}/01-kickfall-victory.png`);
 
   await touchControl(page, 640, 490, 35);
@@ -1639,7 +1670,19 @@ try {
   await touchControl(page, 375, 205, 35);
   await page.waitForTimeout(60);
   state = await readState(page);
-  assert.equal(state.playerCharacter.id, 'juanjo', 'Uncle Juanjo should follow Uncle Juan in the selector');
+  assert.equal(state.playerCharacter.id, 'dad', 'Dad should follow Uncle Juan in the selector');
+  assert.equal(state.playerCharacter.name, 'Dad');
+  await capture(page, `${output}/01-football-setup-dad.png`);
+  await touchControl(page, 375, 205, 35);
+  await page.waitForTimeout(60);
+  state = await readState(page);
+  assert.equal(state.playerCharacter.id, 'mum', 'Mum should follow Dad in the selector');
+  assert.equal(state.playerCharacter.name, 'Mum');
+  await capture(page, `${output}/01-football-setup-mum.png`);
+  await touchControl(page, 375, 205, 35);
+  await page.waitForTimeout(60);
+  state = await readState(page);
+  assert.equal(state.playerCharacter.id, 'juanjo', 'Uncle Juanjo should follow Mum in the selector');
   assert.equal(state.playerCharacter.name, 'Uncle Juanjo');
   await capture(page, `${output}/01-football-setup-juanjo.png`);
   await touchControl(page, 375, 205, 35);
@@ -1691,6 +1734,7 @@ try {
   state = await readState(page);
   assert.equal(state.modalAppInfo.version, '1.0.0');
   assert.equal(state.modalAppInfo.build, 'web');
+  assert.deepEqual(state.modalCreatorCharacter, { id: 'dad', name: 'Dad' });
   await capture(page, `${output}/01-about.png`);
   await page.evaluate(() => window.__SKYHEAD_PLATFORM_DEBUG__.backForTesting());
   await page.waitForFunction(() => JSON.parse(window.render_game_to_text()).modal === null);
@@ -1700,6 +1744,7 @@ try {
   state = await readState(page);
   assert.equal(state.audio.musicRequested, true, 'the first user gesture should unlock menu music');
   assert.equal(state.audio.audienceRequested, false, 'crowd ambience should stay off in menus');
+  assert.ok(state.audio.gameEffectPlays.menuEnter >= 1, 'forward navigation should use the supplied menu-enter feedback');
   await page.evaluate(() => window.__SKYHEAD_AUDIO_DEBUG__.warmAll());
   state = await readState(page);
   assert.equal(state.audio.cache.cachedCount, state.audio.cache.total, 'all audio should be reusable from Cache Storage');
@@ -1819,6 +1864,7 @@ try {
   assert.equal(state.challenge?.status, 'success');
   assert.equal(state.powers.fireball, 1, 'a correct answer should earn one selected charge');
   assert.equal(state.mathLockRemainingMs, 0, 'correct answers should not start a penalty');
+  assert.ok(state.audio.gameEffectPlays.powerUp >= 1, 'earning a power charge should use the supplied power-up cue');
   await capture(page, `${output}/01-math-success.png`);
   await touchControl(page, 640, 595, 30);
   await touchControl(page, 1090, 638, 30);
@@ -2707,16 +2753,29 @@ try {
   await capture(page, `${output}/03-over-goal-fireball-regression.png`);
 
   const beforeGoalState = await readState(page);
-  const scoreBefore = beforeGoalState.score.left;
+  assert.equal(beforeGoalState.opponent.id, 'joel');
+  const scoreBefore = beforeGoalState.score.right;
   const goalCheerBefore = beforeGoalState.audio.goalCheerPlays;
+  const goalStingersBefore = beforeGoalState.audio.goalStingerPlays;
+  const joelGoalEffectsBefore = beforeGoalState.audio.gameEffectPlays.joelGoal;
+  const standardGoalEffectsBefore = beforeGoalState.audio.gameEffectPlays.goal1
+    + beforeGoalState.audio.gameEffectPlays.goal2;
   const goalWhistlesBefore = beforeGoalState.audio.whistleRequestedPlays;
   const goalWhistlePlaysBefore = beforeGoalState.audio.whistlePlays;
-  await page.evaluate(() => window.__SKYHEAD_DEBUG__.setBall({ x: 1140, y: 614, vx: 18 }));
+  await page.evaluate(() => window.__SKYHEAD_DEBUG__.setBall({ x: 140, y: 614, vx: -18 }));
   await advance(page, 100);
   state = await readState(page);
   assert.equal(state.mode, 'goal');
-  assert.equal(state.score.left, scoreBefore + 1, 'a ball rolling across the right goal line should score for Joel');
+  assert.equal(state.score.right, scoreBefore + 1, 'a ball rolling across the left goal line should score for opponent Joel');
   assert.equal(state.audio.goalCheerPlays, goalCheerBefore, 'the former audience goal effect should no longer play');
+  assert.equal(state.audio.goalStingerPlays, goalStingersBefore + 1, 'Joel scoring should play one goal celebration');
+  assert.equal(state.audio.gameEffectPlays.joelGoal, joelGoalEffectsBefore + 1, "Joel's goal should play his VAMOS signature effect");
+  assert.equal(
+    state.audio.gameEffectPlays.goal1 + state.audio.gameEffectPlays.goal2,
+    standardGoalEffectsBefore,
+    "Joel's signature effect should replace the standard goal stingers",
+  );
+  assert.equal(state.audio.lastGameEffectPlayback.effectId, 'joelGoal');
   assert.equal(state.audio.whistleRequestedPlays, goalWhistlesBefore + 1, 'a goal should request one whistle');
   assert.equal(state.audio.whistlePlays, goalWhistlePlaysBefore + 1, 'the goal whistle should begin playback immediately');
   assert.deepEqual(state.audio.recentWhistles.at(-1), { label: 'goal', cutoffMs: null }, 'the goal should retain a full-length whistle');
@@ -2797,6 +2856,354 @@ try {
   assert.deepEqual(juanErrors, [], `Uncle Juan browser emitted errors:\n${juanErrors.join('\n')}`);
   await juanContext.close();
 
+  const dadContext = await browser.newContext({ viewport: { width: 1280, height: 720 }, deviceScaleFactor: 1 });
+  const dadPage = await dadContext.newPage();
+  const dadErrors = [];
+  dadPage.on('pageerror', (error) => dadErrors.push(error.stack ?? error.message));
+  dadPage.on('console', (message) => {
+    if (message.type() === 'error') dadErrors.push(`console: ${message.text()}`);
+  });
+  await dadPage.goto(url, { waitUntil: 'domcontentloaded' });
+  await waitThroughSplash(dadPage);
+  await touchControl(dadPage, 640, 252, 35);
+  await dadPage.waitForFunction(() => JSON.parse(window.render_game_to_text()).mode === 'football-setup');
+  for (let step = 0; step < 4; step += 1) {
+    await touchControl(dadPage, 375, 205, 35);
+    await dadPage.waitForTimeout(60);
+  }
+  await touchControl(dadPage, 495, 205, 35);
+  let dadState = await readState(dadPage);
+  assert.equal(dadState.playerCharacter.id, 'dad');
+  assert.equal(dadState.opponent.id, 'joel');
+  await capture(dadPage, `${output}/04-dad-setup.png`);
+  await touchControl(dadPage, 785, 660, 40);
+  await dadPage.waitForFunction(() => JSON.parse(window.render_game_to_text()).mode === 'countdown');
+  await advance(dadPage, 3100);
+  dadState = await readState(dadPage);
+  assert.equal(dadState.mode, 'playing');
+  assert.equal(dadState.players.left.name, 'Dad');
+  assert.deepEqual([dadState.players.left.nativeFacing, dadState.players.left.visualFlipped], [1, false]);
+  assert.equal(dadState.players.left.visualScale, 1.2);
+  assert.equal(dadState.players.left.displayHeight, 336);
+  assert.equal(dadState.players.right.displayHeight, 280);
+  assert.equal(
+    dadState.players.left.collisionArea,
+    dadState.players.right.collisionArea,
+    'Dad’s 120% artwork must retain the same authored Football collider as Bob',
+  );
+  assert.ok(Math.abs(dadState.players.left.visualGroundAnchorY - 636) < 0.2);
+  await capture(dadPage, `${output}/04-dad-idle.png`);
+
+  await dadPage.evaluate(() => {
+    const match = window.__SKYHEAD_GAME__.scene.getScene('Match');
+    const fighter = match.leftPlayer;
+    fighter.stunTimer = 0;
+    fighter.stunProtection = 2;
+    fighter.kickTimer = 0;
+    fighter.dashTimer = 0;
+    fighter.chilenaActive = false;
+    fighter.sprite.setFrame(6);
+    fighter.currentPose = 'run-contact-a';
+    fighter.currentAnimationStage = 'contact-a';
+    match.scene.pause();
+  });
+  dadState = await readState(dadPage);
+  assert.ok([6, 7, 8].includes(dadState.players.left.visualFrame), 'Dad should use his complete enhanced run cycle');
+  await capture(dadPage, `${output}/04-dad-run.png`);
+  await dadPage.evaluate(() => window.__SKYHEAD_GAME__.scene.getScene('Match').scene.resume());
+
+  await hold(dadPage, 'Space', 34);
+  await advance(dadPage, 50);
+  dadState = await readState(dadPage);
+  assert.equal(dadState.players.left.visualFrame, 2, 'Dad should use the size-corrected jump frame while airborne');
+  assert.equal(dadState.players.left.pose, 'jump');
+  await capture(dadPage, `${output}/04-dad-jump.png`);
+  await dadPage.evaluate(() => window.__SKYHEAD_GAME__.scene.getScene('Match').scene.pause());
+
+  await dadPage.evaluate(() => {
+    const fighter = window.__SKYHEAD_GAME__.scene.getScene('Match').leftPlayer;
+    fighter.kickCooldown = 0;
+    fighter.startKick();
+    fighter.kickTimer = 0.14;
+    fighter.updatePose();
+  });
+  assert.deepEqual(
+    [(await readState(dadPage)).players.left.visualFrame, (await readState(dadPage)).players.left.animationStage],
+    [9, 'anticipation'],
+  );
+  await dadPage.evaluate(() => {
+    const fighter = window.__SKYHEAD_GAME__.scene.getScene('Match').leftPlayer;
+    fighter.kickTimer = 0.08;
+    fighter.updatePose();
+  });
+  assert.deepEqual(
+    [(await readState(dadPage)).players.left.visualFrame, (await readState(dadPage)).players.left.animationStage],
+    [10, 'contact'],
+  );
+  await dadPage.evaluate(() => {
+    const fighter = window.__SKYHEAD_GAME__.scene.getScene('Match').leftPlayer;
+    fighter.kickTimer = 0.03;
+    fighter.updatePose();
+  });
+  dadState = await readState(dadPage);
+  assert.deepEqual([dadState.players.left.visualFrame, dadState.players.left.animationStage], [11, 'recovery']);
+  await capture(dadPage, `${output}/04-dad-kick-recovery.png`);
+
+  await dadPage.evaluate(() => window.__SKYHEAD_GAME__.scene.getScene('Match').scene.start('Intro'));
+  await dadPage.waitForFunction(() => JSON.parse(window.render_game_to_text()).mode === 'intro');
+  await touchControl(dadPage, 430, 493, 35);
+  await dadPage.waitForFunction(() => JSON.parse(window.render_game_to_text()).mode === 'mini-games');
+  assert.equal((await readState(dadPage)).playerCharacter.id, 'dad');
+  await touchControl(dadPage, 345, 294, 35);
+  await dadPage.waitForFunction(() => JSON.parse(window.render_game_to_text()).gameId === 'kickfall');
+  await touchControl(dadPage, 640, 620, 35);
+  await dadPage.waitForFunction(() => JSON.parse(window.render_game_to_text()).minigame === 'kickfall');
+  await dadPage.evaluate(() => {
+    window.__KICKFALL_DEBUG__.startPlaying();
+    window.__KICKFALL_DEBUG__.clearBalls();
+  });
+  await advance(dadPage, 120);
+  dadState = await readState(dadPage);
+  assert.equal(dadState.selectedCharacter.id, 'dad');
+  assert.equal(dadState.player.visualScale, 1.2);
+  assert.equal(dadState.player.displayHeight, 151.2);
+  assert.equal(dadState.player.collisionWidth, 44);
+  assert.equal(dadState.player.collisionHeight, 82);
+  assert.ok(
+    Math.abs(dadState.player.platformSurfaceY - dadState.player.visualGroundAnchorY) < 3,
+    'Dad must share Kickfall’s platform foot line',
+  );
+  await dadPage.keyboard.down('d');
+  await advance(dadPage, 360);
+  await dadPage.keyboard.up('d');
+  dadState = await readState(dadPage);
+  assert.ok([6, 7, 8].includes(dadState.player.visualFrame));
+  await dadPage.evaluate(() => window.__SKYHEAD_GAME__.scene.getScene('Kickfall').startKick());
+  await advance(dadPage, 70);
+  dadState = await readState(dadPage);
+  assert.ok([9, 10, 11].includes(dadState.player.visualFrame));
+  await capture(dadPage, `${output}/04-dad-kickfall.png`);
+  assert.deepEqual(dadErrors, [], `Dad browser emitted errors:\n${dadErrors.join('\n')}`);
+  await dadContext.close();
+
+  const mumContext = await browser.newContext({ viewport: { width: 1280, height: 720 }, deviceScaleFactor: 1 });
+  const mumPage = await mumContext.newPage();
+  const mumErrors = [];
+  mumPage.on('pageerror', (error) => mumErrors.push(error.stack ?? error.message));
+  mumPage.on('console', (message) => {
+    if (message.type() === 'error') mumErrors.push(`console: ${message.text()}`);
+  });
+  await mumPage.goto(url, { waitUntil: 'domcontentloaded' });
+  await waitThroughSplash(mumPage);
+  await touchControl(mumPage, 640, 252, 35);
+  await mumPage.waitForFunction(() => JSON.parse(window.render_game_to_text()).mode === 'football-setup');
+  for (let step = 0; step < 5; step += 1) {
+    await touchControl(mumPage, 375, 205, 35);
+    await mumPage.waitForTimeout(60);
+  }
+  await touchControl(mumPage, 495, 205, 35);
+  let mumState = await readState(mumPage);
+  assert.equal(mumState.playerCharacter.id, 'mum');
+  assert.equal(mumState.playerCharacter.name, 'Mum');
+  assert.equal(mumState.opponent.id, 'joel');
+  await capture(mumPage, `${output}/04-mum-setup.png`);
+  await touchControl(mumPage, 785, 660, 40);
+  await mumPage.waitForFunction(() => JSON.parse(window.render_game_to_text()).mode === 'countdown');
+  await advance(mumPage, 3100);
+  mumState = await readState(mumPage);
+  assert.equal(mumState.mode, 'playing');
+  assert.equal(mumState.players.left.name, 'Mum');
+  assert.deepEqual([mumState.players.left.nativeFacing, mumState.players.left.visualFlipped], [1, false]);
+  assert.equal(mumState.players.left.visualScale, 1.2);
+  assert.equal(mumState.players.left.displayHeight, 336);
+  const mumBaseCollisionArea = mumState.players.left.collisionArea;
+  assert.equal(
+    mumBaseCollisionArea,
+    mumState.players.right.collisionArea,
+    'Mum must use the same authored Football collider as Joel',
+  );
+  assert.ok(Math.abs(mumState.players.left.visualGroundAnchorY - 636) < 0.2);
+  await capture(mumPage, `${output}/04-mum-idle-right.png`);
+
+  await mumPage.evaluate(() => {
+    const match = window.__SKYHEAD_GAME__.scene.getScene('Match');
+    const fighter = match.leftPlayer;
+    match.scene.pause();
+    fighter.setFacing(-1);
+    fighter.updatePose();
+  });
+  mumState = await readState(mumPage);
+  assert.deepEqual([mumState.players.left.facing, mumState.players.left.visualFlipped], [-1, true]);
+  await capture(mumPage, `${output}/04-mum-idle-left.png`);
+  await mumPage.evaluate(() => {
+    const match = window.__SKYHEAD_GAME__.scene.getScene('Match');
+    const fighter = match.leftPlayer;
+    fighter.setFacing(1);
+    fighter.updatePose();
+    match.scene.resume();
+  });
+
+  await hold(mumPage, 'd', 420);
+  mumState = await readState(mumPage);
+  assert.ok([6, 7, 8].includes(mumState.players.left.visualFrame), 'Mum should use her complete enhanced run cycle');
+  await mumPage.evaluate(() => window.__SKYHEAD_GAME__.scene.getScene('Match').scene.pause());
+  await capture(mumPage, `${output}/04-mum-run.png`);
+  await mumPage.evaluate(() => {
+    const match = window.__SKYHEAD_GAME__.scene.getScene('Match');
+    match.leftPlayer.stunTimer = 0;
+    match.leftPlayer.stunProtection = 1;
+    match.leftPlayer.updatePose();
+    match.scene.resume();
+  });
+
+  await hold(mumPage, 'Space', 34);
+  await advance(mumPage, 50);
+  mumState = await readState(mumPage);
+  assert.equal(mumState.players.left.visualFrame, 2);
+  assert.equal(mumState.players.left.pose, 'jump');
+  await capture(mumPage, `${output}/04-mum-jump.png`);
+  await advance(mumPage, 1100);
+  mumState = await readState(mumPage);
+  assert.equal(mumState.players.left.grounded, true);
+  assert.ok(Math.abs(mumState.players.left.visualGroundAnchorY - 636) < 0.2);
+  await capture(mumPage, `${output}/04-mum-landed.png`);
+  await mumPage.evaluate(() => window.__SKYHEAD_GAME__.scene.getScene('Match').scene.pause());
+
+  await mumPage.evaluate(() => {
+    const fighter = window.__SKYHEAD_GAME__.scene.getScene('Match').leftPlayer;
+    fighter.kickCooldown = 0;
+    fighter.startKick();
+    fighter.kickTimer = 0.14;
+    fighter.updatePose();
+  });
+  assert.deepEqual(
+    [(await readState(mumPage)).players.left.visualFrame, (await readState(mumPage)).players.left.animationStage],
+    [9, 'anticipation'],
+  );
+  await capture(mumPage, `${output}/04-mum-kick-anticipation.png`);
+  await mumPage.evaluate(() => {
+    const fighter = window.__SKYHEAD_GAME__.scene.getScene('Match').leftPlayer;
+    fighter.kickTimer = 0.08;
+    fighter.updatePose();
+  });
+  assert.deepEqual(
+    [(await readState(mumPage)).players.left.visualFrame, (await readState(mumPage)).players.left.animationStage],
+    [10, 'contact'],
+  );
+  await capture(mumPage, `${output}/04-mum-kick-contact.png`);
+  await mumPage.evaluate(() => {
+    const fighter = window.__SKYHEAD_GAME__.scene.getScene('Match').leftPlayer;
+    fighter.kickTimer = 0.03;
+    fighter.updatePose();
+  });
+  assert.deepEqual(
+    [(await readState(mumPage)).players.left.visualFrame, (await readState(mumPage)).players.left.animationStage],
+    [11, 'recovery'],
+  );
+  await capture(mumPage, `${output}/04-mum-kick-recovery.png`);
+
+  await mumPage.evaluate(() => {
+    const fighter = window.__SKYHEAD_GAME__.scene.getScene('Match').leftPlayer;
+    fighter.kickTimer = 0;
+    fighter.dashCooldown = 0;
+    fighter.startDash(1);
+    fighter.updatePose();
+  });
+  mumState = await readState(mumPage);
+  assert.equal(mumState.players.left.visualFrame, 4);
+  assert.equal(mumState.players.left.pose, 'dash');
+  await capture(mumPage, `${output}/04-mum-dash.png`);
+
+  await mumPage.evaluate(() => {
+    const fighter = window.__SKYHEAD_GAME__.scene.getScene('Match').leftPlayer;
+    fighter.dashTimer = 0;
+    fighter.stunTimer = 1;
+    fighter.updatePose();
+  });
+  mumState = await readState(mumPage);
+  assert.equal(mumState.players.left.visualFrame, 5);
+  assert.equal(mumState.players.left.pose, 'stun');
+  await capture(mumPage, `${output}/04-mum-stun.png`);
+
+  await mumPage.evaluate(() => {
+    const fighter = window.__SKYHEAD_GAME__.scene.getScene('Match').leftPlayer;
+    fighter.stunTimer = 0;
+    fighter.chilenaActive = true;
+    fighter.chilenaElapsed = 0.16;
+    fighter.setFacing(-fighter.baseFacing);
+    fighter.updatePose();
+    fighter.syncChilenaVisual(95);
+  });
+  mumState = await readState(mumPage);
+  assert.equal(mumState.players.left.chilenaActive, true);
+  assert.equal(mumState.players.left.pose, 'chilena');
+  assert.ok(mumState.players.left.chilenaRotation > 90);
+  await capture(mumPage, `${output}/04-mum-chilena.png`);
+
+  await mumPage.evaluate(() => {
+    const fighter = window.__SKYHEAD_GAME__.scene.getScene('Match').leftPlayer;
+    fighter.finishChilena();
+    fighter.setBigGuyScale(2);
+    fighter.updatePose();
+  });
+  mumState = await readState(mumPage);
+  assert.equal(mumState.players.left.bigGuyScale, 2);
+  assert.ok(
+    mumState.players.left.collisionArea >= mumBaseCollisionArea * 3.99
+      && mumState.players.left.collisionArea <= mumBaseCollisionArea * 4.01,
+    'Big Guy Mum should intentionally scale the gameplay body to four times its normal area',
+  );
+  await capture(mumPage, `${output}/04-mum-big-guy.png`);
+  await mumPage.evaluate(() => {
+    const match = window.__SKYHEAD_GAME__.scene.getScene('Match');
+    match.leftPlayer.setBigGuyScale(1);
+    match.scene.resume();
+    match.scene.start('Intro');
+  });
+  await mumPage.waitForFunction(() => JSON.parse(window.render_game_to_text()).mode === 'intro');
+  await touchControl(mumPage, 430, 493, 35);
+  await mumPage.waitForFunction(() => JSON.parse(window.render_game_to_text()).mode === 'mini-games');
+  assert.equal((await readState(mumPage)).playerCharacter.id, 'mum');
+  await touchControl(mumPage, 345, 294, 35);
+  await mumPage.waitForFunction(() => JSON.parse(window.render_game_to_text()).gameId === 'kickfall');
+  await touchControl(mumPage, 640, 620, 35);
+  await mumPage.waitForFunction(() => JSON.parse(window.render_game_to_text()).minigame === 'kickfall');
+  await mumPage.evaluate(() => {
+    window.__KICKFALL_DEBUG__.startPlaying();
+    window.__KICKFALL_DEBUG__.clearBalls();
+  });
+  await advance(mumPage, 120);
+  mumState = await readState(mumPage);
+  assert.equal(mumState.selectedCharacter.id, 'mum');
+  assert.equal(mumState.player.visualScale, 1.2);
+  assert.equal(mumState.player.displayHeight, 151.2);
+  assert.equal(mumState.player.collisionWidth, 44);
+  assert.equal(mumState.player.collisionHeight, 82);
+  assert.ok(Math.abs(mumState.player.platformSurfaceY - mumState.player.visualGroundAnchorY) < 3);
+  await capture(mumPage, `${output}/04-mum-kickfall-idle.png`);
+  await mumPage.keyboard.down('d');
+  await advance(mumPage, 360);
+  await mumPage.keyboard.up('d');
+  mumState = await readState(mumPage);
+  assert.ok([6, 7, 8].includes(mumState.player.visualFrame));
+  await capture(mumPage, `${output}/04-mum-kickfall-run.png`);
+  await mumPage.keyboard.down('Space');
+  await advance(mumPage, 34);
+  await mumPage.keyboard.up('Space');
+  await advance(mumPage, 70);
+  mumState = await readState(mumPage);
+  assert.equal(mumState.player.visualFrame, 2);
+  assert.equal(mumState.player.animationPose, 'jump');
+  await capture(mumPage, `${output}/04-mum-kickfall-jump.png`);
+  await advance(mumPage, 900);
+  await mumPage.evaluate(() => window.__SKYHEAD_GAME__.scene.getScene('Kickfall').startKick());
+  await advance(mumPage, 70);
+  mumState = await readState(mumPage);
+  assert.ok([9, 10, 11].includes(mumState.player.visualFrame));
+  await capture(mumPage, `${output}/04-mum-kickfall-kick.png`);
+  assert.deepEqual(mumErrors, [], `Mum browser emitted errors:\n${mumErrors.join('\n')}`);
+  await mumContext.close();
+
   const juanjoContext = await browser.newContext({ viewport: { width: 1280, height: 720 }, deviceScaleFactor: 1 });
   const juanjoPage = await juanjoContext.newPage();
   const juanjoErrors = [];
@@ -2808,7 +3215,7 @@ try {
   await waitThroughSplash(juanjoPage);
   await touchControl(juanjoPage, 640, 252, 35);
   await juanjoPage.waitForFunction(() => JSON.parse(window.render_game_to_text()).mode === 'football-setup');
-  for (let step = 0; step < 4; step += 1) {
+  for (let step = 0; step < 6; step += 1) {
     await touchControl(juanjoPage, 375, 205, 35);
     await juanjoPage.waitForTimeout(60);
   }
