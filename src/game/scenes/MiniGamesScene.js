@@ -8,6 +8,10 @@ import {
   getCharacterName,
 } from '../content/characters.js';
 import { t } from '../i18n.js';
+import {
+  DISC_HOCKEY_PREVIEW_TEXTURE,
+  queueDiscHockeyPreview,
+} from '../minigames/discHockey/discHockeyAssets.js';
 import { arcadeAudio } from '../services/ArcadeAudio.js';
 import { playerProfileStore } from '../services/PlayerProfile.js';
 import { clearActiveScene, setActiveScene } from '../stateBridge.js';
@@ -18,6 +22,10 @@ import { createJourneyCard } from '../ui/createJourneyCard.js';
 export class MiniGamesScene extends Phaser.Scene {
   constructor() {
     super('MiniGames');
+  }
+
+  preload() {
+    queueDiscHockeyPreview(this);
   }
 
   create() {
@@ -91,7 +99,7 @@ export class MiniGamesScene extends Phaser.Scene {
       y: 294 + this.stageLayout.bottomOffset * 0.12,
       width: 540,
       height: 270,
-      texture: 'menu-disc-hockey',
+      texture: DISC_HOCKEY_PREVIEW_TEXTURE,
       title: 'DISC HOCKEY',
       subtitle: t(this.language, 'miniGames.discHockeySubtitle'),
       meta: t(this.language, 'miniGames.discHockeyMeta'),

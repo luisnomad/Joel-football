@@ -3,13 +3,18 @@ import { t } from '../i18n.js';
 import { createControlIcon } from './createControlIcon.js';
 import { createHelpColumnLayout } from './helpLayout.js';
 import { bindButtonInput } from './buttonInput.js';
-import { getCharacter, getCharacterName } from '../content/characters.js';
+import { getCharacter } from '../content/characters.js';
 import {
   FOOTBALL_TOUCH_MOVEMENT_MODES,
   getFootballTouchMovementMode,
 } from '../developerOptions.js';
 
 const HELP_PANEL_WIDTH = 890;
+
+export const ABOUT_LINKS = Object.freeze({
+  website: 'https://notjustprompts.ai/',
+  youtube: 'https://www.youtube.com/@luisnomad',
+});
 
 const textStyle = (size, color = '#ffffff', extra = {}) => ({
   fontFamily: 'Arial Rounded MT Bold, Trebuchet MS, sans-serif',
@@ -28,28 +33,65 @@ const createCloseControl = (scene, x, y, depth, onClose) => {
   return [ring, cross, zone];
 };
 
-const createAboutContent = (scene, language, appInfo, depth) => {
+const createAboutContent = (scene, language, appInfo, depth, onOpenExternal) => {
   const buildLabel = appInfo?.build && appInfo.build !== 'web' ? ` (${appInfo.build})` : '';
   const creatorCharacter = getCharacter('dad');
-  const creatorPortrait = scene.add.image(478, 414, creatorCharacter.portraitTexture)
-    .setDisplaySize(180, 180)
+  const creatorPortrait = scene.add.image(415, 398, creatorCharacter.portraitTexture)
+    .setDisplaySize(235, 235)
     .setFlipX(creatorCharacter.nativeFacing !== 1)
     .setDepth(depth);
+  const website = scene.add.text(720, 344, 'NotJustPrompts.ai', textStyle(20, '#7ce8ff', {
+    fontStyle: 'bold',
+  })).setOrigin(0.5).setDepth(depth + 0.1).setInteractive({ useHandCursor: true });
+  const websiteUnderline = scene.add.rectangle(720, 359, website.width, 2, 0x7ce8ff, 0.65).setDepth(depth);
+  bindButtonInput(scene, website, {
+    onOver: () => website.setColor('#ffffff'),
+    onOut: () => website.setColor('#7ce8ff'),
+    onActivate: () => onOpenExternal?.(ABOUT_LINKS.website),
+  });
+
+  const youtubeButton = scene.add.rectangle(720, 535, 270, 48, 0x182a45, 0.96)
+    .setStrokeStyle(2, 0xff5a5f, 0.72)
+    .setDepth(depth)
+    .setInteractive({ useHandCursor: true });
+  const youtubeIcon = scene.add.graphics({ x: 625, y: 535 }).setDepth(depth + 0.1);
+  youtubeIcon.fillStyle(0xff353d, 1).fillRoundedRect(-20, -13, 40, 26, 7);
+  youtubeIcon.fillStyle(0xffffff, 1).fillTriangle(-5, -8, -5, 8, 9, 0);
+  const youtubeLabel = scene.add.text(742, 535, 'Luis Nomad', textStyle(18, '#ffffff', {
+    fontStyle: 'bold',
+  })).setOrigin(0.5).setDepth(depth + 0.1);
+  bindButtonInput(scene, youtubeButton, {
+    onOver: () => youtubeButton.setFillStyle(0x263c5d, 1),
+    onOut: () => youtubeButton.setFillStyle(0x182a45, 0.96),
+    onPress: () => youtubeButton.setScale(0.98),
+    onRelease: () => youtubeButton.setScale(1),
+    onActivate: () => onOpenExternal?.(ABOUT_LINKS.youtube),
+  });
+
   return [
-    scene.add.text(640, 274, 'JOEL FOOTBALL', textStyle(48, '#ffffff', {
+    scene.add.text(640, 207, 'JOEL FOOTBALL', textStyle(43, '#ffffff', {
       fontFamily: 'Arial Black, Arial Rounded MT Bold, sans-serif',
       stroke: '#10213e',
       strokeThickness: 8,
     })).setOrigin(0.5).setDepth(depth),
     creatorPortrait,
-    scene.add.text(710, 351, t(language, 'about.credit'), textStyle(22, '#bff8ff', {
-      wordWrap: { width: 360 },
+    scene.add.text(720, 274, t(language, 'about.credit'), textStyle(15, '#a9bdd8')).setOrigin(0.5).setDepth(depth),
+    scene.add.text(720, 306, t(language, 'about.creatorCharacter'), textStyle(23, '#ffffff', {
+      fontStyle: 'bold',
     })).setOrigin(0.5).setDepth(depth),
-    scene.add.text(710, 407, t(language, 'about.creatorCharacter', {
-      name: getCharacterName(creatorCharacter, language),
-    }), textStyle(18, '#ffffff', { fontStyle: 'bold' })).setOrigin(0.5).setDepth(depth),
-    scene.add.text(710, 452, t(language, 'about.dedication'), textStyle(22, '#ffdc72', { fontStyle: 'bold' })).setOrigin(0.5).setDepth(depth),
-    scene.add.text(710, 500, `${t(language, 'about.version')} ${appInfo?.version ?? '1.0.0'}${buildLabel}`, textStyle(18, '#a9bdd8')).setOrigin(0.5).setDepth(depth),
+    website,
+    websiteUnderline,
+    scene.add.text(720, 389, t(language, 'about.dedication'), textStyle(18, '#ffdc72', {
+      fontStyle: 'bold',
+    })).setOrigin(0.5).setDepth(depth),
+    scene.add.text(720, 455, t(language, 'about.support'), textStyle(15, '#d7e8f8', {
+      lineSpacing: 5,
+      wordWrap: { width: 430, useAdvancedWrap: true },
+    })).setOrigin(0.5).setDepth(depth),
+    youtubeButton,
+    youtubeIcon,
+    youtubeLabel,
+    scene.add.text(720, 584, `${t(language, 'about.version')} ${appInfo?.version ?? '1.5.0'}${buildLabel}`, textStyle(16, '#a9bdd8')).setOrigin(0.5).setDepth(depth),
   ];
 };
 
@@ -204,6 +246,7 @@ export const createInfoOverlay = (scene, {
   inputMode,
   appInfo,
   onClose,
+  onOpenExternal,
 }) => {
   const depth = 300;
   const height = scene.stageLayout?.height ?? 720;
@@ -212,7 +255,7 @@ export const createInfoOverlay = (scene, {
     : null;
   const footballTouchMovementMode = getFootballTouchMovementMode(scene);
   const shade = scene.add.rectangle(0, 0, GAME_WIDTH, height, 0x030712, 0.78).setOrigin(0).setDepth(depth).setInteractive();
-  const panelHeight = kind === 'help' ? 590 : kind === 'install' ? 500 : 430;
+  const panelHeight = kind === 'help' ? 590 : kind === 'install' ? 500 : 540;
   const panelY = Math.min(height / 2, 380);
   const panel = scene.add.rectangle(640, panelY, kind === 'help' ? HELP_PANEL_WIDTH : 720, panelHeight, 0x0d1b34, 0.985)
     .setStrokeStyle(3, kind === 'help' ? 0x8fefff : 0xffdc72, 0.46)
@@ -234,14 +277,19 @@ export const createInfoOverlay = (scene, {
       )
     : kind === 'install'
       ? createInstallContent(scene, language, depth + 0.2, onClose)
-      : createAboutContent(scene, language, appInfo, depth + 0.2);
+      : createAboutContent(scene, language, appInfo, depth + 0.2, onOpenExternal);
   const creatorCharacter = kind === 'about' ? getCharacter('dad') : null;
   const objects = [shade, panel, title, ...closeObjects, ...content];
   return {
     kind,
     appInfo: appInfo ?? null,
+    externalLinks: kind === 'about' ? { ...ABOUT_LINKS } : null,
+    about: kind === 'about' ? {
+      creator: t(language, 'about.creatorCharacter'),
+      support: t(language, 'about.support'),
+    } : null,
     creatorCharacter: creatorCharacter
-      ? { id: creatorCharacter.id, name: getCharacterName(creatorCharacter, language) }
+      ? { id: creatorCharacter.id }
       : null,
     layout: helpLayout,
     destroy: () => objects.forEach((object) => object.destroy()),

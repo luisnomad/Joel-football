@@ -1,9 +1,11 @@
+export const SUPERPOWER_ACTIVE_SECONDS = 5;
+
 export const SUPERPOWERS = Object.freeze([
-  { id: 'fireball', activation: 'shot', icon: 'F', color: 0xff6b32, nameKey: 'power.fireball.name', descriptionKey: 'power.fireball.description' },
-  { id: 'ice', activation: 'instant', icon: 'I', color: 0x78ddff, nameKey: 'power.ice.name', descriptionKey: 'power.ice.description', activationKey: 'power.ice.activation' },
-  { id: 'big', activation: 'shot', icon: 'G', color: 0xffc653, nameKey: 'power.big.name', descriptionKey: 'power.big.description' },
-  { id: 'shield', activation: 'instant', icon: '◆', color: 0x55e0ee, nameKey: 'power.shield.name', descriptionKey: 'power.shield.description', activationKey: 'power.shield.activation' },
-  { id: 'hyper', activation: 'instant', icon: '★', color: 0x8dff70, nameKey: 'power.hyper.name', descriptionKey: 'power.hyper.description', activationKey: 'power.hyper.activation' },
+  { id: 'fireball', activation: 'shot', target: 'ball', icon: 'F', color: 0xff6b32, nameKey: 'power.fireball.name', descriptionKey: 'power.fireball.description' },
+  { id: 'ice', activation: 'instant', target: 'opponent', durationSeconds: SUPERPOWER_ACTIVE_SECONDS, icon: 'I', color: 0x78ddff, nameKey: 'power.ice.name', descriptionKey: 'power.ice.description', activationKey: 'power.ice.activation' },
+  { id: 'big', activation: 'shot', target: 'self', durationSeconds: 10, icon: 'G', color: 0xffc653, nameKey: 'power.big.name', descriptionKey: 'power.big.description' },
+  { id: 'shield', activation: 'instant', target: 'self', durationSeconds: SUPERPOWER_ACTIVE_SECONDS, icon: '◆', color: 0x55e0ee, nameKey: 'power.shield.name', descriptionKey: 'power.shield.description', activationKey: 'power.shield.activation' },
+  { id: 'hyper', activation: 'instant', target: 'self', durationSeconds: SUPERPOWER_ACTIVE_SECONDS, icon: '★', color: 0x8dff70, nameKey: 'power.hyper.name', descriptionKey: 'power.hyper.description', activationKey: 'power.hyper.activation' },
 ]);
 
 const byId = new Map(SUPERPOWERS.map((power) => [power.id, power]));

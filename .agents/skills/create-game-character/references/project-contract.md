@@ -44,21 +44,24 @@ order through `CONTACT_POSE_MAP`.
 ## Display and physics
 
 Football's standard enhanced sheet display is 186.67×280 with feet at logical
-pitch `y=636`. Every normal fighter uses the same authored compound Matter
-body. Character stats modify movement and power; they do not redefine the
+pitch `y=636`. Every fighter uses a stable authored compound Matter body.
+Gameplay size comes only from an explicit collision profile; Dad and Mum use
+their intentional larger profiles. Character stats do not redefine the
 collider.
 
 Kickfall's standard display is 84×126 and uses the same source ground anchor.
-Its gameplay body is always 44×82.
+The standard gameplay body is 44×82. An explicit collision profile may opt a
+character into a deliberately different body and matching strike geometry.
 
 Disc Hockey derives a monochrome engraving from the portrait. Pusher radius
 and displayed diameter are competitive geometry and must remain identical
 across characters, including Crazy Mode.
 
 `visualScale` is an optional catalog parameter bounded by
-`getCharacterVisualScale` to 0.85–1.20. It may alter Football and Kickfall
-artwork while the shared colliders and ground anchors remain unchanged. Hockey
-intentionally ignores it.
+`getCharacterVisualScale` to 0.85–1.20. It alters Football and Kickfall artwork
+but never implicitly changes gameplay geometry. `collisionProfile` separately
+selects authored Football/Kickfall bodies and strike geometry. Ground anchors
+remain unchanged, and Hockey intentionally ignores both size settings.
 
 ## Catalog and fixture contract
 
@@ -71,6 +74,7 @@ A new roster entry needs:
 - readable accent color;
 - five stats;
 - optional `visualScale`.
+- optional explicit `collisionProfile`.
 
 Update every ordered roster fixture, available-character diagnostic, selector
 wrap expectation, lineup count, Crazy Mode exclusion, and lazy-loading

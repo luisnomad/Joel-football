@@ -73,9 +73,6 @@ export class IntroScene extends Phaser.Scene {
       width: 1140,
       height: 220,
       texture: this.arenaTheme.texture,
-      foregroundTexture: this.playerCharacter.portraitTexture,
-      foregroundX: 0.73,
-      foregroundScale: 0.62,
       imageFocusX: 0.72,
       title: t(this.language, 'hub.football'),
       subtitle: t(this.language, 'hub.footballSubtitle'),
@@ -121,9 +118,11 @@ export class IntroScene extends Phaser.Scene {
     this.aboutButton = createIconButton(this, {
       x: 44 + horizontalOffset,
       y: 48,
-      radius: 28,
+      radius: 32,
       icon: 'info',
       accent: 0xffdc72,
+      prominent: true,
+      caption: 'INFO',
       onPress: () => this.openInfo('about'),
     });
 
@@ -166,6 +165,10 @@ export class IntroScene extends Phaser.Scene {
       inputMode: this.isTouchLayout ? 'touch' : 'keyboard',
       appInfo,
       onClose: () => this.closeInfo(),
+      onOpenExternal: (url) => {
+        arcadeAudio.click();
+        return this.game.registry.get('platformActions')?.openExternalUrl?.(url);
+      },
     });
   }
 
@@ -252,6 +255,8 @@ export class IntroScene extends Phaser.Scene {
       modal: this.infoOverlay?.kind ?? null,
       modalAppInfo: this.infoOverlay?.appInfo ?? null,
       modalCreatorCharacter: this.infoOverlay?.creatorCharacter ?? null,
+      modalExternalLinks: this.infoOverlay?.externalLinks ?? null,
+      modalAbout: this.infoOverlay?.about ?? null,
       audio: arcadeAudio.diagnostics(),
       actions: [
         'open football setup',

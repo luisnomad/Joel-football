@@ -1,4 +1,8 @@
 import { resolveForceTransmission } from '../../pure/forceSystem.js';
+import {
+  circleIntersectsCapsule,
+  createForwardStrikeCapsule,
+} from '../../pure/gameplayPhysics.js';
 
 export const KICKFALL_CONFIG = Object.freeze({
   ballQuota: 8,
@@ -385,11 +389,20 @@ export const isKickfallKickContact = ({
   footVerticalOffset = 0,
   footRadius = 0,
 } = {}) => {
-  const direction = Math.sign(Number(facing)) || 1;
-  const footX = Number(playerX) + direction * Math.max(0, Number(footForwardOffset) || 0);
-  const footY = Number(playerY) + (Number(footVerticalOffset) || 0);
-  const contactRadius = Math.max(0, Number(ballRadius) || 0) + Math.max(0, Number(footRadius) || 0);
-  return Math.hypot(Number(ballX) - footX, Number(ballY) - footY) <= contactRadius;
+  const capsule = createForwardStrikeCapsule({
+    x: playerX,
+    y: playerY,
+    facing,
+    startForwardOffset: footForwardOffset,
+    endForwardOffset: footForwardOffset,
+    verticalOffset: footVerticalOffset,
+    radius: footRadius,
+  });
+  return circleIntersectsCapsule({
+    circle: { x: Number(ballX), y: Number(ballY) },
+    radius: ballRadius,
+    ...capsule,
+  });
 };
 
 export const resolveKickfallVerticalIntent = ({

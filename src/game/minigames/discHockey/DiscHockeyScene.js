@@ -11,6 +11,7 @@ import { arcadeAudio } from '../../services/ArcadeAudio.js';
 import { playerProfileStore } from '../../services/PlayerProfile.js';
 import { clearActiveScene, setActiveScene } from '../../stateBridge.js';
 import { createButton } from '../../ui/createButton.js';
+import { discHockeyAssetUrl } from './discHockeyAssets.js';
 import { getDiscHockeyCollisionMap } from './discHockeyCollisionMaps.js';
 import {
   DISC_HOCKEY_ARENA,
@@ -51,9 +52,6 @@ import {
   stepPuck,
 } from './discHockeyRules.js';
 
-const assetUrl = (filename) => (
-  `${import.meta.env.BASE_URL}assets/minigames/disc-hockey/${filename}`
-);
 const THEME_ART = Object.freeze({
   ice: Object.freeze({
     texture: 'disc-hockey-arena-ice',
@@ -175,7 +173,7 @@ export class DiscHockeyScene extends Phaser.Scene {
       [themeArt.pusherTexture, themeArt.pusherAsset],
       [themeArt.puckTexture, themeArt.puckAsset],
     ].forEach(([texture, asset]) => {
-      if (!this.textures.exists(texture)) this.load.image(texture, assetUrl(asset));
+      if (!this.textures.exists(texture)) this.load.image(texture, discHockeyAssetUrl(asset));
     });
   }
 

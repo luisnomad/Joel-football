@@ -18,6 +18,7 @@ import { detectExtendedTabletStage, detectWidePhoneStage } from './game/layout/t
 import { PLATFORM_EVENTS } from './platform/PlatformServices.js';
 import { createPlatformServices } from './platform/createPlatformServices.js';
 import { installGameSurfaceInputGuard } from './platform/gameSurfaceInput.js';
+import { createRuntimePerformanceBenchmark } from './game/services/RuntimePerformanceBenchmark.js';
 
 const gameShell = document.getElementById('game-shell');
 installGameSurfaceInputGuard(gameShell);
@@ -76,6 +77,10 @@ const config = {
 };
 
 const game = new Phaser.Game(config);
+const runtimePerformanceBenchmark = createRuntimePerformanceBenchmark({
+  game,
+  renderer: config.type === Phaser.CANVAS ? 'canvas' : 'webgl',
+});
 const fullscreenAdapter = {
   isFullscreen: () => game.scale.isFullscreen,
   enter: () => game.scale.startFullscreen(),
@@ -86,6 +91,7 @@ const platformActions = Object.freeze({
   getAppInfo: () => platformServices.getAppInfo(),
   getInstallState: () => platformServices.getInstallState(),
   installWebApp: () => platformServices.installWebApp(),
+  openExternalUrl: (url) => platformServices.openExternalUrl(url),
   lockLandscape: () => platformServices.lockLandscape(),
 });
 game.registry.set('platformActions', platformActions);
@@ -114,6 +120,7 @@ platformServices.initialize().then(refreshGameScale).catch(() => {});
 window.render_game_to_text = renderActiveState;
 window.advanceTime = (milliseconds) => advanceActiveScene(Math.max(0, Number(milliseconds) || 0));
 window.__SKYHEAD_GAME__ = game;
+window.__SKYHEAD_PERFORMANCE__ = runtimePerformanceBenchmark;
 window.__SKYHEAD_AUDIO_DEBUG__ = {
   diagnostics: () => arcadeAudio.diagnostics(),
   warmAll: () => arcadeAudio.warmAll(),
@@ -126,6 +133,7 @@ window.__SKYHEAD_PLATFORM_DEBUG__ = {
   }),
   setActiveForTesting: (isActive) => platformServices.emit(PLATFORM_EVENTS.activeChange, { isActive }),
   backForTesting: () => platformServices.emit(PLATFORM_EVENTS.backButton),
+  openExternalUrlForTesting: (url) => platformServices.openExternalUrl(url),
 };
 
 const unlockAudio = () => arcadeAudio.unlock();

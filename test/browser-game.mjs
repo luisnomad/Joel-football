@@ -60,7 +60,7 @@ const readAnimationAtlasMetrics = (page) => page.evaluate(async () => {
     joel: await analyze('player-joel-sheet-v1.webp'),
     dad: await analyze('player-dad-sheet-v1.webp'),
     mum: await analyze('player-mum-sheet-v1.webp'),
-    vex: await analyze('player-vex-sheet-v2.webp'),
+    bob: await analyze('player-bob-sheet-v2.webp'),
     lucia: await analyze('player-lucia-sheet-v2.webp'),
     luna: await analyze('player-luna-sheet-v2.webp'),
     juan: await analyze('player-juan-sheet-v3.webp'),
@@ -322,14 +322,14 @@ try {
   assert.equal(tapHighlight, 'rgba(0, 0, 0, 0)', 'the Phaser canvas must not show Android WebView tap highlighting');
   const bootTextureState = await page.evaluate(() => {
     const textures = window.__SKYHEAD_GAME__.textures;
-    return Object.fromEntries(['joel-sheet', 'dad-sheet', 'mum-sheet', 'vex-sheet', 'lucia-sheet', 'luna-sheet', 'juan-sheet', 'juanjo-sheet']
+    return Object.fromEntries(['joel-sheet', 'dad-sheet', 'mum-sheet', 'bob-sheet', 'lucia-sheet', 'luna-sheet', 'juan-sheet', 'juanjo-sheet']
       .map((key) => [key, textures.exists(key)]));
   });
   assert.deepEqual(bootTextureState, {
     'joel-sheet': true,
     'dad-sheet': false,
     'mum-sheet': false,
-    'vex-sheet': true,
+    'bob-sheet': true,
     'lucia-sheet': false,
     'luna-sheet': false,
     'juan-sheet': false,
@@ -345,6 +345,28 @@ try {
     'arena-neon': false,
     'arena-beach': false,
   }, 'Boot should load only the persisted arena; alternatives belong to the customization screen');
+  const footballCardTextures = await page.evaluate(() => {
+    const scene = window.__SKYHEAD_GAME__.scene.getScene('Intro');
+    return scene.footballCard.objects
+      .map((object) => object.texture?.key)
+      .filter((key) => key && key !== '__DEFAULT');
+  });
+  assert.ok(
+    footballCardTextures.includes('arena-skycourt'),
+    'the Football card should use the clean persisted field',
+  );
+  assert.equal(
+    footballCardTextures.some((key) => (
+      ['joel', 'bob', 'lucia', 'luna', 'juan', 'dad', 'mum', 'juanjo'].includes(key)
+    )),
+    false,
+    'the Football card should not overlay a player cutout',
+  );
+  assert.equal(
+    await page.evaluate(() => window.__SKYHEAD_GAME__.textures.exists('disc-hockey-arena-neon')),
+    false,
+    'the clean Hockey field should remain lazy until the Mini-games menu',
+  );
   const groundedVisualFrames = new Set([0, 1, 4, 5, 6, 7, 8, 9, 10, 11]);
   const atlasMetrics = await readAnimationAtlasMetrics(page);
   for (const [player, atlas] of Object.entries(atlasMetrics)) {
@@ -419,6 +441,16 @@ try {
   assert.ok(
     state.playerCharacter.available.some(({ id }) => id === 'luna'),
     'a Football opponent must remain available as the Mini-games player',
+  );
+  const discHockeyCardTextures = await page.evaluate(() => {
+    const scene = window.__SKYHEAD_GAME__.scene.getScene('MiniGames');
+    return scene.discHockeyCard.objects
+      .map((object) => object.texture?.key)
+      .filter((key) => key && key !== '__DEFAULT');
+  });
+  assert.ok(
+    discHockeyCardTextures.includes('disc-hockey-arena-neon'),
+    'the Disc Hockey card should show the clean arena without names or retired gameplay elements',
   );
   for (const characterId of ['bob', 'lucia', 'luna']) {
     await touchControl(page, 745, 586, 35);
@@ -905,8 +937,15 @@ try {
     true,
     `the packed-queue fixture must begin with a real foot-to-rear-ball collision; ${JSON.stringify(queueContact)}`,
   );
-  await advance(page, 180);
-  state = await readState(page);
+  // A seven-ball transfer can straddle one extra fixed step depending on where
+  // Matter's contact solver leaves the packed queue. Advance in a bounded loop
+  // until the gate records the propagated hit instead of sampling one brittle
+  // instant in the collision chain.
+  for (let attempt = 0; attempt < 12; attempt += 1) {
+    await advance(page, 30);
+    state = await readState(page);
+    if (state.gates.find((gate) => gate.id === 'gate-b')?.lastImpactForce > 0) break;
+  }
   assert.equal(state.player.lastKickedBallId, gateQueueIds.at(-1), 'the player should directly kick only the rear ball');
   const gateAfterFirstQueueKick = state.gates.find((gate) => gate.id === 'gate-b');
   assert.equal(gateAfterFirstQueueKick.active, true, 'one rear kick must not clear an entire seven-ball queue');
@@ -1430,6 +1469,35 @@ try {
   await page.waitForFunction(() => JSON.parse(window.render_game_to_text()).mode === 'countdown');
   state = await readState(page);
   assert.deepEqual([state.level.number, state.boss.health, state.boss.active], [10, 3, true]);
+  const bossRig = await page.evaluate(() => {
+    const scene = window.__SKYHEAD_GAME__.scene.getScene('Kickfall');
+    const originalCharacter = scene.rivalCharacter;
+    scene.rivalCharacter = {
+      ...originalCharacter,
+      frameScales: { 10: 1.15 },
+    };
+    scene.boss.kickCooldown = 999;
+    scene.boss.kickVisualTimer = 0.2;
+    scene.stepBoss(0);
+    const result = {
+      physicsVisible: scene.boss.sprite.visible,
+      visualVisible: scene.boss.visual.visible,
+      frame: Number(scene.boss.visual.frame.name),
+      scaleXRatio: scene.boss.visual.scaleX / scene.boss.visualBaseScale.x,
+      scaleYRatio: scene.boss.visual.scaleY / scene.boss.visualBaseScale.y,
+    };
+    scene.rivalCharacter = originalCharacter;
+    scene.boss.kickVisualTimer = 0;
+    scene.stepBoss(0);
+    return result;
+  });
+  assert.deepEqual(
+    [bossRig.physicsVisible, bossRig.visualVisible, bossRig.frame],
+    [false, true, 10],
+    'the Kickfall boss must use the shared hidden-body/display-sprite rig',
+  );
+  assert.ok(Math.abs(bossRig.scaleXRatio - 1.15 * 1.05) < 0.001);
+  assert.ok(Math.abs(bossRig.scaleYRatio - 1.15 * 0.98) < 0.001);
   const bossKickQueue = await page.evaluate(() => {
     window.__KICKFALL_DEBUG__.startPlaying();
     window.__KICKFALL_DEBUG__.clearBalls();
@@ -1759,10 +1827,32 @@ try {
   await touchControl(page, 44, 48, 30);
   await page.waitForFunction(() => JSON.parse(window.render_game_to_text()).modal === 'about');
   state = await readState(page);
-  assert.equal(state.modalAppInfo.version, '1.0.0');
+  assert.equal(state.modalAppInfo.version, '1.5.0');
   assert.equal(state.modalAppInfo.build, 'web');
-  assert.deepEqual(state.modalCreatorCharacter, { id: 'dad', name: 'Dad' });
+  assert.deepEqual(state.modalCreatorCharacter, { id: 'dad' });
+  assert.deepEqual(state.modalAbout, {
+    creator: 'Luis Nomad',
+    support: "This game is free. If you'd like to support me, subscribe to my YouTube channel and share my videos.",
+  });
+  assert.deepEqual(state.modalExternalLinks, {
+    website: 'https://notjustprompts.ai/',
+    youtube: 'https://www.youtube.com/@luisnomad',
+  });
   await capture(page, `${output}/01-about.png`);
+  const websitePopupPromise = page.waitForEvent('popup');
+  await touchControl(page, 720, 344, 30);
+  const websitePopup = await websitePopupPromise;
+  assert.match(websitePopup.url(), /^https:\/\/notjustprompts\.ai\/?/);
+  await websitePopup.close();
+  const youtubePopupPromise = page.waitForEvent('popup');
+  await touchControl(page, 720, 535, 30);
+  const youtubePopup = await youtubePopupPromise;
+  assert.match(
+    youtubePopup.url(),
+    /youtube\.com.*luisnomad/i,
+    'YouTube may redirect through regional consent, but must retain the Luis Nomad channel destination',
+  );
+  await youtubePopup.close();
   await page.evaluate(() => window.__SKYHEAD_PLATFORM_DEBUG__.backForTesting());
   await page.waitForFunction(() => JSON.parse(window.render_game_to_text()).modal === null);
 
@@ -1948,7 +2038,7 @@ try {
   assert.equal(state.mode, 'playing');
   assert.equal(state.opponentProvider, 'heuristic-v1');
   assert.equal(state.players.left.name, 'Lucia');
-  assert.equal(state.players.left.id, 'joel');
+  assert.equal(state.players.left.id, 'lucia');
   assert.equal(state.playerCharacter.id, 'lucia');
   assert.equal(state.opponent.id, 'joel');
   assert.equal(state.players.right.name, 'Joel');
@@ -1971,6 +2061,20 @@ try {
   assert.ok(Math.abs(state.players.right.visualGroundAnchorY - 636) < 0.2);
   assert.equal(state.players.left.visualGroundAnchorY, state.players.right.visualGroundAnchorY);
   await capture(page, `${output}/02-ground-baseline.png`);
+  await page.evaluate(() => window.__SKYHEAD_PERFORMANCE__.start());
+  await page.waitForTimeout(2000);
+  const desktopPerformanceBaseline = await page.evaluate(
+    () => window.__SKYHEAD_PERFORMANCE__.stop(),
+  );
+  assert.equal(desktopPerformanceBaseline.renderer, 'canvas');
+  assert.ok(
+    desktopPerformanceBaseline.frames.samples >= 60,
+    `the real-time benchmark should sample active gameplay; ${JSON.stringify(desktopPerformanceBaseline)}`,
+  );
+  await writeFile(
+    `${output}/runtime-performance-desktop.json`,
+    JSON.stringify(desktopPerformanceBaseline, null, 2),
+  );
   assert.ok(state.hud.leftName.startsWith('LUCIA'), `the rendered left HUD label should say Lucia; got ${state.hud.leftName}`);
   assert.ok(state.hud.rightName.endsWith('JOEL'), `the rendered right HUD label should say Joel; got ${state.hud.rightName}`);
   assert.equal(state.audio.sceneMode, 'football');
@@ -2215,6 +2319,10 @@ try {
     window.__SKYHEAD_DEBUG__.setOpponentPosition(1080);
     window.__SKYHEAD_DEBUG__.stunOpponent(1);
     window.__SKYHEAD_DEBUG__.setBall({ x: 678, y: 537 });
+    // The preceding high-chilena fixture can legitimately finish facing
+    // either direction. This scenario measures boost strength, so declare the
+    // intended goalward direction instead of inheriting prior pose state.
+    window.__SKYHEAD_GAME__.scene.getScene('Match').leftPlayer.setFacing(1);
   });
   const connectedBallEffectBefore = (await readState(page)).audio.ballEffectPlays;
   await hold(page, 'x', 17);
@@ -2370,7 +2478,30 @@ try {
   assert.equal(state.hud.announcement, '¡CHILENA!');
   await advance(page, 150);
   state = await readState(page);
-  assert.ok(state.players.left.chilenaRotation > 65 && state.players.left.chilenaRotation < 180, `the sprite should visibly rotate clockwise; got ${state.players.left.chilenaRotation}`);
+  assert.ok(
+    state.players.left.chilenaRotation > 65 && state.players.left.chilenaRotation < 180,
+    `a left-side attacker should lean backward toward the rival goal; got ${state.players.left.chilenaRotation}`,
+  );
+  const chilenaVisual = await page.evaluate(() => {
+    const fighter = window.__SKYHEAD_GAME__.scene.getScene('Match').leftPlayer;
+    const bounds = fighter.visual.getBounds();
+    return {
+      pivotX: fighter.visual.x,
+      pivotY: fighter.visual.y,
+      bodyX: fighter.sprite.x,
+      bodyY: fighter.sprite.y,
+      bottom: bounds.bottom,
+    };
+  });
+  assert.ok(
+    Math.abs(chilenaVisual.pivotX - chilenaVisual.bodyX) < 0.2
+      && Math.abs(chilenaVisual.pivotY - chilenaVisual.bodyY) < 0.2,
+    `the chilena should pivot around the airborne torso; ${JSON.stringify(chilenaVisual)}`,
+  );
+  assert.ok(
+    chilenaVisual.bottom < 636,
+    `the rotating artwork must clear the pitch instead of orbiting through it; bottom=${chilenaVisual.bottom}`,
+  );
   await capture(page, `${output}/02-chilena.png`);
   await advance(page, 1150);
   state = await readState(page);
@@ -2494,6 +2625,7 @@ try {
     window.__SKYHEAD_DEBUG__.setHumanMeter(100);
     window.__SKYHEAD_DEBUG__.setOpponentPosition(820);
     window.__SKYHEAD_DEBUG__.setBall({ x: 350, y: 400 });
+    window.__SKYHEAD_GAME__.scene.getScene('Match').ball.freeze();
   });
   await pressDesktopPower(page);
   await advance(page, 85);
@@ -2501,14 +2633,38 @@ try {
   assert.equal(state.powerBall.active, false, 'Freeze should not require or create a powered ball');
   assert.deepEqual(state.lastInstantPower, { powerId: 'ice', target: 'right' });
   assert.equal(state.players.right.frozen, true, 'Freeze should immobilize the opponent immediately on the power press');
-  assert.ok(state.players.right.freezeSeconds > 1, 'Freeze should last long enough to be unmistakable');
+  assert.ok(state.players.right.freezeSeconds > 4.7, 'Freeze should provide five active-play seconds');
+  assert.match(state.players.right.statusCue, /❄.*4\.[7-9]s/, 'Freeze should show a live field countdown');
   assert.equal(state.inventory.equippedCount, 0, 'Freeze should consume one charge when it activates');
   assert.ok(state.players.left.meter < 1, 'an instant power should spend the full meter immediately');
   assert.equal(state.hud.announcement, '¡RIVAL CONGELADO!');
   assert.ok(state.hud.announcementWidth <= 760, 'Freeze feedback should stay within its banner width');
   await capture(page, `${output}/02-freeze-power.png`);
-  await advance(page, 2200);
-  assert.equal((await readState(page)).players.right.frozen, false, 'the opponent should recover after Freeze expires');
+  const freezeBeforeGoal = state.players.right.freezeSeconds;
+  await page.evaluate(() => window.__SKYHEAD_DEBUG__.scoreFor('left'));
+  await advance(page, 1000);
+  state = await readState(page);
+  assert.equal(state.mode, 'goal');
+  assert.equal(state.players.right.frozen, true, 'Freeze should survive the dead-ball resettle');
+  assert.ok(
+    state.players.right.freezeSeconds > 4.5,
+    `goal celebrations must preserve nearly all active Freeze duration; ${freezeBeforeGoal}s became ${state.players.right.freezeSeconds}s`,
+  );
+  await page.evaluate(() => window.__SKYHEAD_DEBUG__.resumePlay());
+  await page.keyboard.press('Escape');
+  await page.waitForFunction(() => JSON.parse(window.render_game_to_text()).mode === 'paused');
+  const pausedFreezeSeconds = (await readState(page)).players.right.freezeSeconds;
+  await advance(page, 1200);
+  assert.ok(
+    Math.abs((await readState(page)).players.right.freezeSeconds - pausedFreezeSeconds) < 0.03,
+    'Freeze duration must not be spent while gameplay is paused',
+  );
+  await page.keyboard.press('Escape');
+  await page.waitForFunction(() => JSON.parse(window.render_game_to_text()).mode === 'playing');
+  await advance(page, 2500);
+  assert.equal((await readState(page)).players.right.frozen, true, 'Freeze should still be active midway through its tactical window');
+  await advance(page, 2700);
+  assert.equal((await readState(page)).players.right.frozen, false, 'the opponent should recover after five active-play seconds');
 
   await page.evaluate(() => {
     window.__SKYHEAD_DEBUG__.resumePlay();
@@ -2518,18 +2674,32 @@ try {
     window.__SKYHEAD_DEBUG__.setOpponentPosition(1080);
     window.__SKYHEAD_DEBUG__.stunOpponent(2);
     window.__SKYHEAD_DEBUG__.setBall({ x: 350, y: 400 });
+    window.__SKYHEAD_GAME__.scene.getScene('Match').ball.freeze();
   });
   await pressDesktopPower(page);
   await advance(page, 85);
   state = await readState(page);
-  assert.equal(state.players.left.shield, 1, 'Shield should activate immediately without a ball strike');
+  assert.equal(state.players.left.shield, true, 'Shield should activate immediately without a ball strike');
+  assert.ok(state.players.left.shieldSeconds > 4.7, 'Shield should provide five active-play seconds');
+  assert.match(state.players.left.statusCue, /◆.*4\.[7-9]s/, 'Shield should show a live field countdown');
   assert.deepEqual(state.lastInstantPower, { powerId: 'shield', target: 'left' });
   assert.equal(state.hud.announcement, '¡ESCUDO ACTIVO!');
   assert.ok(state.hud.announcementWidth <= 760, 'Shield feedback should stay compact');
+  await capture(page, `${output}/02-shield-power.png`);
   await page.evaluate(() => window.__SKYHEAD_GAME__.scene.getScene('Match').leftPlayer.applyStun(-1));
   state = await readState(page);
-  assert.equal(state.players.left.shield, 0, 'Shield should absorb exactly the next physical stun');
-  assert.equal(state.players.left.stunned, false, 'the blocked hit should not stun Joel');
+  assert.equal(state.players.left.shield, true, 'a blocked hit should not consume the timed Shield');
+  assert.equal(state.players.left.stunned, false, 'the blocked hit should not stun the player');
+  await advance(page, 250);
+  await page.evaluate(() => window.__SKYHEAD_GAME__.scene.getScene('Match').leftPlayer.applyStun(1, true));
+  state = await readState(page);
+  assert.equal(state.players.left.shield, true, 'Shield should block repeated physical stuns during its window');
+  assert.equal(state.players.left.stunned, false, 'a second blocked hit should still leave the player controllable');
+  await advance(page, 4800);
+  state = await readState(page);
+  assert.equal(state.players.left.shield, false, 'Shield should expire after five active-play seconds');
+  await page.evaluate(() => window.__SKYHEAD_GAME__.scene.getScene('Match').leftPlayer.applyStun(-1));
+  assert.equal((await readState(page)).players.left.stunned, true, 'physical stuns should work again after Shield expires');
 
   await page.evaluate(() => {
     window.__SKYHEAD_DEBUG__.resumePlay();
@@ -2570,6 +2740,21 @@ try {
   assert.equal(state.players.left.grounded, true, 'the larger physics body should keep its feet grounded');
   assert.equal(state.hud.announcement, '¡TÍO GRANDE!');
   await capture(page, `${output}/02-big-guy-grown.png`);
+
+  await page.evaluate(() => {
+    const match = window.__SKYHEAD_GAME__.scene.getScene('Match');
+    const attacker = match.leftPlayer;
+    window.__SKYHEAD_DEBUG__.setOpponentPosition(attacker.sprite.x + 132);
+    attacker.dashCooldown = 0;
+    attacker.startDash(1);
+    match.handleCombat();
+  });
+  state = await readState(page);
+  assert.equal(
+    state.players.right.stunned,
+    true,
+    'Big Guy dash contact should use the enlarged Matter bodies instead of a fixed 100 px center gap',
+  );
 
   await page.evaluate(() => {
     const match = window.__SKYHEAD_GAME__.scene.getScene('Match');
@@ -2747,7 +2932,10 @@ try {
   await advance(page, 250);
   state = await readState(page);
   assert.ok(state.ball.x > 1132 && state.ball.y < 396, 'fixture should reproduce a ball perched above the right goal');
-  await advance(page, 700);
+  // The mirrored release may begin one physics tick later depending on which
+  // side of the crossbar settles first. Observe the completed return rather
+  // than racing the last few pixels of an already-moving ball.
+  await advance(page, 900);
   state = await readState(page);
   assert.ok(state.ball.x < 1132, `the mirrored right goal should also return a perched ball to play; x=${state.ball.x}, y=${state.ball.y}`);
 
@@ -2924,6 +3112,8 @@ try {
   assert.equal(dadState.players.left.name, 'Dad');
   assert.deepEqual([dadState.players.left.nativeFacing, dadState.players.left.visualFlipped], [1, false]);
   assert.equal(dadState.players.left.visualScale, 1.2);
+  assert.equal(dadState.players.left.collisionProfile, 'dad-large');
+  assert.equal(dadState.players.left.collisionScale, 1.2);
   assert.equal(dadState.players.left.displayHeight, 336);
   assert.equal(dadState.players.right.displayHeight, 280);
   assert.ok(
@@ -2960,6 +3150,10 @@ try {
   assert.equal(dadState.players.left.visualFrame, 2, 'Dad should use the size-corrected jump frame while airborne');
   assert.equal(dadState.players.left.pose, 'jump');
   await capture(dadPage, `${output}/04-dad-jump.png`);
+  await advance(dadPage, 1100);
+  dadState = await readState(dadPage);
+  assert.equal(dadState.players.left.grounded, true);
+  assert.ok(Math.abs(dadState.players.left.visualGroundAnchorY - 636) < 0.2);
   await dadPage.evaluate(() => window.__SKYHEAD_GAME__.scene.getScene('Match').scene.pause());
 
   await dadPage.evaluate(() => {
@@ -2990,6 +3184,10 @@ try {
   });
   dadState = await readState(dadPage);
   assert.deepEqual([dadState.players.left.visualFrame, dadState.players.left.animationStage], [11, 'recovery']);
+  assert.ok(
+    Math.abs(dadState.players.left.visualGroundAnchorY - 636) < 0.2,
+    `Dad recovery art must stay on the pitch; ${JSON.stringify(dadState.players.left)}`,
+  );
   await capture(dadPage, `${output}/04-dad-kick-recovery.png`);
 
   await dadPage.evaluate(() => window.__SKYHEAD_GAME__.scene.getScene('Match').scene.start('Intro'));
@@ -3009,6 +3207,7 @@ try {
   dadState = await readState(dadPage);
   assert.equal(dadState.selectedCharacter.id, 'dad');
   assert.equal(dadState.player.visualScale, 1.2);
+  assert.equal(dadState.player.collisionProfile, 'dad-large');
   assert.equal(dadState.player.displayHeight, 151.2);
   assert.ok(Math.abs(dadState.player.collisionWidth - 52.8) < 0.01);
   assert.ok(Math.abs(dadState.player.collisionHeight - 98.4) < 0.01);
@@ -3025,6 +3224,7 @@ try {
   await advance(dadPage, 70);
   dadState = await readState(dadPage);
   assert.ok([9, 10, 11].includes(dadState.player.visualFrame));
+  assert.ok(Math.abs(dadState.player.platformSurfaceY - dadState.player.visualGroundAnchorY) < 0.2);
   await capture(dadPage, `${output}/04-dad-kickfall.png`);
   assert.deepEqual(dadErrors, [], `Dad browser emitted errors:\n${dadErrors.join('\n')}`);
   await dadContext.close();
@@ -3058,6 +3258,8 @@ try {
   assert.equal(mumState.players.left.name, 'Mum');
   assert.deepEqual([mumState.players.left.nativeFacing, mumState.players.left.visualFlipped], [1, false]);
   assert.equal(mumState.players.left.visualScale, 1.2);
+  assert.equal(mumState.players.left.collisionProfile, 'mum-large');
+  assert.equal(mumState.players.left.collisionScale, 1.2);
   assert.equal(mumState.players.left.displayHeight, 336);
   const mumBaseCollisionArea = mumState.players.left.collisionArea;
   assert.ok(
@@ -3144,6 +3346,7 @@ try {
     [(await readState(mumPage)).players.left.visualFrame, (await readState(mumPage)).players.left.animationStage],
     [9, 'anticipation'],
   );
+  assert.ok(Math.abs((await readState(mumPage)).players.left.visualGroundAnchorY - 636) < 0.2);
   await capture(mumPage, `${output}/04-mum-kick-anticipation.png`);
   await mumPage.evaluate(() => {
     const fighter = window.__SKYHEAD_GAME__.scene.getScene('Match').leftPlayer;
@@ -3154,6 +3357,7 @@ try {
     [(await readState(mumPage)).players.left.visualFrame, (await readState(mumPage)).players.left.animationStage],
     [10, 'contact'],
   );
+  assert.ok(Math.abs((await readState(mumPage)).players.left.visualGroundAnchorY - 636) < 0.2);
   await capture(mumPage, `${output}/04-mum-kick-contact.png`);
   await mumPage.evaluate(() => {
     const fighter = window.__SKYHEAD_GAME__.scene.getScene('Match').leftPlayer;
@@ -3164,6 +3368,7 @@ try {
     [(await readState(mumPage)).players.left.visualFrame, (await readState(mumPage)).players.left.animationStage],
     [11, 'recovery'],
   );
+  assert.ok(Math.abs((await readState(mumPage)).players.left.visualGroundAnchorY - 636) < 0.2);
   await capture(mumPage, `${output}/04-mum-kick-recovery.png`);
 
   await mumPage.evaluate(() => {
@@ -3240,6 +3445,7 @@ try {
   mumState = await readState(mumPage);
   assert.equal(mumState.selectedCharacter.id, 'mum');
   assert.equal(mumState.player.visualScale, 1.2);
+  assert.equal(mumState.player.collisionProfile, 'mum-large');
   assert.equal(mumState.player.displayHeight, 151.2);
   assert.ok(Math.abs(mumState.player.collisionWidth - 52.8) < 0.01);
   assert.ok(Math.abs(mumState.player.collisionHeight - 98.4) < 0.01);
@@ -3264,6 +3470,7 @@ try {
   await advance(mumPage, 70);
   mumState = await readState(mumPage);
   assert.ok([9, 10, 11].includes(mumState.player.visualFrame));
+  assert.ok(Math.abs(mumState.player.platformSurfaceY - mumState.player.visualGroundAnchorY) < 0.2);
   await capture(mumPage, `${output}/04-mum-kickfall-kick.png`);
   assert.deepEqual(mumErrors, [], `Mum browser emitted errors:\n${mumErrors.join('\n')}`);
   await mumContext.close();
@@ -3825,7 +4032,17 @@ try {
   );
   await mobilePage.mouse.move(touchEdgePoint.x, touchEdgePoint.y);
   await mobilePage.mouse.down();
-  await advance(mobilePage, 60);
+  await mobilePage.evaluate(() => {
+    const match = window.__SKYHEAD_GAME__.scene.getScene('Match');
+    // Keep the real pointer gesture, but make its mechanics step atomic. A
+    // background rAF between CDP calls must not spend the short dash before
+    // velocity is sampled.
+    match.leftPlayer.sprite.setVelocity(0, 0);
+    match.leftPlayer.dashTimer = 0;
+    match.leftPlayer.dashCooldown = 0;
+    match.inputController.pendingDashDirection = 1;
+    window.advanceTime(60);
+  });
   mobileState = await readState(mobilePage);
   assert.ok(Math.abs(mobileState.currentIntent.left.move - 0.92) < 0.03);
   assert.equal(mobileState.touchControlVisuals.joystick.boosted, true);
@@ -3975,8 +4192,8 @@ try {
     `touch mash should apply at least one boost step; got ${mobileState.lastBoostedStrike?.energySpent}`,
   );
   assert.ok(
-    mobileState.ball.vx > 16 && mobileState.ball.vx < 23,
-    `touch boost should remain stronger than a basic kick and below power; got ${mobileState.ball.vx}`,
+    mobileState.lastBoostedStrike.vx > 16 && mobileState.lastBoostedStrike.vx < 23,
+    `touch boost should remain stronger than a basic kick and below power; got ${mobileState.lastBoostedStrike.vx}`,
   );
   assert.ok(mobileState.meterFlash.left > 0);
   await capture(mobilePage, `${output}/05-touch-boosted-kick.png`);
@@ -4504,7 +4721,7 @@ try {
   assert.equal(spanishDeviceState.languageSource, 'user');
   await spanishDevice.close();
 
-  await writeFile(`${output}/summary.json`, JSON.stringify({ passed: true, checks: 260 }, null, 2));
+  await writeFile(`${output}/summary.json`, JSON.stringify({ passed: true, checks: 261 }, null, 2));
   process.stdout.write('Browser game checks passed: splash, Kickfall, random math, persistence, bilingual settings, whistle signals, directional dash/boost, Big Guy, full gameplay, and touch flow.\n');
 } finally {
   await browser?.close();

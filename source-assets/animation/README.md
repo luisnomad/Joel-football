@@ -30,13 +30,13 @@ eight-pixel side margins, and `y=418` grounded baseline.
 
 - `ref-sheets/`: the two approved six-cell character identity sheets on flat
   chroma backgrounds.
-- `candidates/`: the generated run/kick candidate sheets and the targeted Vex
+- `candidates/`: the generated run/kick candidate sheets and the targeted Bob
   recovery candidate.
 - `selected/`: the individual chosen frames after chroma-key removal.
 - `final/`: the lossless 1280 x 1440 RGBA source sheets, using twelve 320 x 480
   cells per character.
 - `../../public/assets/player-nova-sheet-v2.webp` and
-  `../../public/assets/player-vex-sheet-v2.webp`: the lossless WebP runtime
+  `../../public/assets/player-bob-sheet-v2.webp`: the lossless WebP runtime
   sheets.
 
 The original generated files under `$CODEX_HOME/generated_images` were copied,
@@ -55,7 +55,7 @@ Both candidate sheets use a 3 x 2 grid:
 | 5 | kick contact / early swing | yes |
 | 6 | kick recovery | Joel only |
 
-Vex's targeted standalone recovery candidate was selected instead of cell 6
+Bob's targeted standalone recovery candidate was selected instead of cell 6
 because it provided a clearer downward recovery leg and cleaner support foot.
 
 The final runtime frame mapping is:
@@ -76,8 +76,8 @@ The final runtime frame mapping is:
 | 11 | generated kick recovery |
 
 The live run sequence is `6 → 7 → 8 → 7`, advanced by distance travelled. The
-live kick sequence is `9 → 10 → 11`. Gameplay collision and cooldown timing are
-unchanged.
+live kick sequence is `9 → 10 → 11`. Animation frames do not derive gameplay
+geometry; the runtime selects a named collision profile independently.
 
 All grounded frames (`0`, `1`, and `4` through `11`) share source-space foot
 anchor `y=418`. At the runtime scale this maps exactly to logical pitch ground
@@ -86,7 +86,7 @@ pixels on both horizontal sides so a trailing foot cannot be cut off.
 
 ## Post-processing
 
-Generated assets used flat `#ff00ff` for Joel and `#00ff00` for Vex. Each chosen
+Generated assets used flat `#ff00ff` for Joel and `#00ff00` for Bob. Each chosen
 cell was processed with:
 
 ```text
@@ -133,10 +133,10 @@ Avoid: distorted anatomy, extra limbs or fingers, melted shoes, identity,
 costume, proportion, or perspective changes.
 ```
 
-### Vex reference sheet
+### Bob reference sheet
 
 The Joel reference prompt was mirrored to face screen-left and used `#00ff00`.
-Identity invariants were replaced with Vex's swept blond hair, blue eyes, purple
+Identity invariants were replaced with Bob's swept blond hair, blue eyes, purple
 jersey with cyan side panel, navy shorts with cyan piping, purple socks,
 cyan-and-gold shoes, and cream wrist wraps.
 
@@ -166,15 +166,15 @@ Avoid: idle poses in the run row, duplicate poses, floating contact frames,
 foot sliding, extra anatomy, melted shoes, costume or perspective changes.
 ```
 
-The Vex version faced screen-left and used green chroma. The Joel version faced
+The Bob version faced screen-left and used green chroma. The Joel version faced
 screen-right and used magenta chroma.
 
-### Targeted Vex recovery
+### Targeted Bob recovery
 
 ```text
 Use case: identity-preserve
 Asset type: one production-ready 2D browser-game kick animation keyframe
-Primary request: draw exactly the same Vex character facing screen-left in one
+Primary request: draw exactly the same Bob character facing screen-left in one
 follow-through pose immediately after straight-leg contact. Keep the support
 foot grounded; bend and lower the kicking leg; lean the torso slightly forward;
 balance the arms naturally; keep the eyes looking screen-left.

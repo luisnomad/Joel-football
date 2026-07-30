@@ -1,4 +1,4 @@
-import { PLATFORM_EVENTS, PlatformServices } from './PlatformServices.js';
+import { normalizeExternalUrl, PLATFORM_EVENTS, PlatformServices } from './PlatformServices.js';
 import { createWebAppInfo } from '../appMetadata.js';
 
 export class WebPlatformServices extends PlatformServices {
@@ -7,6 +7,7 @@ export class WebPlatformServices extends PlatformServices {
     screenRef = globalThis.screen,
     navigatorRef = globalThis.navigator,
     locationRef = globalThis.location,
+    windowRef = globalThis,
     secureContext = globalThis.isSecureContext,
     development = import.meta.env.DEV,
   } = {}) {
@@ -15,6 +16,7 @@ export class WebPlatformServices extends PlatformServices {
     this.screenRef = screenRef;
     this.navigatorRef = navigatorRef;
     this.locationRef = locationRef;
+    this.windowRef = windowRef;
     this.secureContext = secureContext;
     this.development = development;
     this.deferredInstallPrompt = null;
@@ -80,6 +82,14 @@ export class WebPlatformServices extends PlatformServices {
     return createWebAppInfo();
   }
 
+  async openExternalUrl(value) {
+    const url = normalizeExternalUrl(value);
+    if (!url) return false;
+    const opened = this.windowRef?.open?.(url, '_blank', 'noopener,noreferrer') ?? null;
+    if (opened) opened.opener = null;
+    return Boolean(opened);
+  }
+
   isInstalled() {
     return this.installCompleted
       || globalThis.matchMedia?.('(display-mode: standalone)')?.matches
@@ -123,7 +133,7 @@ export class WebPlatformServices extends PlatformServices {
     }
 
     const serviceWorkerUrl = `${import.meta.env.BASE_URL}sw.js`;
-    await serviceWorker.register(`${serviceWorkerUrl}?v=8`, {
+    await serviceWorker.register(`${serviceWorkerUrl}?v=9`, {
       scope: import.meta.env.BASE_URL,
       updateViaCache: 'none',
     }).catch(() => {});

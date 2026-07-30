@@ -19,11 +19,11 @@ CONTACT_CELL_BLEED = 64
 GROUNDED_FRAMES = frozenset({0, 1, 4, 5, 6, 7, 8, 9, 10, 11})
 
 PLAYERS = {
-    "vex": {
-        "legacy": ROOT / "source-assets/animation/legacy/player-vex-sheet.png",
-        "selected": ROOT / "source-assets/animation/selected/vex",
-        "source_out": ROOT / "source-assets/animation/final/player-vex-sheet-v2.png",
-        "runtime_out": ROOT / "public/assets/player-vex-sheet-v2.webp",
+    "bob": {
+        "legacy": ROOT / "source-assets/animation/legacy/player-bob-sheet.png",
+        "selected": ROOT / "source-assets/animation/selected/bob",
+        "source_out": ROOT / "source-assets/animation/final/player-bob-sheet-v2.png",
+        "runtime_out": ROOT / "public/assets/player-bob-sheet-v2.webp",
         "run_height": 346,
         "kick_height": 361,
     },

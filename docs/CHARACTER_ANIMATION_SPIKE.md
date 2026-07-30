@@ -192,8 +192,10 @@ the runtime threw most of their value away. The following shipped on the
   collider (`Body.scale`/`Body.setAngle`), so the physics sprite is now
   invisible and a display-only mirror sprite copies position, frame, and flip
   every frame. All accent motion lives on the mirror; the collider is never
-  touched. The chilena rotates the mirror around the body position instead of
-  using a dedicated sprite.
+  touched. Grounded poses register to the authored support-foot anchor, while
+  the chilena switches to the torso/body center and leans backward toward the
+  attacked goal, with a sign mirrored by attack direction. A post-physics visual sync prevents fast
+  aerial moves from rendering one Matter tick behind their collider.
 - **Secondary motion** (`secondaryMotionAt` in `src/game/pure/characterAnimation.js`):
   run plant dips synced to the distance-driven cycle, dash lean, stun wobble,
   landing squash, takeoff stretch, and kick anticipation/contact accents. Idle
@@ -212,8 +214,8 @@ the runtime threw most of their value away. The following shipped on the
   (and pull Dad's oversized jump down) until the frames can be re-authored.
 
 Related geometry work from the same session lives in `characters.js`
-(`kickReach`, `colliderHeadTop`) and `Fighter.js`/`MatchScene.js`: colliders
-scale with `visualScale` around the feet anchor, the strike capsule follows
+(`kickReach`, `collisionProfile`) and `Fighter.js`/`MatchScene.js`: deliberately
+larger colliders come from explicit profiles around the feet anchor, while the strike capsule follows
 the measured boot tip, the chilena trigger zone scales with character height,
 and players resettle to kickoff partway through the goal celebration.
 

@@ -274,8 +274,9 @@ coordinate from a tier above or below never captures or teleports the ball.
   accelerates after the jump apex so jumps remain short and responsive.
 - The compact board uses a smaller character collider and sprite, smaller
   balls, and thinner platforms so four tiers remain legible at 1280 × 720.
-  The collider scales with each character's visualScale so scaled-up
-  characters (Dad, Mum) keep their heads inside the body, matching the match.
+  Gameplay geometry comes from an explicit collision profile. Dad and Mum
+  deliberately use larger bodies and matching strike sensors; `visualScale`
+  never changes collision geometry implicitly.
 - Gate damage is a discrete valid-kick event rather than raw velocity damage,
   so a lower kick statistic does not require extra hits.
 - Board dimensions must be playable by the slowest and lowest-jumping

@@ -6,6 +6,7 @@ export const DEFAULT_OPPONENT_ID = 'bob';
  * the contact drawing) for characters without a measured kickReach.
  */
 export const DEFAULT_KICK_REACH = 80;
+export const LEGACY_CHARACTER_ID_ALIASES = Object.freeze({ vex: 'bob' });
 
 export const CHARACTERS = Object.freeze([
   Object.freeze({
@@ -29,10 +30,10 @@ export const CHARACTERS = Object.freeze([
     label: 'BOB',
     names: Object.freeze({ en: 'Bob', es: 'Bob' }),
     labels: Object.freeze({ en: 'BOB', es: 'BOB' }),
-    portraitTexture: 'vex',
-    sheetTexture: 'vex-sheet',
-    portraitAsset: 'player-vex.png',
-    sheetAsset: 'player-vex-sheet-v2.webp',
+    portraitTexture: 'bob',
+    sheetTexture: 'bob-sheet',
+    portraitAsset: 'player-bob-portrait.png',
+    sheetAsset: 'player-bob-sheet-v2.webp',
     nativeFacing: -1,
     accent: 0xffad72,
     kickReach: 79,
@@ -97,12 +98,7 @@ export const CHARACTERS = Object.freeze([
     accent: 0xffc43d,
     kickReach: 106,
     visualScale: 1.2,
-    /**
-     * World px from the feet to the top of the visible head, measured from
-     * the idle drawing (bbox top). Dad's head sits proportionally higher than
-     * Joel's, so the standard headCap left his forehead outside the collider.
-     */
-    colliderHeadTop: 284,
+    collisionProfile: 'dad-large',
     // The wide action poses were shrunk by the atlas margin enforcer (heads
     // read ~20% small); restore their presence at display time. Kick frames
     // and the chilena drawing (3) are the worst. The jump drawing (2) is
@@ -124,8 +120,7 @@ export const CHARACTERS = Object.freeze([
     accent: 0x6ca8ff,
     kickReach: 100,
     visualScale: 1.2,
-    /** See Dad's colliderHeadTop; Mum's head top sits 266 px above her feet. */
-    colliderHeadTop: 266,
+    collisionProfile: 'mum-large',
     // Milder version of Dad's issue: kick and jump frames read slightly small.
     frameScales: Object.freeze({ 2: 1.08, 3: 1.1, 9: 1.08, 10: 1.08, 11: 1.1 }),
     stats: Object.freeze({ speed: 1.02, jump: 1.04, kick: 1.02, dash: 1.04, power: 1.04 }),
@@ -184,9 +179,11 @@ export const getCharacterKickReach = (character) => {
   return Number.isFinite(reach) && reach > 0 ? reach : DEFAULT_KICK_REACH;
 };
 
+export const normalizeCharacterId = (id) => LEGACY_CHARACTER_ID_ALIASES[id] ?? id;
+
 export const getCharacter = (id, fallbackId = DEFAULT_PLAYER_CHARACTER_ID) => (
-  CHARACTERS.find((character) => character.id === id)
-  ?? CHARACTERS.find((character) => character.id === fallbackId)
+  CHARACTERS.find((character) => character.id === normalizeCharacterId(id))
+  ?? CHARACTERS.find((character) => character.id === normalizeCharacterId(fallbackId))
   ?? CHARACTERS[0]
 );
 

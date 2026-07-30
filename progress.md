@@ -3535,3 +3535,209 @@ the `poc/animation-polish` and `poc/strike-collision` branches.
 - Verification: 181/181 unit tests and the full browser e2e suite green;
   screenshot review in output/animation-poc/. Docs updated in
   docs/CHARACTER_ANIMATION_SPIKE.md and docs/KICKFALL_SPEC.md.
+
+## 2026-07-30
+
+### Character runtime hardening
+
+- Reframed performance work around measured device behavior. The current
+  roster is not assumed to be a rendering bottleneck, and atlas eviction stays
+  evidence-gated pending a real tablet soak benchmark.
+- Added explicit `standard`, `dad-large`, and `mum-large` collision profiles.
+  Mum and Dad remain intentionally larger in Football and Kickfall, but their
+  gameplay geometry no longer changes implicitly because artwork is scaled.
+- Added one shared visual-rig transform that pins the authored foot anchor
+  through per-frame scaling, procedural squash/stretch, rotation, and facing.
+  Football and Kickfall diagnostics now read the rendered sprite rather than
+  the invisible Matter sprite.
+- Moved the Kickfall boss to the same hidden-body/display-sprite rendering
+  pattern as the player, including character frame-scale normalization.
+- Centralized forward strike-capsule construction and scaled Kickfall's foot
+  contact geometry through the explicit collision profile.
+- Canonicalized Bob's runtime texture keys and added a `vex` to `bob` saved-ID
+  migration. Renamed the runtime and animation-source files so Bob is now the
+  only physical asset identity; `vex` remains solely as a saved-data alias.
+- Raised the normal frame-stall preservation window from 50 ms to a bounded
+  250 ms through one shared fixed-step delta helper.
+- Added an opt-in frame-time and decoded-texture-residency probe. It does no
+  sampling until explicitly started and exports a JSON report for target-device
+  runs.
+- Added focused unit and browser coverage for collision profiles, legacy-ID
+  migration, anchored visual transforms, shared strikes, frame-delta behavior,
+  boss rendering, and the performance probe.
+- Updated the character-creation contract: `visualScale` is presentation only,
+  while intentional gameplay size must use a named `collisionProfile`.
+- Final local verification passes 190/190 unit tests, the production build, the
+  complete 261-check Football/Kickfall browser journey, the Disc Hockey journey,
+  standalone-client intro rendering, screenshot inspection, and
+  `git diff --check`.
+- The clean headless desktop harness sampled 360 gameplay frames over two
+  seconds at 5.6 ms median, 5.8 ms p95, 6.1 ms p99, and 6.2 ms worst, with no
+  frames above 16.7 ms. This verifies the probe, not tablet performance.
+- Production dependencies audit clean. The only full-tree advisory is the
+  dev-only Capacitor CLI chain's `brace-expansion@5.0.7`; npm's configured
+  seven-day package-age policy temporarily excludes fixed `5.0.8` until its
+  cooldown expires.
+
+### Remaining hardening work
+
+- Refresh the dev-only Capacitor dependency after the fixed package clears the
+  configured package-age cooldown.
+
+### Physical Galaxy Tab A9+ benchmark
+
+- Built the production Vite bundle into the debug-capable Capacitor APK,
+  installed it over existing data on Samsung SM-X210, and verified the live
+  1920 × 1200 Android screen.
+- Completed a 416.8-second Football/Kickfall soak plus isolated 30-second warm
+  Football and Kickfall level-10 boss samples. Both warm scenes held
+  16.7 ms median and 16.8 ms p95/p99; Android reported 0.22% deadline misses
+  in each sample.
+- Loaded every character sheet through a real MatchLoading → Match lifecycle,
+  then repeated the complete roster. Decoded residency remained exactly
+  110.48 MiB and 60 textures on the second pass, with 0 MiB growth.
+- Final Android process memory was 231,081 KiB PSS / 333,112 KiB RSS. Battery
+  temperature rose only from 28.5 °C to 30.0 °C while USB powered.
+- The evidence does not justify atlas eviction, art reduction, a renderer
+  migration, or per-pose physics polygons for performance reasons.
+- Fixed two reporting defects revealed by the device: empty samples now report
+  0 FPS, and missed-refresh counts use 1.5× the observed device cadence instead
+  of treating normal 60 Hz jitter around 16.7 ms as jank.
+- A black interval was benchmark-driver error: it bypassed MiniGameLoading
+  before the lazy Kickfall scene was registered. PID 10150 stayed alive, Android
+  logged no error, the driver recovered through the proper loader, and level 10
+  completed. Warm per-scene samples exclude that invalid transition.
+- Rebuilt and reinstalled the corrected probe, verified its empty state directly
+  in the live WebView, reran the complete Football/Kickfall browser journey, and
+  visually inspected both the standalone client and final physical-tablet intro.
+- Restored the tablet's pre-benchmark family save after the automated roster and
+  level runs: Joel vs Lucia and Kickfall highest/last level 3.
+- Made the mirrored goal-perch regression observe 900 ms instead of 700 ms. The
+  prior fixture raced an already-releasing ball by roughly one physics tick;
+  gameplay timing and collision thresholds are unchanged.
+
+### Chilena pivot regression
+
+- Fixed the bicycle-kick artwork rotating around the support foot and through
+  the pitch. Grounded poses still use their authored foot anchor, but an active
+  chilena now pins the sprite's torso/display origin to the rising Matter body.
+- Mirrored rotation direction by attack direction: after turning their back to
+  the goal, left-side attackers lean clockwise and right-side attackers
+  counter-clockwise, moving the head backward toward the rival goal.
+- Added a post-physics visual sync so the artwork does not trail the airborne
+  collider by one frame. The complete browser journey now asserts torso/body
+  pivot agreement and that the rotated artwork clears the pitch; Joel and the
+  deliberately larger Mum both pass the captured-frame check.
+- Corrected the initial direction interpretation after live tablet review:
+  because the fighter turns their back before takeoff, the backward lean moves
+  the head toward (not away from) the attacked goal. Verified the resulting
+  `+103.4°` left-side and `-93.1°` right-side frames on the Galaxy Tab A9+;
+  both visual pivots matched the Matter body and both bounds cleared the pitch.
+- Final validation passes 190/190 unit tests, the complete Football/Kickfall
+  browser journey including touch controls, the production Android build,
+  standalone cold-load state/screenshot inspection, and `git diff --check`.
+  The final APK is installed on the tablet, which is back on Intro with the
+  preserved Joel vs Lucia / Kickfall level-3 family save.
+
+### Big Guy roster hardening
+
+- Audited Big Guy against all eight character sheets and both collision
+  profiles. At full power every roster member now measures exactly 2× body
+  width, 2× visual width, 4× Matter area, and 2× strike reach, with zero
+  authored-foot drift; returning to scale 1 restores the original area.
+- Fixed animated growth launching Dad/Mum upward from the pitch. A grounded
+  transformation is pinned through its 0.4-second geometry transition, while
+  jump, chilena, stun, and freeze explicitly release that pin.
+- Scaled movement force by actual collision footprint so a 4×-mass Big Guy
+  keeps the intended acceleration. Chilena reach and combat target radius now
+  include both the named collision profile and active Big Guy scale.
+- Replaced the fixed 100 px dash-combat gap with actual scaled Matter bounds.
+  Live Dad validation now registers a dash at a 150 px center gap, where the
+  enlarged bodies visibly meet.
+- Removed the yellow Big Guy oval, which read like a debug collider, and kept
+  only a restrained warm edge glow. The inspected Dad frame remains grounded
+  at y=636 without the oval.
+- Added a pure scaled-dash regression and a full browser assertion for enlarged
+  dash contact. Final validation passes 191/191 unit tests, the production
+  build, the complete Football/Kickfall browser journey, standalone-client
+  cold load, gameplay screenshot inspection, and Match→Intro teardown.
+- Rebuilt and installed the final APK on the Galaxy Tab A9+. Physical Dad
+  validation confirms scale 2, grounded collider bottom y=636.35, and no oval
+  graphics commands. Restored the tablet to Intro with the original Joel vs
+  Lucia / Kickfall level-3 save afterward.
+
+### Football superpower contract and visual-cue hardening
+
+- Audited all five Lab powers through catalog metadata, bilingual descriptions,
+  inventory/equip/consume behavior, full-meter activation, successful-strike
+  activation, collision effects, round transitions, and recovery.
+- Made each catalog entry declare its target and duration. Fireball is now
+  described as its real 30% faster shot; Big Guy remains a 10-second self
+  transformation; Hyper remains a five-second movement boost.
+- Raised Freeze from two to five active-play seconds. It immobilizes the
+  opponent immediately, uses collider-relative turf ice plus orbiting snow
+  marks, cyan tint/glow, and a live `❄ 5.0s` field countdown.
+- Replaced Shield's indefinite one-hit token with a five-active-second physical
+  stun guard. It blocks repeated kick/dash stuns throughout the window, limits
+  repeated block FX from sustained contact, then cleanly permits stuns again
+  after expiry. Six separate collider-relative diamond plates, cool tint/glow,
+  and a live `◆ 5.0s` countdown communicate the effect without restoring the
+  removed oval/bubble aesthetic.
+- Timed powers advance only in controllable play. Pause, goal celebration, and
+  countdown do not spend their duration; round resettling preserves Freeze,
+  Shield, Hyper, and Big Guy state instead of silently clearing a paid charge.
+- Added live countdown labels to the existing Hyper and Big Guy glow cues for a
+  coherent timed-power presentation. Mum, Dad, and Big Guy need no special cue
+  offsets because all procedural marks derive from the current Matter bounds.
+- Expanded unit/browser contracts for the declarative five-second minimum,
+  immediate target selection, one-charge consumption, pause and goal
+  preservation, repeated Shield blocks, exact expiry/recovery, and visible
+  diagnostic cues. Final verification passes 191/191 unit tests, the production
+  build, and the complete 261-check Football/Kickfall desktop/tablet journey.
+- Inspected the Spanish Lab plus desktop Freeze and Shield captures. Built and
+  installed the debug APK on the connected Galaxy Tab A9+ and inspected real
+  1920×1200 Android-compositor captures of both effects. Direct WebView CDP
+  screenshots again produced the known black WebGL readback artifact; ADB
+  captures proved the app itself remained correctly rendered.
+- Restored the tablet's original Spanish, Joel-vs-Lucia, hard-Football and
+  Kickfall level-3 family profile, and returned the app to Intro after testing.
+
+### About links and 1.5.0 release polish
+
+- Removed the “Papá” suffix from the creator credit. The About panel now names
+  Luis Nomad directly while retaining the Dad character artwork, enlarged by
+  roughly one third to use the available portrait column.
+- Added bilingual free-game support copy and a recognizable YouTube
+  icon/button linking to `https://www.youtube.com/@luisnomad`. The existing
+  NotJustPrompts.ai credit is now an interactive HTTPS link.
+- Added a guarded platform link contract: desktop opens external pages in a
+  protected new tab, while the Capacitor app uses Android's URL handoff so the
+  user's default browser handles them. Non-HTTPS values are rejected.
+- Promoted the home-screen About control from a low-contrast circle to a larger
+  navy-and-gold button with an explicit `INFO` caption. Its touch target and
+  original position remain compatible with the established tablet layout.
+- Bumped the authoritative package and Android version to 1.5.0 (build 2), and
+  made the About panel report that same native metadata.
+- Replaced one brittle fixed-instant packed-ball assertion with a bounded
+  fixed-step wait, preserving the collision requirement while avoiding a
+  Matter contact-solver sampling race.
+- Final validation passes 192/192 unit tests, the complete Football/Kickfall
+  browser journey, the production Vite build, Android debug assembly, and
+  production-dependency audit with zero vulnerabilities. The full audit still
+  reports a development-only Capacitor CLI transitive advisory whose patched
+  release is temporarily held by the repository's seven-day package-age
+  policy.
+- Rebuilt and installed the final APK on the Galaxy Tab A9+. Android-compositor
+  captures confirm the stronger Info control, larger portrait, Spanish support
+  copy, YouTube treatment, and Version 1.5.0 (2). Tapping NotJustPrompts.ai
+  opened Chrome at the correct site; Android Back returned to the live game.
+- Removed live-character art from the Football journey card so match selection
+  cannot conflict with the home preview. Football now uses only the persisted
+  clean field. Replaced the stale Disc Hockey gameplay screenshot everywhere
+  in the menu/setup flow with the clean neon arena artwork; Kickfall remains
+  the sole screenshot-style card because its computed level layout is the
+  useful identifying image.
+- Centralized the Disc Hockey preview texture key/path and load it lazily on
+  entering Mini-games, then reuse the same cached field texture in Hockey
+  setup and neon gameplay. Browser contracts now reject roster portraits in
+  the Football card and require the clean Hockey arena in its card.

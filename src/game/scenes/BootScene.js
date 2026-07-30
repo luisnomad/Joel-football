@@ -51,7 +51,6 @@ export class BootScene extends Phaser.Scene {
     this.load.svg('control-jump', assetUrl('icons/jump.svg'), { width: 128, height: 128 });
     this.load.image('menu-arcade-cosmic', assetUrl('menu/arcade-cosmic-card-v2.webp'));
     this.load.image('menu-options-workshop', assetUrl('menu/options-workshop-v1.webp'));
-    this.load.image('menu-disc-hockey', assetUrl('menu/disc-hockey-gameplay-card-v2.webp'));
   }
 
   create() {
@@ -63,7 +62,7 @@ export class BootScene extends Phaser.Scene {
     const arenaTheme = getArenaTheme(playerProfileStore.get().arenaThemeId);
     if (!this.textures.exists(arenaTheme.texture)) this.createArenaFallback(arenaTheme.texture);
     if (!this.textures.exists('joel')) this.createFighterFallback('joel', 0x22cfe5, 0xffd7b5);
-    if (!this.textures.exists('vex')) this.createFighterFallback('vex', 0xff6b66, 0xc98765);
+    if (!this.textures.exists('bob')) this.createFighterFallback('bob', 0xff6b66, 0xc98765);
     if (!this.textures.exists('lucia')) this.createFighterFallback('lucia', 0x16bfb5, 0xf2b079);
     if (!this.textures.exists('luna')) this.createFighterFallback('luna', 0x9559e8, 0xf0b27e);
     if (!this.textures.exists('juan')) this.createFighterFallback('juan', 0x23344e, 0xc98765);

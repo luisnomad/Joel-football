@@ -25,6 +25,7 @@ import { nextCountdownWhistle } from '../pure/countdownWhistle.js';
 import { counterPowerVelocity } from '../pure/power.js';
 import { addGoal, createScoreState, detectGoalCrossing, formatClock, tickMatchClock } from '../pure/rules.js';
 import { createWorldSnapshot } from '../pure/snapshot.js';
+import { clampSimulationFrameDelta } from '../pure/fixedStep.js';
 import { arcadeAudio } from '../services/ArcadeAudio.js';
 import { clearActiveScene, setActiveScene } from '../stateBridge.js';
 import { createButton } from '../ui/createButton.js';
@@ -39,7 +40,11 @@ import { createIconButton } from '../ui/createIconButton.js';
 import { createInfoOverlay } from '../ui/createInfoOverlay.js';
 import { createConfirmationOverlay } from '../ui/createConfirmationOverlay.js';
 import { resolveChilenaShot, shouldRedirectLobChilena } from '../pure/chilena.js';
-import { shouldResolvePlayerClash, sweepCircleAgainstBounds } from '../pure/gameplayPhysics.js';
+import {
+  directionalDashContact,
+  shouldResolvePlayerClash,
+  sweepCircleAgainstBounds,
+} from '../pure/gameplayPhysics.js';
 import { FOOTBALL_TOUCH_MOVEMENT_MODES } from '../developerOptions.js';
 
 /**
@@ -112,7 +117,7 @@ export class MatchScene extends Phaser.Scene {
     this.aiThinkTimer = 0;
 
     this.leftPlayer = new Fighter(this, {
-      id: HUMAN_PLAYER_ID,
+      id: this.playerCharacter.id,
       side: 'left',
       x: 340,
       texture: this.textures.exists(this.playerCharacter.sheetTexture) ? this.playerCharacter.sheetTexture : this.playerCharacter.portraitTexture,
@@ -122,10 +127,10 @@ export class MatchScene extends Phaser.Scene {
       visualScale: getCharacterVisualScale(this.playerCharacter),
       kickReach: getCharacterKickReach(this.playerCharacter),
       frameScales: this.playerCharacter.frameScales ?? null,
-      colliderHeadTop: this.playerCharacter.colliderHeadTop ?? 0,
+      character: this.playerCharacter,
     });
     this.rightPlayer = new Fighter(this, {
-      id: 'vex',
+      id: this.opponent.id,
       side: 'right',
       x: 940,
       texture: this.textures.exists(this.opponent.sheetTexture) ? this.opponent.sheetTexture : this.opponent.portraitTexture,
@@ -135,7 +140,7 @@ export class MatchScene extends Phaser.Scene {
       visualScale: getCharacterVisualScale(this.opponent),
       kickReach: getCharacterKickReach(this.opponent),
       frameScales: this.opponent.frameScales ?? null,
-      colliderHeadTop: this.opponent.colliderHeadTop ?? 0,
+      character: this.opponent,
     });
     this.players = { left: this.leftPlayer, right: this.rightPlayer };
     this.ball = new Ball(this, GAME_WIDTH / 2, 336, this.profile.ballTypeId);
@@ -429,9 +434,9 @@ export class MatchScene extends Phaser.Scene {
         this.profile = playerProfileStore.get();
         fighter.powerArmed = 0;
         fighter.meter = 0;
-        if (consumedPowerId === 'ice') this.rightPlayer.applyFreeze(0, 2);
-        if (consumedPowerId === 'shield') fighter.grantShield();
-        if (consumedPowerId === 'hyper') fighter.activateHyper();
+        if (consumedPowerId === 'ice') this.rightPlayer.applyFreeze(0, equipped.durationSeconds);
+        if (consumedPowerId === 'shield') fighter.grantShield(equipped.durationSeconds);
+        if (consumedPowerId === 'hyper') fighter.activateHyper(equipped.durationSeconds);
         this.lastInstantPower = { powerId: consumedPowerId, target: consumedPowerId === 'ice' ? 'right' : 'left' };
         this.setAnnouncement(
           t(this.language, equipped.activationKey).toUpperCase(),
@@ -686,7 +691,7 @@ export class MatchScene extends Phaser.Scene {
   }
 
   update(_time, deltaMilliseconds) {
-    const dt = Math.min(0.05, deltaMilliseconds / 1000);
+    const dt = clampSimulationFrameDelta(deltaMilliseconds);
     this.accumulator += dt;
     while (this.accumulator >= FIXED_STEP) {
       this.stepGame(FIXED_STEP);
@@ -727,8 +732,8 @@ export class MatchScene extends Phaser.Scene {
         // Let the goal flash land, then walk both players back to kickoff so
         // they are not frozen mid-action through the wait and the countdown.
         this.playersResettled = true;
-        this.leftPlayer.reset(340);
-        this.rightPlayer.reset(940);
+        this.leftPlayer.reset(340, { preservePowerEffects: true });
+        this.rightPlayer.reset(940, { preservePowerEffects: true });
       }
       this.leftPlayer.continueChilenaAnimation(dt);
       this.rightPlayer.continueChilenaAnimation(dt);
@@ -970,6 +975,11 @@ export class MatchScene extends Phaser.Scene {
       shotType: strike.shotType,
       strength: strike.boostStrength,
       energySpent: strike.energySpent,
+      // Record the boost impulse at the event boundary. Reading the live ball
+      // later can instead observe an ensuing player/goal collision, especially
+      // after deliberately slow 30 ms touch-test pulses.
+      vx: round(this.ball.body.body.velocity.x),
+      vy: round(this.ball.body.body.velocity.y),
     };
     this.spawnImpact(this.ball.body.x, this.ball.body.y, 0xffdc62, 12 + Math.round(strike.boostStrength * 12));
     this.cameras.main.shake(110, 0.004 + strike.boostStrength * 0.003);
@@ -981,18 +991,32 @@ export class MatchScene extends Phaser.Scene {
       [this.rightPlayer, this.leftPlayer],
     ];
     pairs.forEach(([attacker, defender]) => {
-      const dx = defender.sprite.x - attacker.sprite.x;
-      const dy = Math.abs(defender.sprite.y - attacker.sprite.y);
       const dashDirection = attacker.dashDirection || attacker.facing;
-      const dashHit = attacker.dashTimer > 0 && dx * dashDirection > 0 && dx * dashDirection < 100 && dy < 95;
+      const attackerBounds = attacker.sprite.body.bounds;
+      const defenderBounds = defender.sprite.body.bounds;
+      const dashHit = attacker.dashTimer > 0 && directionalDashContact({
+        attacker: {
+          x: attacker.sprite.x,
+          y: attacker.sprite.y,
+          width: attackerBounds.max.x - attackerBounds.min.x,
+          height: attackerBounds.max.y - attackerBounds.min.y,
+        },
+        defender: {
+          x: defender.sprite.x,
+          y: defender.sprite.y,
+          width: defenderBounds.max.x - defenderBounds.min.x,
+          height: defenderBounds.max.y - defenderBounds.min.y,
+        },
+        direction: dashDirection,
+      });
       if (attacker.canHitOpponent(defender) || dashHit) {
-        const shieldBefore = defender.superShield;
+        const shieldWasActive = defender.shieldTimer > 0;
         if (defender.applyStun(dashDirection, dashHit)) {
           attacker.markCombatHit();
           arcadeAudio.impact();
           this.spawnImpact(defender.sprite.x, defender.sprite.y - 24, 0xffe271, dashHit ? 12 : 8);
           this.cameras.main.shake(90, 0.004);
-        } else if (shieldBefore > defender.superShield) {
+        } else if (shieldWasActive) {
           attacker.markCombatHit();
         }
       }
@@ -1065,7 +1089,8 @@ export class MatchScene extends Phaser.Scene {
       const otherLabel = labels[1 - ballIndex] ?? '';
       this.ball.onSurfaceCollision(otherLabel);
       const [fighterId, part] = otherLabel.split(':');
-      const fighter = fighterId === HUMAN_PLAYER_ID ? this.leftPlayer : fighterId === 'vex' ? this.rightPlayer : null;
+      const fighter = [this.leftPlayer, this.rightPlayer]
+        .find((candidate) => candidate.id === fighterId) ?? null;
       if (!fighter) {
         if (otherLabel.includes('crossbar')) {
           this.spawnImpact(this.ball.body.x, this.ball.body.y, 0xc7f8ff, 5);
@@ -1132,8 +1157,8 @@ export class MatchScene extends Phaser.Scene {
     this.lastLobStrike = null;
     this.lastChilenaStrike = null;
     this.inputController.resetAdvancedInput();
-    this.leftPlayer.reset(340);
-    this.rightPlayer.reset(940);
+    this.leftPlayer.reset(340, { preservePowerEffects: true });
+    this.rightPlayer.reset(940, { preservePowerEffects: true });
     this.ball.reset(GAME_WIDTH / 2, 336);
     this.previousBallPosition = { x: this.ball.body.x, y: this.ball.body.y };
     this.ball.freeze();

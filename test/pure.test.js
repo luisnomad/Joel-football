@@ -47,12 +47,41 @@ import {
 } from '../src/game/pure/characterAnimation.js';
 import {
   circleIntersectsCapsule,
+  directionalDashContact,
   resolveAdaptiveLob,
   shouldResolvePlayerClash,
   sweepCircleAgainstBounds,
 } from '../src/game/pure/gameplayPhysics.js';
 
 describe('gameplay physics polish', () => {
+  it('derives dash contact from actual body sizes in both directions', () => {
+    const standard = { x: 500, y: 500, width: 86, height: 190 };
+    const defender = { x: 599, y: 500, width: 86, height: 190 };
+    expect(directionalDashContact({ attacker: standard, defender, direction: 1 })).toBe(true);
+    expect(directionalDashContact({
+      attacker: standard,
+      defender: { ...defender, x: 601 },
+      direction: 1,
+    })).toBe(false);
+
+    const bigGuy = { x: 500, y: 450, width: 172, height: 380 };
+    expect(directionalDashContact({
+      attacker: bigGuy,
+      defender: { ...defender, x: 635 },
+      direction: 1,
+    })).toBe(true);
+    expect(directionalDashContact({
+      attacker: { ...bigGuy, x: 780 },
+      defender: { ...defender, x: 645 },
+      direction: -1,
+    })).toBe(true);
+    expect(directionalDashContact({
+      attacker: bigGuy,
+      defender: { ...defender, x: 635, y: 641 },
+      direction: 1,
+    })).toBe(false);
+  });
+
   it('sweeps a fast ball through an expanded player body without tunneling', () => {
     const hit = sweepCircleAgainstBounds({
       previous: { x: 500, y: 500 },
@@ -500,11 +529,13 @@ describe('chilena contract', () => {
     expect(shouldRedirectLobChilena({ ballY: 165, velocityY: 0.1 })).toBe(true);
   });
 
-  it('rotates clockwise through one full turn during the kick pose', () => {
+  it('mirrors one backward turn toward the attacked goal', () => {
     expect(chilenaRotationAt(0)).toBe(0);
-    expect(chilenaRotationAt(0.29)).toBe(180);
-    expect(chilenaRotationAt(0.58)).toBe(360);
-    expect(chilenaRotationAt(2)).toBe(360);
+    expect(chilenaRotationAt(0.29, 1)).toBe(180);
+    expect(chilenaRotationAt(0.58, 1)).toBe(360);
+    expect(chilenaRotationAt(2, 1)).toBe(360);
+    expect(chilenaRotationAt(0.29, -1)).toBe(-180);
+    expect(chilenaRotationAt(0.58, -1)).toBe(-360);
   });
 });
 

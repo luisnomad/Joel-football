@@ -30,7 +30,12 @@ import {
   unlockKickfallLevel,
 } from '../src/game/pure/profile.js';
 import { normalizeLanguage, t } from '../src/game/i18n.js';
-import { SUPERPOWERS, applySuperShot, getSuperpower } from '../src/game/content/superpowers.js';
+import {
+  SUPERPOWER_ACTIVE_SECONDS,
+  SUPERPOWERS,
+  applySuperShot,
+  getSuperpower,
+} from '../src/game/content/superpowers.js';
 import { createPlayerProfileStore, detectDeviceLanguage } from '../src/game/services/PlayerProfile.js';
 import { fitTextSize } from '../src/game/ui/textFit.js';
 import { createAudioAssetCache } from '../src/game/services/AudioAssetCache.js';
@@ -642,6 +647,10 @@ describe('focused superpower contracts', () => {
     expect(new Set(SUPERPOWERS.map(({ id }) => id)).size).toBe(5);
     expect(SUPERPOWERS.every(({ id }) => getSuperpower(id)?.nameKey === `power.${id}.name`)).toBe(true);
     expect(SUPERPOWERS.filter(({ activation }) => activation === 'instant').map(({ id }) => id)).toEqual(['ice', 'shield', 'hyper']);
+    expect(getSuperpower('ice')).toMatchObject({ target: 'opponent', durationSeconds: SUPERPOWER_ACTIVE_SECONDS });
+    expect(getSuperpower('shield')).toMatchObject({ target: 'self', durationSeconds: SUPERPOWER_ACTIVE_SECONDS });
+    expect(getSuperpower('hyper')).toMatchObject({ target: 'self', durationSeconds: SUPERPOWER_ACTIVE_SECONDS });
+    expect(SUPERPOWER_ACTIVE_SECONDS).toBeGreaterThanOrEqual(5);
   });
 
   it('does not present Big Guy with a multiplier-like icon beside a zero charge count', () => {

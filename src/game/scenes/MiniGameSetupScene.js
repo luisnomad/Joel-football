@@ -9,6 +9,10 @@ import { isTouchLayout } from '../input/isTouchLayout.js';
 import { t } from '../i18n.js';
 import { getSceneStageLayout } from '../layout/tabletStage.js';
 import { getMiniGameEntry } from '../minigames/minigameCatalog.js';
+import {
+  DISC_HOCKEY_PREVIEW_TEXTURE,
+  queueDiscHockeyPreview,
+} from '../minigames/discHockey/discHockeyAssets.js';
 import { arcadeAudio } from '../services/ArcadeAudio.js';
 import { playerProfileStore } from '../services/PlayerProfile.js';
 import { clearActiveScene, setActiveScene } from '../stateBridge.js';
@@ -33,6 +37,10 @@ export class MiniGameSetupScene extends Phaser.Scene {
   init(data = {}) {
     this.gameId = data.gameId === 'discHockey' ? 'discHockey' : 'kickfall';
     this.entry = getMiniGameEntry(this.gameId);
+  }
+
+  preload() {
+    if (this.gameId === 'discHockey') queueDiscHockeyPreview(this);
   }
 
   create() {
@@ -88,7 +96,7 @@ export class MiniGameSetupScene extends Phaser.Scene {
     this.add.image(
       GAME_WIDTH / 2,
       this.stageLayout.height / 2,
-      this.gameId === 'discHockey' ? 'menu-disc-hockey' : 'menu-arcade-cosmic',
+      this.gameId === 'discHockey' ? DISC_HOCKEY_PREVIEW_TEXTURE : 'menu-arcade-cosmic',
     ).setDisplaySize(this.stageLayout.width, this.stageLayout.height);
     const wash = this.add.graphics();
     if (this.gameId === 'discHockey') {

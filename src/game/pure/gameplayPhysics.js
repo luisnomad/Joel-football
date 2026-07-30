@@ -107,6 +107,30 @@ export const shouldResolvePlayerClash = ({ left = {}, right = {}, intents = {} }
   return (pushingInward || simultaneousKicks) && relativeSpeed < 3.2;
 };
 
+export const directionalDashContact = ({
+  attacker = {},
+  defender = {},
+  direction = 1,
+  padding = 14,
+} = {}) => {
+  const attackDirection = Math.sign(Number(direction)) || 1;
+  const dx = (Number(defender.x) || 0) - (Number(attacker.x) || 0);
+  if (dx * attackDirection <= 0) return false;
+
+  const attackerWidth = Math.max(0, Number(attacker.width) || 0);
+  const defenderWidth = Math.max(0, Number(defender.width) || 0);
+  const attackerHeight = Math.max(0, Number(attacker.height) || 0);
+  const defenderHeight = Math.max(0, Number(defender.height) || 0);
+  const horizontalReach = (attackerWidth + defenderWidth) / 2
+    + Math.max(0, Number(padding) || 0);
+  // The former 95 px vertical window was approximately half a standard
+  // fighter's body height. Derive that window from the actual scaled bodies so
+  // Big Guy, Mum, and Dad do not visually collide before combat can register.
+  const verticalReach = Math.max(attackerHeight, defenderHeight) / 2;
+  return dx * attackDirection <= horizontalReach
+    && Math.abs((Number(defender.y) || 0) - (Number(attacker.y) || 0)) <= verticalReach;
+};
+
 export const circleIntersectsCapsule = ({ circle, radius = 0, start, end, capsuleRadius = 0 } = {}) => {
   if (!circle || !start || !end) return false;
   const segmentX = end.x - start.x;
@@ -119,4 +143,28 @@ export const circleIntersectsCapsule = ({ circle, radius = 0, start, end, capsul
   const nearestY = start.y + segmentY * projection;
   const reach = Math.max(0, Number(radius) || 0) + Math.max(0, Number(capsuleRadius) || 0);
   return Math.hypot(circle.x - nearestX, circle.y - nearestY) <= reach;
+};
+
+export const createForwardStrikeCapsule = ({
+  x = 0,
+  y = 0,
+  facing = 1,
+  startForwardOffset = 0,
+  endForwardOffset = 0,
+  verticalOffset = 0,
+  radius = 0,
+} = {}) => {
+  const direction = Math.sign(Number(facing)) || 1;
+  const strikeY = Number(y) + (Number(verticalOffset) || 0);
+  return {
+    start: {
+      x: Number(x) + direction * Math.max(0, Number(startForwardOffset) || 0),
+      y: strikeY,
+    },
+    end: {
+      x: Number(x) + direction * Math.max(0, Number(endForwardOffset) || 0),
+      y: strikeY,
+    },
+    capsuleRadius: Math.max(0, Number(radius) || 0),
+  };
 };

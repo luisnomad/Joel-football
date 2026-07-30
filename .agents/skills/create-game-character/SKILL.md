@@ -153,12 +153,15 @@ Update all applicable surfaces:
 - versioned filenames and the service-worker version when cached asset
   filenames stay unchanged.
 
-If `visualScale` differs from `1`, prove it is cosmetic:
+If `visualScale` differs from `1`, prove it is independent from physics:
 
-- Football retains the shared authored compound collider area;
-- Kickfall retains the shared 44×82 body;
+- Football retains the character's declared collision profile;
+- Kickfall retains the character's declared body and strike geometry;
 - grounded feet retain the same pitch/platform anchor;
 - Hockey retains the regulation pusher diameter.
+
+Any non-standard gameplay size requires an explicit, documented
+`collisionProfile`; never derive collision geometry from `visualScale`.
 
 Do not deploy, publish, sync Android, or install on the tablet unless the user
 explicitly requests it.

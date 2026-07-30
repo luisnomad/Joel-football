@@ -73,7 +73,13 @@ export const resolveLobChilenaLaunch = ({
 export const shouldRedirectLobChilena = ({ ballY, velocityY, apexY = CHILENA_LOB_APEX_Y } = {}) =>
   (Number(ballY) || 0) <= apexY || (Number(velocityY) || 0) >= 0;
 
-export const chilenaRotationAt = (elapsedSeconds = 0) => {
+export const chilenaRotationAt = (elapsedSeconds = 0, attackDirection = 1) => {
   const progress = Math.min(1, Math.max(0, Number(elapsedSeconds) || 0) / CHILENA_ROTATION_SECONDS);
-  return Math.round(progress * 3600) / 10;
+  // Phaser's positive screen-space rotation is clockwise. The fighter has
+  // already turned their back to the attacked goal, so leaning backward moves
+  // their head toward that goal: left-side attackers spin clockwise and
+  // right-side attackers counter-clockwise.
+  const direction = Number(attackDirection) >= 0 ? 1 : -1;
+  const rotation = Math.round(progress * direction * 3600) / 10;
+  return rotation || 0;
 };

@@ -1,14 +1,16 @@
 import { Capacitor, SystemBars } from '@capacitor/core';
 import { App } from '@capacitor/app';
+import { AppLauncher } from '@capacitor/app-launcher';
 import { Haptics } from '@capacitor/haptics';
 import { ScreenOrientation } from '@capacitor/screen-orientation';
-import { PLATFORM_EVENTS, PlatformServices } from './PlatformServices.js';
+import { normalizeExternalUrl, PLATFORM_EVENTS, PlatformServices } from './PlatformServices.js';
 
 const ignorePluginFailure = (operation) => Promise.resolve(operation).catch(() => {});
 
 export class CapacitorPlatformServices extends PlatformServices {
   constructor({
     app = App,
+    appLauncher = AppLauncher,
     haptics = Haptics,
     screenOrientation = ScreenOrientation,
     systemBars = SystemBars,
@@ -16,6 +18,7 @@ export class CapacitorPlatformServices extends PlatformServices {
   } = {}) {
     super({ platform, native: true });
     this.app = app;
+    this.appLauncher = appLauncher;
     this.hapticsPlugin = haptics;
     this.screenOrientation = screenOrientation;
     this.systemBars = systemBars;
@@ -88,6 +91,17 @@ export class CapacitorPlatformServices extends PlatformServices {
       };
     } catch {
       return null;
+    }
+  }
+
+  async openExternalUrl(value) {
+    const url = normalizeExternalUrl(value);
+    if (!url) return false;
+    try {
+      const result = await this.appLauncher.openUrl({ url });
+      return result?.completed !== false;
+    } catch {
+      return false;
     }
   }
 }

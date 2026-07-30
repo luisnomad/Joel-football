@@ -36,9 +36,25 @@ describe('WebPlatformServices', () => {
 
     await service.haptic('medium');
     expect(navigatorRef.vibrate).toHaveBeenCalledWith(22);
-    expect(await service.getAppInfo()).toMatchObject({ name: 'Joel Football', version: '1.0.0', build: 'web' });
+    expect(await service.getAppInfo()).toMatchObject({ name: 'Joel Football', version: '1.5.0', build: 'web' });
     await service.destroy();
     expect(documentRef.removeEventListener).toHaveBeenCalledWith('visibilitychange', service.onVisibilityChange);
+  });
+
+  it('opens only HTTPS external links in a protected desktop tab', async () => {
+    const openedWindow = { opener: {} };
+    const open = vi.fn(() => openedWindow);
+    const service = new WebPlatformServices({ windowRef: { open } });
+
+    expect(await service.openExternalUrl('https://notjustprompts.ai')).toBe(true);
+    expect(open).toHaveBeenCalledWith(
+      'https://notjustprompts.ai/',
+      '_blank',
+      'noopener,noreferrer',
+    );
+    expect(openedWindow.opener).toBeNull();
+    expect(await service.openExternalUrl('javascript:alert(1)')).toBe(false);
+    expect(open).toHaveBeenCalledOnce();
   });
 
   it('offers native install prompts when available and iOS-style instructions otherwise', async () => {
@@ -103,7 +119,7 @@ describe('WebPlatformServices', () => {
 
     await service.registerServiceWorker();
 
-    expect(register).toHaveBeenCalledWith('/sw.js?v=8', {
+    expect(register).toHaveBeenCalledWith('/sw.js?v=9', {
       scope: '/',
       updateViaCache: 'none',
     });
@@ -129,7 +145,15 @@ describe('CapacitorPlatformServices', () => {
       impact: vi.fn(async () => {}),
       notification: vi.fn(async () => {}),
     };
-    const service = new CapacitorPlatformServices({ app, screenOrientation, systemBars, haptics, platform: 'android' });
+    const appLauncher = { openUrl: vi.fn(async () => ({ completed: true })) };
+    const service = new CapacitorPlatformServices({
+      app,
+      appLauncher,
+      screenOrientation,
+      systemBars,
+      haptics,
+      platform: 'android',
+    });
     const activeStates = [];
     let backs = 0;
     service.on(PLATFORM_EVENTS.activeChange, ({ isActive }) => activeStates.push(isActive));
@@ -161,6 +185,12 @@ describe('CapacitorPlatformServices', () => {
       build: '7',
       id: 'com.example.joel',
     });
+    expect(await service.openExternalUrl('https://www.youtube.com/@luisnomad')).toBe(true);
+    expect(appLauncher.openUrl).toHaveBeenCalledWith({
+      url: 'https://www.youtube.com/@luisnomad',
+    });
+    expect(await service.openExternalUrl('file:///tmp/nope')).toBe(false);
+    expect(appLauncher.openUrl).toHaveBeenCalledOnce();
 
     await service.destroy();
     expect(remove).toHaveBeenCalledTimes(2);

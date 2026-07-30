@@ -3,6 +3,15 @@ export const PLATFORM_EVENTS = Object.freeze({
   backButton: 'back-button',
 });
 
+export const normalizeExternalUrl = (value) => {
+  try {
+    const url = new URL(String(value));
+    return url.protocol === 'https:' ? url.href : null;
+  } catch {
+    return null;
+  }
+};
+
 export class PlatformServices {
   constructor({ platform = 'web', native = false } = {}) {
     this.platform = platform;
@@ -49,6 +58,10 @@ export class PlatformServices {
 
   async getAppInfo() {
     return null;
+  }
+
+  async openExternalUrl() {
+    return false;
   }
 
   getInstallState() {
