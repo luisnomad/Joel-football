@@ -4264,3 +4264,18 @@ The current web release is live at
 - Final checks after the phone-system-control correction: responsive browser matrix passed all five profiles with screenshots and active control interactions, 206/206 unit tests passed, production build passed, and `git diff --check` remained clean.
 - Recorded the final device strategy as a canonical product decision in `docs/RESPONSIVE_LAYOUT_GUIDE.md`: Joel Football is a children's game with tablets as the primary, fully optimized experience; phones remain in the same app through separate lazy-loaded Casual-mode layouts for short sessions. Representative conventional and wide phones must keep the main journey usable, but the project does not promise bespoke art, layout, or tablet-equivalent ergonomics for every extreme handset. Tablet quality takes release priority and must never regress to accommodate one phone shape.
 - Linked the tablet-first/Casual-phone boundary from `docs/GAME_SPEC.md` and `docs/ANDROID.md`, and added corresponding tablet release blockers plus representative-phone smoke criteria to `docs/PLAY_STORE_RELEASE_CHECKLIST.md` so future mini-games and releases inherit the decision.
+
+### Netlify web release — Joel Football 1.6.0
+
+- Published the verified production bundle to the sibling `luisnomad.com`
+  repository while preserving the legacy `/games/head-soccer/` redirect.
+- Completed the full 103-page Astro production build, committed website `main`
+  as `de2f1e7` (`feat: publish Joel Football 1.6.0`), and pushed it to
+  Netlify.
+- Confirmed production serves `index-_LhqmBLt.js` and
+  `index-CCq7B5TL.css`, with the JavaScript asset returning HTTP 200.
+- Ran a live Pixel-sized Playwright smoke check: the game reached Splash with
+  a rendered canvas and no page errors.
+
+The 1.6.0 web release is live at
+`https://luisnomad.com/games/joel-football/`.
