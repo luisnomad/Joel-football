@@ -42,7 +42,7 @@ signs it automatically, making it directly installable for testing.
 ## Release signing
 
 1. Confirm the permanent application ID. It is currently
-   `com.luisnomad.joelfootball`.
+   `com.notjustprompts.joelfootball`.
 2. Create and protect a Play upload keystore outside version control.
 3. Copy `android/keystore.properties.example` to
    `android/keystore.properties` and fill in its four values.
@@ -57,6 +57,12 @@ producing an unsigned release artifact.
 
 ## Native behavior
 
+- The Android product is tablet-first: supported tablets receive the complete,
+  fully optimized experience. Phones remain installable and use the separate
+  compact Casual-mode layout for short sessions. Phone support guarantees a
+  usable main journey on representative conventional and wide devices, not
+  bespoke parity for every extreme handset. See the product decision in the
+  [responsive layout guide](RESPONSIVE_LAYOUT_GUIDE.md#product-decision-tablet-first-phone-casual-mode).
 - Android phone activities use sensor landscape orientation.
 - System bars start hidden in edge-to-edge mode. Modern WebView
   `env(safe-area-inset-*)` values keep Phaser outside camera cutouts. Capacitor
@@ -68,7 +74,11 @@ producing an unsigned release artifact.
 - Landscape touch tablets below 16:9 use Phaser's extended stage: the pitch
   remains 1280×720, the canvas grows downward to the device aspect ratio, and
   the arena floor pattern plus menu/gameplay controls occupy that extra band.
-  Exact 16:9 tablets, phones, and desktop browsers retain the original layout.
+  Exact 16:9 devices retain the original layout. Touch phones and tablets wider
+  than 16:9 use a horizontally expanded stage with the authored 1280×720
+  gameplay region centered inside it. See the
+  [responsive layout guide](RESPONSIVE_LAYOUT_GUIDE.md) for the geometry,
+  artwork, control, and regression-test contract.
 - Backgrounding releases all keyboard/touch/sprint state, pauses physics and
   audio, and requires an explicit resume.
 - Back closes About or Help first. Help owns the pause it creates and resumes

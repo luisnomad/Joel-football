@@ -5,23 +5,39 @@ export const CHILENA_MIN_AIRTIME_SECONDS = 0.46;
 export const CHILENA_MAX_SECONDS = 1.1;
 export const CHILENA_TAKEOFF_VELOCITY = -10.8;
 export const CHILENA_LOB_APEX_Y = 150;
-export const CHILENA_LOB_RISE_SPEED = 12.2;
+// A touch player's second tap arrives while the ball is still falling. This
+// launch reaches the declared scoreboard apex from the bottom of the legal
+// chilena trigger zone instead of relying on frame-perfect input.
+export const CHILENA_LOB_RISE_SPEED = 17;
 
-export const canStartChilena = ({ fighter = {}, ball = {}, kickPresses = 0 } = {}) => {
+export const evaluateChilenaEligibility = ({ fighter = {}, ball = {}, kickPresses = 0 } = {}) => {
   const height = Math.max(1, Number(fighter.height) || 0);
   const dx = Math.abs((Number(ball.x) || 0) - (Number(fighter.x) || 0));
   const upwardDistance = (Number(fighter.y) || 0) - (Number(ball.y) || 0);
   const distance = Math.hypot(dx, upwardDistance);
-  return Boolean(
-    fighter.grounded
-    && !fighter.stunned
-    && !fighter.active
-    && kickPresses >= CHILENA_REQUIRED_KICK_PRESSES
-    && upwardDistance >= height * 0.18
-    && dx <= height * 0.45
-    && distance <= height
-  );
+  const minimumUpwardDistance = height * 0.18;
+  const maximumHorizontalDistance = height * 0.45;
+  let reason = 'eligible';
+  if (!fighter.grounded) reason = 'airborne';
+  else if (fighter.stunned) reason = 'stunned';
+  else if (fighter.active) reason = 'already-active';
+  else if (kickPresses < CHILENA_REQUIRED_KICK_PRESSES) reason = 'needs-second-press';
+  else if (upwardDistance < minimumUpwardDistance) reason = 'ball-not-overhead';
+  else if (dx > maximumHorizontalDistance) reason = 'ball-too-far-sideways';
+  else if (distance > height) reason = 'ball-too-high-or-far';
+  return Object.freeze({
+    allowed: reason === 'eligible',
+    reason,
+    dx,
+    upwardDistance,
+    distance,
+    minimumUpwardDistance,
+    maximumHorizontalDistance,
+    maximumDistance: height,
+  });
 };
+
+export const canStartChilena = (options = {}) => evaluateChilenaEligibility(options).allowed;
 
 export const CHILENA_SHOT_SPEED = 27;
 

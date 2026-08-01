@@ -264,7 +264,7 @@ Original prompt: Create a polished, playable 2D browser game with the dynamics o
 - Added Capacitor 8 with the Android, App, Screen Orientation, and Haptics
   packages. `npm run build` remains the canonical Vite build and
   `capacitor.config.json` packages `dist/` under
-  `com.luisnomad.joelfootball`.
+  `com.notjustprompts.joelfootball`.
 - Generated the native `android/` project, locked phone activity orientation
   to sensor landscape, enabled cutout-safe edge-to-edge layout, and configured
   Capacitor System Bars to inject WebView-safe CSS inset variables.
@@ -2428,6 +2428,369 @@ available for development.
 The current web release is live at
 `https://luisnomad.com/games/joel-football/`.
 
+## 2026-08-01 — Android 1.6.0 phone redesign release
+
+- Promoted the dedicated compact-phone experience to version `1.6.0` with
+  Android `versionCode` 3. Tablets remain the primary fully optimized target;
+  phones use their own readable Casual-mode menus and navigation in the same
+  app and retain shared progression.
+- Fixed the Android release-lint blocker by moving API-28 display-cutout theme
+  attributes into `values-v28/styles.xml`. `lintRelease` now reports zero
+  errors.
+- Passed 206/206 unit/integration tests, the production build, complete
+  Football/Kickfall and Disc Hockey browser journeys, and the five-profile
+  responsive matrix covering small, conventional, and Pixel-class phones plus
+  regular and long tablets.
+- Built and signature-verified the signed Play bundle for package
+  `com.notjustprompts.joelfootball`, version `1.6.0`, code 3. SHA-256:
+  `f24210d11179e0e6a4651059b295b2ece53c8cb89167710ef1bf66519e49336b`.
+- Preserved the previously uploaded 1.5.0/code-2 artifact separately so its
+  exact contents and checksum remain recoverable.
+
+### Optimized first-store artifact (code 4)
+
+- Enabled R8 code optimization, obfuscation, and integrated resource shrinking
+  on the existing AGP 8.13 toolchain; an AGP 9 upgrade was not required.
+- Advanced Android `versionCode` to 4 because code 3 had already been uploaded
+  to Play. The public version remains `1.6.0` because this is still the first
+  store release.
+- Reduced the signed AAB from 26,111,981 to 24,457,539 bytes, a 6.3% reduction.
+- Reran the complete release gates: 206/206 tests, production build, full
+  Football/Kickfall browser journey, Disc Hockey browser suite, five-profile
+  responsive matrix, Android release lint, signed bundle, and signed release
+  APK all pass.
+- Installed the actual R8-optimized release APK on the Android 16 KB-page
+  emulator and cold-launched `com.notjustprompts.joelfootball/.MainActivity`.
+  The Capacitor bridge started without runtime exceptions and the compact-phone
+  UI rendered correctly in landscape.
+- Archived the exact code-4 bundle plus R8 mapping/configuration/resource
+  reports for future stack-trace retracing. Bundle SHA-256:
+  `c413e07f707e37a9bc626ad0fdaba81f52f0d50feb6baa37ed3db37b57ac2d21`.
+
+### Google Play listing artwork
+
+- Created the upload-ready `Play Store Resources/` pack with the established
+  512×512 Joel Football icon and a bespoke 1024×500 feature graphic based on
+  Joel's approved likeness and the real Skycourt stadium.
+- Captured 20 truthful 1920×1080 game screenshots: five each for English and
+  Spanish across compact-phone and tablet layouts. Each set covers Football,
+  Kickfall, Disc Hockey, match setup, and mini-game selection.
+- Preserved the feature-art source and generation prompt, added localized alt
+  text, generated review contact sheets, and added a reusable deterministic
+  screenshot-capture script.
+- Verified the listing icon is under 1 MB, the feature graphic and screenshots
+  are opaque RGB PNGs, all dimensions match Google Play requirements, and the
+  screenshot capture completed without browser errors.
+
+## Compact-phone responsive revision (2026-07-31, in progress)
+
+- Added a resolution-lazy compact-phone menu bundle while preserving the
+  established tablet menu classes and gameplay geometry.
+- Replaced dense phone menus with focused tabs, increased descriptive copy,
+  repaired wide-phone control gutters, restored both Kickfall action buttons,
+  enlarged Disc Hockey pusher artwork without changing collision radii, and
+  increased the Disc Hockey clock to 22 px on tablets / 26 px on phones.
+- Replaced the compact Mini-games landing content with a tap/swipe horizontal
+  card shelf. The selected game now supplies a fully opaque backdrop, so
+  Kickfall/Disc Hockey art never blends with the football field. Player choice
+  is no longer duplicated below the shelf and lives in each setup flow.
+- Removed the compact Options intermediate screen. Settings is now the third
+  top-level navigation item; Joel's Lab remains in Football preparation. The
+  Install App action moved to Settings and is created only when web platform
+  services report that installation is available; native Capacitor never
+  renders it.
+- Added the synchronous `window.__JOEL_DEVICE__` boot profile and root classes
+  for runtime, platform, form factor, orientation, layout variant, resource
+  profile, and aspect class. Phaser menu imports now consume this one profile,
+  including protection against Capacitor's initial portrait-to-landscape race.
+- Visual-only iteration per owner request: inspected settled Pixel-sized
+  English/Spanish Settings captures and the compact game shelf; no console or
+  page errors. Defer comprehensive browser/Android tests until the owner says
+  the design batch is complete.
+- Standardized both compact mini-game setup flows on one reusable tab contract:
+  Players, Setup, and How to Play. Disc Hockey's objective/camping copy moved
+  out of the crowded player view, and Kickfall now uses the identical order.
+- Adopted the metallic console concept as a phone-only menu experiment. The
+  lazy compact bundle now owns layered blue-metal frames, opaque navy panels,
+  cyan active rails, framed previews/cards, larger invisible touch zones, and
+  dark trapezoidal primary actions. Football, the horizontal Mini-games shelf,
+  Settings, Football/mini-game setup, Lab, About, Help, install, and math
+  challenge overlays all use the same compact primitives.
+- Existing background art remains unchanged. The selected mini-game still
+  supplies the full-opacity backdrop behind an opaque console, preventing
+  Kickfall or Disc Hockey art from mixing with the football field.
+- Inspected Pixel 9a-sized captures for the three top-level pages, Football
+  setup, both mini-game setup flows, Settings, About, Help, Lab, and the math
+  challenge. All rendered as `resourceProfile: compact-phone` without console
+  or page errors. A separate settled 1280×800 touch capture selected
+  `resourceProfile: tablet` and displayed the original journey-card menu,
+  confirming the A/B boundary visually. Full automated tests remain deferred
+  until the owner closes the redesign batch.
+- Removed the remaining compact mini-game navigation inconsistencies. Every
+  Players / Setup / How to Play page now uses the same fixed panel top, height,
+  cyan frame, and cyan active-tab rail, so no taller page can rise underneath
+  and clip the tab strip. The Mini-games shelf now always uses the neutral
+  START / EMPEZAR action regardless of selection. Kickfall progress choices
+  moved into its setup screen, where saved profiles see both Continue at level
+  X and Start from level 1, matching the established tablet behavior. Pixel
+  English/Spanish visual captures were inspected with no page or console
+  errors; comprehensive tests remain deferred with the rest of the design
+  batch.
+- Centralized compact tab feedback in `createCompactTabs`: every phone tab tap
+  now plays the standard button click, including taps on the already-selected
+  tab. This covers the top-level journey row, Football setup, mini-game setup,
+  the legacy compact game row, and Settings audio tabs. About/Help overlay tabs
+  use the same feedback explicitly. Removed scene-level sounds on the two
+  top-level handoffs that would otherwise double-play. Tablet UI remains
+  unchanged; audio verification stays deferred with the requested final test
+  pass.
+- Flattened the compact About overlay into one horizontal screen. Creator,
+  dedication, portrait, version, NotJustPrompts.ai, YouTube, Privacy, and Report
+  a problem are now simultaneously visible; the About/Links tabs, external-link
+  instruction, and free/offline/no-accounts promotional copy were removed from
+  the phone layout. Tablet About remains unchanged. Inspected English and
+  Spanish Pixel-sized captures with all three link labels visible and no page
+  or console errors; the full test pass remains deferred.
+- Changed the compact Football discovery card action to the same neutral
+  START / EMPEZAR label used by the Mini-games shelf. “Play with this setup”
+  remains only inside Football preparation, after the player has actually made
+  setup choices. Tablet copy and layout remain unchanged.
+- Widened the compact Football setup console from 1040 to 1180 logical pixels
+  across Players, Match, and Ball & Power. The wider shared shell uses the
+  phone's horizontal space and keeps the field carousel arrows inside the
+  card, without changing the tablet setup scene.
+- Reused the active Football field texture inside the compact About console.
+  Phaser tint, gradient wash, and a navy exposure layer simulate the proposed
+  low-light treatment without applying CSS to the entire game canvas. The
+  existing Dad portrait now has a soft grounded shadow. Inspected the final
+  Pixel-sized composition with clear titles, close control, and all links, with
+  no page or console errors. Dynamic Football gameplay shadows are intentionally
+  left as a separate follow-up so their animation, scaling, and device cost can
+  be evaluated deliberately.
+
+### Physical Pixel 9a wide-phone verification
+
+- Built the current Android debug APK and installed it on the connected
+  Google Pixel 9a (`4A111JEBF21481`, Android 16). The native WebView reported
+  the expected 2424x1080 physical viewport and 1616x720 logical stage.
+- Football setup and gameplay fill and center correctly. The wide-phone
+  controls retain the new edge anchors: pause at x=48 with 44.352 actual
+  radius, fullscreen with a 52-unit right gutter, movement at x=98/238, and
+  jump with a 260-unit right gutter. Native Android taps paused the match and
+  launched a jump; a native right hold moved the player from x=400 to x=513.2
+  and released cleanly.
+- Reproduced the goal/attacker/player pin fixture on the device. The recovery
+  fired once without changing the score and launched the ball pitchward from
+  x=257.7/y=344 at vx=8.6/vy=-5.8; after settling it remained free at
+  x=317/y=312.3.
+- Kickfall setup and gameplay center correctly. A physical joystick hold moved
+  Luna from x=240.7 to x=317.8, released to neutral, and preserved the intended
+  64-unit edge gutter.
+- Disc Hockey setup and gameplay center correctly with the gameplay artwork on
+  the 1280-wide arena, the camera at scrollX=-168, and the collision contour at
+  x=104..1176/y=120..628. A physical drag moved Luna's pusher from x=330 to
+  x=501.4 and released without a retained pointer; the native pause button also
+  entered manual pause.
+- Inspected physical captures for Intro, both mini-game setup screens, Football,
+  Kickfall, and Disc Hockey. No gaps, unintentional bands, clipping, or
+  field/collision mismatch were visible. The final Android log sweep contained
+  no Chromium uncaught errors, Capacitor errors, fatal exceptions, or runtime
+  crashes. The app was returned to Intro.
+- During the diagnostic scene handoff, the goal-pin fixture intentionally
+  paused the active match and a test-script timeout briefly left no active
+  scene. Restarting the app restored Intro immediately; this was caused by the
+  test harness rather than normal gameplay.
+
+### Wide-phone controls and goal-foot pin
+
+- Kept every 1280-wide tablet coordinate and visual value unchanged while
+  moving fixed wide-phone controls from the centered gameplay frame to true
+  viewport-edge anchors. Football and Kickfall now retain their familiar 16:9
+  left/right edge distances when horizontal stage space is added.
+- Increased the Football wide-phone top controls by exactly 10%, strengthened
+  their glass contrast and icons, and applied the same sizing/high-contrast
+  treatment to Help.
+- Added a mirrored, sustained goal-foot-pin detector. It only activates near a
+  player's own goal when an airborne player is resting on a slow ball and the
+  opponent is actively pressing goalward; the release separates the attacker
+  and pops the ball back toward the pitch.
+- Added pure coverage for left/right pins and false-positive cases. The release
+  first moves the ball above the collision sandwich before sending it toward
+  the pitch; browser coverage proves it cannot rebound through the player's own
+  goal.
+- Final validation passes 202/202 unit tests, the complete Football/Kickfall
+  browser journey, Disc Hockey browser flow, production build, standalone
+  web-game client, and the responsive matrix for 1280×800 tablet, Pixel
+  9a-sized 924×412, and 1920×800 long tablet. The matrix now asserts Football's
+  exact edge gutters and Kickfall's 64px joystick gutter.
+- Built and installed the debug APK on both configured Android emulators. The
+  Pixel 9 Pro emulator produced a 1606×720 wide stage: Pause x=48/radius=44.352,
+  fullscreen right gutter=52, left movement x=98, and Jump right gutter=260.
+  Real Android input moved Football Joel from x=400 to x=521, launched Jump,
+  and moved Kickfall Joel from x=92 to x=378 from its 64px joystick gutter.
+  The deterministic goal-pin fixture released once, sent the ball from under
+  Joel's feet to x=314.7 above the pitch, and preserved the score.
+- The 2560×1600 Android tablet emulator stayed on its established 1280×800
+  stage and exact values: top Pause x=52/radius=28/fill=0.13/icon=0.78,
+  movement x=98/238, and Jump x=1020. Emulator screenshots and logcat review
+  found no WebView, Capacitor, or Android runtime errors.
+
+### Cross-device responsive layout and splash pass
+
+- Replaced Disc Hockey's repeated arena-art side strips with quiet, theme-aware
+  matte wings. The Ice treatment uses a dark frosted-blue bilinear gradient and
+  the Neon treatment uses a warm near-black gradient; neither duplicates rink
+  details or enters the playable collision-authored 1280×720 region.
+- Fixed the shared Mini-game setup camera so Kickfall and Disc Hockey setup
+  screens are centered on expanded horizontal stages instead of leaving a
+  one-sided gap. Football setup's wash, both match-loading scenes, Kickfall's
+  asset loader, HUD, pause shade, and result shade now cover the complete wide
+  stage as well.
+- Wide-stage selection now applies to long touch tablets as well as phones,
+  while the established 1280×800 tablet remains on its exact existing vertical
+  extension path. The splash artwork is full-bleed with a centered cover crop
+  on both device classes.
+- Added `test:responsive:e2e`, a focused Playwright matrix covering a regular
+  1280×800 tablet, a Pixel 9a-sized 924×412 viewport, and a 1920×800 long
+  tablet. Every viewport captures and checks Splash, Intro, Football setup and
+  gameplay, the Mini-games hub, Kickfall setup and gameplay, and Disc Hockey
+  setup and gameplay.
+- The matrix verifies full canvas coverage, centered cameras, wide Kickfall
+  overlay coverage, fixed Disc Hockey arena bounds `0..1280`, and unchanged
+  collision bounds `104..1176`. Visual inspection confirms the standard tablet
+  layout remains intact and both wide classes are centered without gaps.
+- Final validation passes 200/200 unit tests, the complete Football/Kickfall
+  browser journey, the Disc Hockey browser journey, the responsive matrix,
+  production web build, Android debug APK assembly, the required standalone
+  web-game client, screenshot/state inspection, and `git diff --check`.
+
+### iPhone 15 Pro Max responsive-layout pass
+
+- New request: fix screens that are off-center or leave a one-sided gap on the
+  iPhone 15 Pro Max aspect ratio, and make Football's tiny/faint pause and
+  system controls comfortably visible on mobile.
+- Found three independent contributors: iOS safe-area padding was allowed to
+  shrink the entire game shell asymmetrically; wide-phone mode was selected
+  only from the first viewport and could miss an initial portrait-to-landscape
+  startup race; and Disc Hockey rendered only its fixed 1280-wide art inside a
+  wider Phaser stage, leaving the extra strip uncovered on the right.
+- The renderer is now full-bleed, wide-phone detection falls back to the
+  device screen's eventual landscape shape, Disc Hockey centers and widens its
+  art/header/modal shades across horizontal overflow, and Football's top-row
+  system controls use a 36 px authored radius with stronger glass/icon
+  contrast. Focused stage-layout tests pass.
+- TODO: run the production build, browser journeys, required standalone
+  Playwright client, and inspect iPhone-sized Football and Disc Hockey
+  screenshots before closing this pass.
+- Follow-up scope guard: the stronger 36-radius system controls, spacing, and
+  contrast now activate only when the logical stage is wider than 1280. The
+  established 1280×800 Android-tablet branch remains at radius 28, x=52, fill
+  alpha 0.13, and icon alpha 0.78; the full browser journey asserts those
+  exact values.
+- Final verification passes 200/200 unit tests, the production build, the
+  complete Football/Kickfall browser journey, the complete Disc Hockey
+  journey including new wide-phone gameplay/pause captures, the required
+  standalone web-game client, screenshot inspection, and `git diff --check`.
+  The debug Android APK also assembles successfully. No ADB device was
+  connected, so the offered Pixel 9a physical install remains optional once
+  the phone is connected and authorized.
+
+### Pixel 9a rink/collision correction
+
+- Physical Pixel 9a review exposed that the first wide Disc Hockey treatment
+  stretched the 1280-wide arena art to the 1616-wide stage while collision
+  coordinates correctly remained authored at 1280. The visible rink walls
+  therefore no longer matched the collision contour.
+- The playable arena art now stays exactly 1280×720 and is centered through a
+  -168 camera offset on the Pixel's 1616×720 logical stage. Two cached edge
+  textures fill only the non-playable 168-pixel side bands. Browser coverage
+  requires the central art bounds to remain 0..1280 and both decorations to
+  remain strictly outside those bounds.
+- Rebuilt and installed the corrected APK on the connected Pixel 9a running
+  Android 16 at 2424×1080 landscape. Live diagnostics reported arena width
+  1280, collision bounds x=104..1176, camera scroll x=-168, and symmetric edge
+  layouts -168..0 / 1280..1448. Android-compositor inspection confirmed the
+  visible inner rink walls align with those collision bounds.
+- Physical Football inspection also confirmed the wide-phone controls: Pause
+  radius 40.32 (authored 36), fill alpha 0.24, and icon alpha 0.96. The phone
+  was returned to the main menu and temporary device screenshots were removed.
+
+### Play package identity and free-release decision
+
+- Migrated the permanent Android application ID and Java namespace from the
+  personal `com.luisnomad.joelfootball` identifier to the brand-owned
+  `com.notjustprompts.joelfootball` identifier before its first Play upload.
+- Updated Capacitor, Gradle, Android resources, `MainActivity`, the tablet
+  runner, and release documentation to use the same identifier.
+- Confirmed the Play release will be a free game with no Play Billing, paid
+  extras, donations, or paid downloadable packs. Future mini-games, music,
+  characters, and other additions will remain free.
+- Verified the migration with a production web build, Capacitor Android sync,
+  successful debug APK build, and the merged Android manifest.
+
+### Play upload key and first signed bundle
+
+- Generated the brand-owned `joel-football-upload` RSA-4096 upload key with a
+  certificate valid through 2053-12-16. The encrypted canonical keystore lives
+  outside the repository on the Mac's internal disk.
+- Stored the store and key passwords as separate macOS Keychain credentials and
+  verified that both entries exactly match the ignored signing configuration.
+- Created and byte-verified two encrypted keystore backups: a separate internal
+  copy and a copy on the external SSD. The Mac has no configured iCloud or
+  CloudStorage folder, so placing one copy in user-controlled off-site storage
+  remains a manual release-checklist item.
+- Exported and backed up the public upload certificate. Its SHA-256 fingerprint
+  is `79:73:10:53:D5:A2:94:65:5C:84:94:DB:3E:96:DB:FB:88:E4:18:C8:38:16:E4:03:9A:27:6F:46:B0:C6:83:70`.
+- Built the signed 24.9 MB release bundle for
+  `com.notjustprompts.joelfootball` and verified its signature and merged
+  manifest. The AAB SHA-256 is
+  `7243e4af5e725a3abc60f2d839562621c5c43736b53e2f2fe3af0498c6340991`.
+- Confirmed in Play Console that Play App Signing is active with the
+  Google-managed app signing key in use and Play's quantum-ready beta enabled.
+  Added the gitignored `.release-private/play-signing/` record area and copied
+  the public upload certificate there before archiving the authenticated Play
+  Console downloads.
+- Archived the downloaded `certificates.zip` unchanged, extracted and inspected
+  the active RSA-4096 deployment certificate plus Play's RSA-4096/ML-DSA-65
+  quantum-ready pair, and recorded each certificate's validity and SHA-1/SHA-256
+  fingerprints. The complete public signing record was copied and byte-compared
+  on the internal and external signing-backup locations.
+
+### Crazy Hockey wall-route and real attack hardening
+
+- Reproduced Joel's upper-board trap with the photographed geometry: puck near
+  `(850, 145)` and the selected Crazy striker stranded on its left side.
+- Replaced the striker's single contact waypoint with a staged attack route.
+  It now clears vertically into open ice, travels behind the puck, aligns, and
+  then accelerates through it. The strike contact guarantees at least `680`
+  logical px/s toward the human goal and aims inward from the top/bottom boards
+  instead of gently pushing along them.
+- Changed the three-second contact reflex to recognize a real escape by puck
+  speed (`220` px/s), rather than resetting after only 18 px of drift. A slow
+  conveyor push can now travel more than 100 px while remaining trapped and
+  still triggers the visible repel pulse.
+- Added pure and browser regressions for the exact top-wall/wrong-side route,
+  including an assertion that the puck remains still during clearance, plus a
+  continuously contacted 45 px/s slow-push case.
+- Verification passes all 199 unit tests, the production build, the dedicated
+  Disc Hockey browser journey, official web-game client state/error inspection,
+  and `git diff --check`. The broader mixed-game journey currently stops on its
+  pre-existing nondeterministic Kickfall seven-ball queue fixture; two retries
+  recorded no gate impact, while the isolated Hockey coverage remains green.
+- Built and installed the final debug APK explicitly on physical Samsung
+  SM-X210 `R92Y30X3XBR` (the convenience script had initially selected the
+  emulator). Native WebView telemetry confirmed the puck stayed at x=850 with
+  speed 0 throughout the first 250 ms clearance, then crossed inward at about
+  `893` px/s (`vx=-856`, `vy=255`).
+- Published the same hardened build to the `luisnomad.com` production site via
+  website commit `d453e24` (`fix: publish hardened Crazy Hockey AI`). Netlify
+  now serves `index-BdlCEtTp.js` and
+  `DiscHockeyScene-COWUpOnu.js`; the legacy `/games/head-soccer/` redirect is
+  intact. The required standalone web-game client entered live Crazy Hockey,
+  reached a real `0–1` score state, emitted coherent serialized AI/stall state,
+  and recorded no console/page errors. The inspected production capture is
+  `output/web-game/netlify-live-d453e24-gameplay/shot-0.png`.
+
 ### iOS long-press magnifier guard (2026-07-23)
 
 - Identified the large circular “zoom” shown while holding a Football arrow as
@@ -3741,3 +4104,163 @@ the `poc/animation-polish` and `poc/strike-collision` branches.
   entering Mini-games, then reuse the same cached field texture in Hockey
   setup and neon gameplay. Browser contracts now reject roster portraits in
   the Football card and require the clean Hockey arena in its card.
+
+### Play release About-panel links
+
+- Replaced the promotional YouTube treatment and general website exit with
+  neutral bilingual offline/no-tracking copy.
+- Added dedicated Privacy and Report a problem buttons targeting the prepared
+  Joel Football legal and support pages on NotJustPrompts.
+- Updated About diagnostics and the browser journey to require both exact HTTPS
+  destinations.
+- Inspected the updated About capture: both actions fit cleanly and the previous
+  promotional exit is gone. Verification passes 192/192 unit tests, the
+  production build, the required standalone client, and the complete browser
+  journey including both external-link destinations.
+- The English game legal and support pages are live with HTTP 200 responses,
+  and Netlify detects the `joel-football-support` form.
+- Restored the creator's music channel as a neutral, full-width
+  **YouTube · Luis Nomad** action above the smaller legal/support actions. The
+  former subscribe/share request remains removed. The channel owner confirms
+  general-audience content and YouTube age restrictions for any explicit
+  material.
+- Inspected the three-action About capture; all labels, spacing, and version
+  text fit cleanly. Verification passes 192/192 unit tests, the production
+  build, the required standalone client, and the complete browser journey,
+  including YouTube, Privacy, and Report a problem.
+
+### Play Console account
+
+- Created and paid for the Google Play developer account under the public
+  developer name **NotJustPrompts.ai**.
+- Google approved the developer identity on 2026-07-31, so the account is ready
+  to create its first app. The private Play account identifier remains
+  intentionally absent from the repository.
+
+### Spawn, puck-stall, touch, and roster collision hardening
+
+- Fixed Mum and Dad's opening Football drop by grounding construction and
+  round resets from the assembled Matter body's real lower bound. The same
+  `placeOnGround` path now also owns deterministic debug placement, so large
+  profiles cannot reintroduce a hidden `y=547` assumption.
+- Crazy Hockey now makes a striker retreat with horizontal and vertical
+  clearance when the puck is behind midfield instead of pinning it against the
+  center boundary. A separate contact-aware stall reflex detects a puck that
+  remains within 18 logical pixels for three active-play seconds while touching
+  a pusher, then repels it toward scored open ice with a visible yellow/white
+  pulse, sound, haptic, and cooldown.
+- Replaced touch chilena's dependency on the 160 ms kick animation with a
+  dedicated same-button double-tap contract: 45–480 ms for Kick or Lob. Mixed,
+  accidental, and expired sequences remain rejected; keyboard behavior is
+  unchanged. Browser coverage now uses a human 260 ms interval rather than two
+  adjacent simulation frames.
+- Raised the high-chilena launch so a delayed touch combination still reaches
+  its declared scoreboard apex instead of gravity ending the rise around
+  `y=175`.
+- A full atlas/runtime audit found that Joel was not an isolated head-collision
+  exception. The shared cap calculation used the sprite position offset `89`
+  instead of the compound body's lower bound `70`, leaving a 29–36 px blind
+  strip on every standard character and 22–23 px on Dad/Mum. The corrected
+  stable cap covers all eight real idle silhouettes. Dad and Mum retain their
+  intentional larger `dad-large` and `mum-large` profiles; Joel no longer needs
+  a one-off profile.
+- Added `docs/CHARACTER_COLLISION_GUIDE.md` and the roster-wide
+  `audit_roster_collision_coverage.py` release gate. Both the project-owned
+  character-creation skill and the installed onboarding skill now require the
+  complete roster audit after atlas, visual-scale, or collision-profile
+  changes, plus upper-corner ball checks during live validation.
+- Final local validation passes 197/197 unit tests, the production build, the
+  complete Football/Kickfall browser journey, Disc Hockey browser journey,
+  standalone web-game client, full-roster collision audit, screenshot review,
+  and `git diff --check`.
+- Built and installed the APK on Samsung SM-X210. The installed runtime
+  instantiated all eight characters: standard bounds top at `414.1`, Dad at
+  `352.1`, Mum at `370.1`, every collider bottom at `636.4`, every authored
+  foot at `636`, and every real idle hairline inside the body. A physical ADB
+  Kick double tap measured `233.8 ms`, emitted boost then chilena events, and
+  incremented Joel's success counter. The saved Spanish Joel-vs-Luna profile
+  was restored and the tablet returned to Intro.
+
+### Mid-animation kick and chilena retry contract
+
+- Fixed the real touch failure behind swallowed chilena attempts. A second
+  press during the current kick used to become boost-only input; when the
+  overhead check rejected that frame, it produced neither a chilena nor a new
+  kick.
+- A repeated Kick or Lob press now tries the chilena first. If the player or
+  ball is not eligible, the fighter immediately starts a fresh kick contact
+  window and restarts the animation without waiting for the previous animation
+  to finish. A connection made by the previous kick cannot suppress an eligible
+  overhead conversion; on a non-overhead retry, the existing post-contact boost
+  is retained without double-striking the same ball from one press.
+- Added explicit chilena diagnostics for airborne/stunned/active state,
+  missing second press, insufficient overhead clearance, excessive sideways
+  offset, and excessive radial distance. The eligibility helper and runtime
+  snapshot use the same thresholds, so device failures can now be diagnosed
+  from evidence instead of inferred from animation timing.
+- Added pure boundary coverage and a mobile browser regression proving both
+  branches: an ineligible mid-animation tap increments the kick serial and
+  refreshes both contact and visual timers, while a realistic 260 ms overhead
+  double tap still triggers the chilena. A separate conversion fixture proves
+  that the second press can become a chilena even after the first kick already
+  connected with the ball.
+- Verification passes 198/198 unit tests, production build, complete
+  Football/Kickfall browser journey, Disc Hockey browser journey, and the
+  standalone web-game client with clean state and screenshot output.
+- Installed the debug APK on Samsung SM-X210 and verified both routes with
+  physical Android touch injection. An ineligible double tap measured
+  `417.7 ms`, advanced Joel's kick serial from 1 to 2, and reported
+  `ball-too-far-sideways`; an overhead double tap measured `384.2 ms`,
+  incremented the chilena success count, entered the chilena pose, and
+  activated the chilena power ball. The final rebuilt APK also passed the
+  stronger conversion fixture: kick serial 1 first made real ball contact
+  (`ballHitSerial === kickSerial`), then the next Android tap converted the
+  repositioned overhead ball into a chilena. The saved Joel-vs-Luna profile was
+  preserved and the tablet was returned to Intro.
+
+### Netlify web release — gameplay hardening
+
+- Rebuilt the verified game and refreshed the generated payload in the clean
+  sibling `luisnomad.com` repository while preserving the legacy
+  `/games/head-soccer/` redirect.
+- Completed the full 103-page Astro production build, committed website `main`
+  as `da177e3` (`fix: publish latest Joel Football gameplay hardening`), and
+  pushed it to Netlify.
+- Confirmed production serves the new `index-BlH6fpbw.js` bundle and legacy
+  route with HTTP 200 responses.
+- Ran the required standalone game client against production. It advanced
+  through Splash and Intro into Football setup with coherent serialized state,
+  no console/page errors, and the inspected capture at
+  `output/web-game/netlify-live-da177e3/shot-4.png`.
+
+The current web release is live at
+`https://luisnomad.com/games/joel-football/`.
+- Removed the redundant vertical separator from the compact phone About screen; the field artwork's center line now provides the visual division. Tablet UI remains unchanged.
+- Added a hard horizontal gutter between the compact phone Football difficulty controls and field carousel. The difficulty group is slightly narrower/left-aligned and the complete field preview/navigation group is shifted right, preventing both visible controls and their touch zones from overlapping. Tablet layout remains unchanged.
+- Improved the shared compact-phone How to Play layout: control rows now use evenly spaced vertical anchors, descriptions begin below their headings instead of sharing a center origin, and copy uses more of the available horizontal space. This fixes the Spanish Move heading/copy collision in Football and gives Kickfall the same spacing; tablet overlays remain unchanged.
+- Visually inspected the revised Spanish Football How to Play overlay at a Pixel 9a-sized 924×412 viewport; all three control rows and the wrapped Move description have clear separation.
+- Removed the redundant swipe/tap instruction beneath the compact-phone mini-game cards and used the recovered height to enlarge both cards, artwork previews, text areas, and the shared swipe/tap hit region. Tablet mini-game menus remain unchanged.
+- Visually inspected the expanded mini-game shelf in Spanish at a Pixel 9a-sized 924×412 viewport; both cards fit cleanly inside the panel with unobstructed labels and START action.
+- Replaced the compact-phone mini-game shelf's decorative “Arcade Adventures” heading with the actionable localized prompt “CHOOSE YOUR GAME!” / “¡ELIGE TU JUEGO!”. Tablet copy remains unchanged.
+- Corrected the compact-phone Kickfall action state: when the saved current level is 1, the redundant “Continue · Level 1” choice is suppressed and the single Level 1 start action is centered. The two-button Continue / Start from Level 1 choice now appears only when the resumable level is greater than 1; tablet remains unchanged.
+- Visually inspected the edge case at a Pixel 9a-sized 924×412 viewport with level 2 unlocked but level 1 selected; Spanish now renders one centered “JUGAR NIVEL 1” action.
+- Built the current compact-phone menu revision into a fresh debug APK (`npm run android:apk`; Vite and Gradle succeeded), installed it with data preserved on the physical Pixel 9a `4A111JEBF21481`, launched `com.notjustprompts.joelfootball/.MainActivity`, and confirmed its process is running. Tablet installation is pending the user's cable swap.
+- Diagnosed the Pixel startup-music regression: `ArcadeAudio` remained gesture-locked on Capacitor and the Android WebView retained gesture-required media playback. Native Android now disables that WebView requirement and native runtimes unlock the shared audio service during bootstrap; ordinary web browsers remain gesture-gated.
+- Rebuilt and reinstalled the audio fix on the physical Pixel 9a with data preserved. Because the physical phone entered secure-keyguard doze during remote inspection, verified the same APK through a no-touch cold launch on the visible Pixel emulator: native runtime `unlocked=true`, menu `musicRequested=true`, and media `musicPaused=false` before any pointer/key input. Tablet installation remains pending the cable swap.
+- Added phone-only indirect Disc Hockey dragging for small screens, including conventional 16:9 phones rather than tying it to the Pixel/ultrawide layout. Player 1's physical/visual target sits 1.25 pusher radii to the right of the invisible thumb handle; local Player 2 mirrors the offset to the left. The target remains clamped to the authored collision contour and legal half, while tablets/desktops retain direct under-pointer control. Serialized diagnostics expose handle, requested/applied offset, and control mode.
+- Ran targeted Disc Hockey browser geometry checks at Pixel-wide (924×412), conventional 16:9 phone (640×360), and tablet (1280×800) profiles. Both touch-phone profiles selected `offset-handle` and applied the expected mirrored ±60.5 logical-pixel offset; the tablet selected `direct` with zero offset. Visual captures confirmed unchanged arena framing at all three profiles.
+- Built a fresh debug APK with the indirect phone control, installed it with app data preserved specifically on physical Pixel 9a `4A111JEBF21481`, and launched `com.notjustprompts.joelfootball/.MainActivity`; the process is running. The tablet behavior in this build remains direct-touch.
+- Diagnosed the physical Pixel showing tablet/standard menus after the rebuild: Capacitor's first native boot frame exposed a transient `1×1` viewport even though `screen` already reported the stable 924×412 landscape dimensions. Device profiling now treats sub-100px native viewport measurements as uninitialized and uses the stable eventual-landscape screen shape. Added regression coverage for both a Pixel-class phone and a tablet booting through the same race; the targeted device-profile and tablet-stage specs pass (10/10).
+- Rebuilt and reinstalled the native-profile fix on physical Pixel 9a `4A111JEBF21481` with data preserved. Live WebView diagnostics after the cold relaunch now report `formFactor=phone`, `resourceProfile=compact-phone`, viewport 924×412, `compactPhoneUi=true`, and root classes `layout-compact-phone resources-compact-phone`; the separate compact menu bundle is selected again.
+- Expanded the responsive browser matrix to five representative shapes: 1280×800 tablet, 568×320 very small phone, 732×412 conventional 16:9 phone, 924×412 Pixel-class wide phone, and 1920×800 long tablet. All five profiles pass their expected compact/standard menu, standard/wide stage, and Disc Hockey direct/offset-control contracts. Visual captures were inspected for Intro, Football setup, mini-game selection/setup/help, and Disc Hockey gameplay; the tablet presentation remains unchanged.
+- Fixed conventional 16:9 phones being misclassified as tablet/standard menu devices. Compact UI selection is now size-first for short sides below 600 logical pixels, while aspect ratio independently decides whether the gameplay stage expands. Added unit coverage for the 732×412 case and retained the 1280×800 tablet exclusion.
+- Refreshed stale end-to-end paths to use the compact top-level tabs and current setup-tab identifiers. The compact Power Lab now serializes the same math-operation and cooldown diagnostics as the tablet scene, and the browser challenge helper targets the appropriate control geometry for each layout. A timing-sensitive Dad landing check now waits through a bounded landing window instead of assuming one exact frame duration.
+- Final verification passes 206/206 unit tests, the complete Football/Kickfall browser journey, the Disc Hockey browser suite, the five-profile responsive browser matrix, and a fresh Vite/Capacitor/Gradle debug APK build.
+- Created and booted the persistent Android AVD `Joel_Football_Phone_16x9` (Pixel 2-class, 1920×1080 physical / 732×412 logical, Android 37), installed the current APK on `emulator-5556`, and inspected live WebView diagnostics. It reports `formFactor=phone`, `resourceProfile=compact-phone`, `compactPhoneUi=true`, `wideStage=false`, and a 1280×720 stage. A no-touch native launch reports audio unlocked with requested menu music actively playing. Native Disc Hockey reports `offset-handle`, mirrored-by-side control with the expected 60.5 logical-pixel offset; the clean physical render confirms field/collision framing, enlarged clock, pushers, and HUD fit the conventional phone.
+- Product direction recommendation: keep a single store app and shared progression, treat tablet as the primary/full experience, and position phone as an intentionally scoped Casual experience. The existing device profile and lazy-loaded compact scenes provide the technical boundary without splitting builds or regressing tablet UI.
+- Completed a screenshot-led conventional-phone audit at 732×412 (16:9), separately from the Pixel-wide profile. Fresh captures cover Intro, Settings, every Football setup tab, mini-game selection, every Kickfall setup tab, every Disc Hockey setup tab, and gameplay for all three games. Visual inspection found no clipped copy, card/tab collisions, hidden actions, or overlapping menu controls.
+- Added active-input captures and runtime assertions for the same 732×412 profile: Football Right visibly moves Joel while held and Jump/Kick both fire; Kickfall's joystick visibly deflects right and movement/Jump/Kick all fire; Disc Hockey receives the invisible handle pointer, moves the pusher, and applies the expected 60.5 logical-pixel thumb offset. Kickfall button gutters and Football arrow separation remain enforced.
+- The audit exposed one real accessibility gap: conventional 16:9 phones were still using the tablet-sized 28-logical-pixel Football system buttons, producing sub-44px physical targets. Compact phones now use the same 39.6 radius, wider spacing, and high-contrast treatment as Pixel-wide phones. At 732×412 all Football system/gameplay controls meet the 44px physical target baseline; the established tablet row remains at radius 28 and its screenshot is unchanged. The intentionally reduced 568×320 fallback remains exempt from the 44px assertion because that profile uniformly scales the full stage down.
+- Final checks after the phone-system-control correction: responsive browser matrix passed all five profiles with screenshots and active control interactions, 206/206 unit tests passed, production build passed, and `git diff --check` remained clean.
+- Recorded the final device strategy as a canonical product decision in `docs/RESPONSIVE_LAYOUT_GUIDE.md`: Joel Football is a children's game with tablets as the primary, fully optimized experience; phones remain in the same app through separate lazy-loaded Casual-mode layouts for short sessions. Representative conventional and wide phones must keep the main journey usable, but the project does not promise bespoke art, layout, or tablet-equivalent ergonomics for every extreme handset. Tablet quality takes release priority and must never regress to accommodate one phone shape.
+- Linked the tablet-first/Casual-phone boundary from `docs/GAME_SPEC.md` and `docs/ANDROID.md`, and added corresponding tablet release blockers plus representative-phone smoke criteria to `docs/PLAY_STORE_RELEASE_CHECKLIST.md` so future mini-games and releases inherit the decision.

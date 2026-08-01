@@ -10,6 +10,7 @@ import {
   DISC_HOCKEY_IMPACT_AUDIO,
   DISC_HOCKEY_MATCH_SECONDS,
   DISC_HOCKEY_PUCK_SURFACE,
+  DISC_HOCKEY_STALL_REFLEX,
   addDiscHockeyCrazyPower,
   chooseDiscHockeyCrazyTargets,
   chooseDiscHockeyAiTarget,
@@ -17,7 +18,9 @@ import {
   closestPointOnCollisionContour,
   constrainDiscToCollisionMap,
   createDiscHockeyCornerBankPuck,
+  createDiscHockeyCrazyAttackPuck,
   createDiscHockeyPoweredPuck,
+  createDiscHockeyStallReflexPuck,
   detectDiscHockeyGoal,
   evaluateDiscHockeyCrease,
   formatDiscHockeyTime,
@@ -664,6 +667,133 @@ describe('Disc Hockey pure gameplay', () => {
       separated[0].x - separated[1].x,
       separated[0].y - separated[1].y,
     )).toBeGreaterThanOrEqual(DISC_HOCKEY_ARENA.playerRadius * 2 + 5.9);
+  });
+
+  it('opens a passing lane when the Crazy striker is blocked by midfield', () => {
+    const puck = {
+      x: DISC_HOCKEY_ARENA.centerX - 12,
+      y: DISC_HOCKEY_ARENA.centerY,
+      vx: 0,
+      vy: 0,
+      radius: DISC_HOCKEY_ARENA.puckRadius,
+    };
+    const players = [
+      { ...playerSpawnFixture('right', 690, puck.y), crazyRole: 'striker' },
+      { ...playerSpawnFixture('right', 850, 220), crazyRole: 'interceptor' },
+      { ...playerSpawnFixture('right', 960, 520), crazyRole: 'defender' },
+      { ...playerSpawnFixture('right', 1080, 383), crazyRole: 'goalkeeper' },
+    ];
+    const striker = chooseDiscHockeyCrazyTargets({
+      players,
+      puck,
+      human: { x: 460, y: DISC_HOCKEY_ARENA.centerY },
+      collisionMap: DISC_HOCKEY_COLLISION_MAPS.ice,
+    }).find(({ role }) => role === 'striker');
+
+    expect(striker.midfieldRelease).toBe(true);
+    expect(striker.target.x).toBeGreaterThan(
+      DISC_HOCKEY_ARENA.centerX + DISC_HOCKEY_ARENA.playerRadius + 60,
+    );
+    expect(Math.abs(striker.target.y - puck.y)).toBeGreaterThan(
+      DISC_HOCKEY_ARENA.playerRadius + puck.radius,
+    );
+  });
+
+  it('routes around a top-wall puck before striking it hard toward open ice', () => {
+    const puck = {
+      x: 850,
+      y: DISC_HOCKEY_COLLISION_MAPS.ice.bounds.top + DISC_HOCKEY_ARENA.puckRadius,
+      vx: 0,
+      vy: 0,
+      radius: DISC_HOCKEY_ARENA.puckRadius,
+    };
+    const wrongSideStriker = {
+      ...playerSpawnFixture('right', 760, 170),
+      crazyRole: 'striker',
+    };
+    const players = [
+      wrongSideStriker,
+      { ...playerSpawnFixture('right', 990, 500), crazyRole: 'interceptor' },
+      { ...playerSpawnFixture('right', 1040, 360), crazyRole: 'defender' },
+      { ...playerSpawnFixture('right', 1110, 520), crazyRole: 'goalkeeper' },
+    ];
+    const routing = chooseDiscHockeyCrazyTargets({
+      players,
+      puck,
+      human: { x: 420, y: 520 },
+      collisionMap: DISC_HOCKEY_COLLISION_MAPS.ice,
+    }).find(({ player }) => player === wrongSideStriker);
+
+    expect(routing.role).toBe('striker');
+    expect(routing.attackPhase).toBe('route');
+    expect(routing.target.x).toBeCloseTo(wrongSideStriker.x, 5);
+    expect(routing.target.y).toBeGreaterThan(
+      puck.y + DISC_HOCKEY_ARENA.playerRadius + puck.radius,
+    );
+
+    const linedUpStriker = {
+      ...wrongSideStriker,
+      x: puck.x + DISC_HOCKEY_ARENA.playerRadius + puck.radius + 32,
+      y: DISC_HOCKEY_COLLISION_MAPS.ice.bounds.top + DISC_HOCKEY_ARENA.playerRadius,
+    };
+    const striking = chooseDiscHockeyCrazyTargets({
+      players: [linedUpStriker, ...players.slice(1)],
+      puck,
+      human: { x: 420, y: 520 },
+      collisionMap: DISC_HOCKEY_COLLISION_MAPS.ice,
+    }).find(({ player }) => player === linedUpStriker);
+    expect(striking.attackPhase).toBe('strike');
+    expect(striking.target.x).toBeLessThan(puck.x - 100);
+
+    const shot = createDiscHockeyCrazyAttackPuck({
+      puck: { ...puck, vx: -90, vy: -30 },
+      collisionMap: DISC_HOCKEY_COLLISION_MAPS.ice,
+    });
+    expect(shot.vx).toBeLessThan(-DISC_HOCKEY_CRAZY_AI.attack.minimumShotSpeed * 0.9);
+    expect(shot.vy).toBeGreaterThan(0);
+    expect(Math.hypot(shot.vx, shot.vy)).toBeCloseTo(
+      DISC_HOCKEY_CRAZY_AI.attack.minimumShotSpeed,
+      5,
+    );
+  });
+
+  it('repels a stalled contacted puck toward legal open ice', () => {
+    const player = playerSpawnFixture('right', 690, DISC_HOCKEY_ARENA.centerY);
+    const puck = {
+      x: 630,
+      y: DISC_HOCKEY_ARENA.centerY,
+      vx: 0,
+      vy: 0,
+      radius: DISC_HOCKEY_ARENA.puckRadius,
+      powered: false,
+    };
+    const released = createDiscHockeyStallReflexPuck({
+      puck,
+      player,
+      collisionMap: DISC_HOCKEY_COLLISION_MAPS.ice,
+    });
+
+    expect(DISC_HOCKEY_STALL_REFLEX.triggerSeconds).toBe(3);
+    expect(released.vx).toBeLessThan(-DISC_HOCKEY_STALL_REFLEX.puckSpeed * 0.8);
+    expect(Math.hypot(released.vx, released.vy)).toBeCloseTo(
+      DISC_HOCKEY_STALL_REFLEX.puckSpeed,
+      5,
+    );
+
+    const boardRelease = createDiscHockeyStallReflexPuck({
+      puck: {
+        ...puck,
+        x: 470,
+        y: DISC_HOCKEY_COLLISION_MAPS.ice.bounds.top + puck.radius,
+      },
+      player: playerSpawnFixture(
+        'left',
+        470,
+        DISC_HOCKEY_COLLISION_MAPS.ice.bounds.top + puck.radius + player.radius,
+      ),
+      collisionMap: DISC_HOCKEY_COLLISION_MAPS.ice,
+    });
+    expect(boardRelease.vy).toBeGreaterThan(0);
   });
 
   it('gives exactly the Crazy striker a meaningful overdrive advantage', () => {

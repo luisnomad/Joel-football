@@ -2,6 +2,7 @@ import { isTouchLayout } from '../input/isTouchLayout.js';
 import { VirtualJoystick } from '../input/VirtualJoystick.js';
 import { createControlIcon } from './createControlIcon.js';
 import { getWideStageUiScale } from '../layout/tabletStage.js';
+import { usesCompactPhoneUi } from '../layout/tabletStage.js';
 import {
   FOOTBALL_TOUCH_MOVEMENT_MODES,
   getFootballTouchMovementMode,
@@ -11,6 +12,10 @@ const GLASS_TINT = 0xdaf7ff;
 const GLASS_SHADOW = 0x04101e;
 const FOOTBALL_JOYSTICK_BASE_RADIUS = 114;
 const JOYSTICK_EDGE_GUTTER = 64;
+// Phones need a deliberately larger, higher-contrast top row. Keep the tablet
+// radius at 28 below so the proven tablet layout remains unchanged while
+// ordinary 16:9 and wide-phone targets gain exactly ten percent over 36px.
+export const FOOTBALL_SYSTEM_CONTROL_RADIUS = 39.6;
 export const FOOTBALL_JOYSTICK_SPRINT_THRESHOLD = 0.82;
 export const FOOTBALL_TOUCH_LAYOUT = Object.freeze({
   left: Object.freeze({ x: 98, y: 630, radius: 64 }),
@@ -33,12 +38,16 @@ export class TouchControls {
     if (!this.visible) return;
     this.gameplayYOffset = scene.stageLayout?.bottomOffset ?? 0;
     this.uiScale = getWideStageUiScale(scene.stageLayout);
-    const horizontalOffset = Math.max(0, (scene.stageLayout?.width ?? 1280) - 1280) / 2;
+    const stageWidth = scene.stageLayout?.width ?? 1280;
+    const horizontalOverflow = Math.max(0, stageWidth - 1280);
+    this.compactPhoneUi = usesCompactPhoneUi(scene);
+    this.widePhoneUi = stageWidth >= 1280 + 24;
 
-    this.addSystemButton(52 + horizontalOffset, 54, 'pause', () => scene.togglePause(), 0x52d7e8);
-    this.addSystemButton(118 + horizontalOffset, 54, 'restart', () => scene.scene.restart(), 0xffc857);
-    this.addSystemButton(184 + horizontalOffset, 54, 'home', () => scene.abandonMatch(), 0xff8f70);
-    this.addSystemButton(1228 + horizontalOffset, 54, 'fullscreen', () => {
+    const systemX = this.compactPhoneUi ? [48, 132, 216] : [52, 118, 184];
+    this.addSystemButton(systemX[0], 54, 'pause', () => scene.togglePause(), 0x52d7e8);
+    this.addSystemButton(systemX[1], 54, 'restart', () => scene.scene.restart(), 0xffc857);
+    this.addSystemButton(systemX[2], 54, 'home', () => scene.abandonMatch(), 0xff8f70);
+    this.addSystemButton(1228 + horizontalOverflow, 54, 'fullscreen', () => {
       scene.game.registry.get('platformActions')?.toggleFullscreen();
     }, 0xc3a8ff);
 
@@ -46,7 +55,7 @@ export class TouchControls {
       const joystickRadius = FOOTBALL_JOYSTICK_BASE_RADIUS * this.uiScale;
       this.joystickState = { boosted: false };
       this.movementJoystick = new VirtualJoystick(scene, {
-        x: horizontalOffset + joystickRadius + JOYSTICK_EDGE_GUTTER,
+        x: joystickRadius + JOYSTICK_EDGE_GUTTER,
         y: 720 + this.gameplayYOffset - joystickRadius - 8,
         radius: joystickRadius,
         thumbRadius: joystickRadius * 0.4,
@@ -65,9 +74,10 @@ export class TouchControls {
         },
       });
     } else {
-      const { left, right } = FOOTBALL_TOUCH_LAYOUT;
+      const left = this.compactPhoneUi ? { ...FOOTBALL_TOUCH_LAYOUT.left, x: 90 } : FOOTBALL_TOUCH_LAYOUT.left;
+      const right = this.compactPhoneUi ? { ...FOOTBALL_TOUCH_LAYOUT.right, x: 250 } : FOOTBALL_TOUCH_LAYOUT.right;
       this.addHoldButton(
-        left.x + horizontalOffset,
+        left.x,
         left.y + this.gameplayYOffset,
         left.radius,
         'left',
@@ -75,7 +85,7 @@ export class TouchControls {
         0x50d8ef,
       );
       this.addHoldButton(
-        right.x + horizontalOffset,
+        right.x,
         right.y + this.gameplayYOffset,
         right.radius,
         'right',
@@ -85,7 +95,7 @@ export class TouchControls {
     }
     const { jump, lob, power } = FOOTBALL_TOUCH_LAYOUT;
     this.addPulseButton(
-      jump.x + horizontalOffset,
+      jump.x + horizontalOverflow,
       jump.y + this.gameplayYOffset,
       jump.radius,
       'jump',
@@ -93,9 +103,9 @@ export class TouchControls {
       0x2ac7d4,
       { emphasized: true },
     );
-    this.addPulseButton(1165 + horizontalOffset, 610 + this.gameplayYOffset, 68, 'kick', 'kick', 0xff5b78);
+    this.addPulseButton(1165 + horizontalOverflow, 610 + this.gameplayYOffset, 68, 'kick', 'kick', 0xff5b78);
     this.addPulseButton(
-      lob.x + horizontalOffset,
+      lob.x + horizontalOverflow,
       lob.y + this.gameplayYOffset,
       lob.radius,
       'lob',
@@ -103,7 +113,7 @@ export class TouchControls {
       0x39d9a0,
     );
     this.addPulseButton(
-      power.x + horizontalOffset,
+      power.x + horizontalOverflow,
       power.y + this.gameplayYOffset,
       power.radius,
       'power',
@@ -118,18 +128,25 @@ export class TouchControls {
     const authoredRadius = radius;
     radius *= this.uiScale;
     const depth = group === 'system' ? 94 : 80;
-    const shadow = this.scene.add.circle(x, y + Math.max(3, radius * 0.06), radius + 2, GLASS_SHADOW, 0.12).setDepth(depth);
+    const highContrastSystem = group === 'system' && this.compactPhoneUi;
+    const shadow = this.scene.add.circle(
+      x,
+      y + Math.max(3, radius * 0.06),
+      radius + 2,
+      GLASS_SHADOW,
+      highContrastSystem ? 0.24 : 0.12,
+    ).setDepth(depth);
     const accentGlow = this.scene.add.circle(
       x,
       y,
       radius + 2,
       accent,
-      emphasized ? 0.06 : 0.025,
+      highContrastSystem ? 0.08 : emphasized ? 0.06 : 0.025,
     ).setDepth(depth + 0.1);
     accentGlow.setStrokeStyle(
       Math.max(1.5, radius * 0.035),
       accent,
-      emphasized ? 0.32 : 0.16,
+      highContrastSystem ? 0.42 : emphasized ? 0.32 : 0.16,
     );
 
     const surface = this.scene.add.circle(
@@ -137,12 +154,14 @@ export class TouchControls {
       y,
       radius,
       GLASS_TINT,
-      group === 'system' ? 0.13 : emphasized ? 0.18 : 0.085,
+      group === 'system'
+        ? this.compactPhoneUi ? 0.34 : 0.13
+        : emphasized ? 0.18 : 0.085,
     ).setDepth(depth + 0.2);
     surface.setStrokeStyle(
       Math.max(1.25, radius * 0.022),
       0xf4fdff,
-      emphasized ? 0.62 : 0.44,
+      highContrastSystem ? 0.7 : emphasized ? 0.62 : 0.44,
     );
 
     const innerRim = this.scene.add.circle(
@@ -150,19 +169,19 @@ export class TouchControls {
       y,
       radius - Math.max(4, radius * 0.08),
       0x9eeaff,
-      emphasized ? 0.035 : 0.018,
+      highContrastSystem ? 0.05 : emphasized ? 0.035 : 0.018,
     ).setDepth(depth + 0.3);
     innerRim.setStrokeStyle(
       Math.max(0.75, radius * 0.012),
       0xbdefff,
-      emphasized ? 0.24 : 0.12,
+      highContrastSystem ? 0.36 : emphasized ? 0.24 : 0.12,
     );
 
     const highlight = this.scene.add.graphics({ x, y }).setDepth(depth + 0.4);
     highlight.lineStyle(
       Math.max(1.25, radius * 0.03),
       0xffffff,
-      emphasized ? 0.48 : 0.32,
+      highContrastSystem ? 0.62 : emphasized ? 0.48 : 0.32,
     );
     highlight.beginPath();
     highlight.arc(0, 0, radius - Math.max(5, radius * 0.1), Math.PI * 1.08, Math.PI * 1.72, false);
@@ -173,17 +192,19 @@ export class TouchControls {
       y - radius * 0.48,
       Math.max(1.5, radius * 0.035),
       0xffffff,
-      emphasized ? 0.7 : 0.5,
+      highContrastSystem ? 0.82 : emphasized ? 0.7 : 0.5,
     ).setDepth(depth + 0.5);
 
     const isSystemControl = group === 'system';
     const symbol = createControlIcon(this.scene, {
       x,
       y,
-      size: radius * (isSystemControl ? 0.72 : 0.7),
+      size: radius * (isSystemControl ? highContrastSystem ? 0.76 : 0.72 : 0.7),
       icon,
       depth: depth + 1,
-      alpha: isSystemControl ? 0.78 : emphasized ? 0.88 : 0.68,
+      alpha: isSystemControl
+        ? this.compactPhoneUi ? 1 : 0.78
+        : emphasized ? 0.88 : 0.68,
     });
 
     const visualObjects = [shadow, accentGlow, surface, innerRim, highlight, glint, symbol];
@@ -226,7 +247,8 @@ export class TouchControls {
   }
 
   addSystemButton(x, y, icon, onPress, accent) {
-    const button = this.createBase(x, y, 28, icon, accent, 'system');
+    const radius = this.compactPhoneUi ? FOOTBALL_SYSTEM_CONTROL_RADIUS : 28;
+    const button = this.createBase(x, y, radius, icon, accent, 'system');
     this.controlButtons.set(`system:${icon}`, button);
     button.target.setInteractive({ useHandCursor: true });
     button.target.on('pointerdown', () => button.setScale(0.9));

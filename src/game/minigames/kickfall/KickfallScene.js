@@ -26,7 +26,7 @@ import {
   secondaryMotionAt,
 } from '../../pure/characterAnimation.js';
 import { isTouchLayout } from '../../input/isTouchLayout.js';
-import { getSceneStageLayout, getWideStageUiScale } from '../../layout/tabletStage.js';
+import { getSceneStageLayout, getWideStageUiScale, usesCompactPhoneUi } from '../../layout/tabletStage.js';
 import { t } from '../../i18n.js';
 import { arcadeAudio } from '../../services/ArcadeAudio.js';
 import { playerProfileStore } from '../../services/PlayerProfile.js';
@@ -157,9 +157,17 @@ export class KickfallScene extends Phaser.Scene {
   }
 
   preload() {
+    const loadingStageLayout = getSceneStageLayout(this);
+    const loadingHorizontalOffset = Math.max(0, loadingStageLayout.width - GAME_WIDTH) / 2;
+    if (loadingHorizontalOffset >= 12) this.cameras.main.setScroll(-loadingHorizontalOffset, 0);
     const background = this.add.graphics();
     background.fillGradientStyle(0x07152d, 0x07152d, 0x210d32, 0x210d32, 1);
-    background.fillRect(0, 0, GAME_WIDTH, GAME_HEIGHT);
+    background.fillRect(
+      -loadingHorizontalOffset,
+      0,
+      loadingStageLayout.width,
+      loadingStageLayout.height,
+    );
     const title = this.add.text(GAME_WIDTH / 2, 280, 'KICKFALL', {
       fontFamily: 'Arial Black, Arial Rounded MT Bold, sans-serif',
       fontSize: '66px',
@@ -258,6 +266,7 @@ export class KickfallScene extends Phaser.Scene {
     this.touch = { left: false, right: false, up: false, down: false };
     this.touchPulses = { jump: false, kick: false };
     this.touchObjects = [];
+    this.touchControlDiagnostics = {};
     this.movementJoystick = null;
     this.suspended = false;
     this.isPaused = false;
@@ -747,7 +756,15 @@ export class KickfallScene extends Phaser.Scene {
   }
 
   createHud() {
-    this.add.rectangle(0, 0, GAME_WIDTH, 76, this.theme.palette.hud, 0.88).setOrigin(0).setDepth(60);
+    const horizontalOffset = Math.max(0, this.stageLayout.width - GAME_WIDTH) / 2;
+    this.add.rectangle(
+      -horizontalOffset,
+      0,
+      this.stageLayout.width,
+      76,
+      this.theme.palette.hud,
+      0.88,
+    ).setOrigin(0).setDepth(60);
     this.add.text(GAME_WIDTH / 2, 28, 'KICKFALL', {
       fontFamily: 'Arial Black, Arial Rounded MT Bold, sans-serif',
       fontSize: '32px',
@@ -817,12 +834,13 @@ export class KickfallScene extends Phaser.Scene {
 
   createTouchControls() {
     if (!this.isTouchLayout) return;
-    const horizontalOffset = Math.max(0, this.stageLayout.width - GAME_WIDTH) / 2;
+    const horizontalOverflow = Math.max(0, this.stageLayout.width - GAME_WIDTH);
+    const horizontalOffset = horizontalOverflow / 2;
     const bottomOffset = this.stageLayout.bottomOffset;
     const uiScale = getWideStageUiScale(this.stageLayout);
     const joystickRadius = 118 * uiScale;
     this.movementJoystick = new VirtualJoystick(this, {
-      x: horizontalOffset + joystickRadius + 64,
+      x: joystickRadius + 64,
       y: GAME_HEIGHT + bottomOffset - joystickRadius - 8,
       radius: joystickRadius,
       thumbRadius: joystickRadius * 0.4,
@@ -834,6 +852,10 @@ export class KickfallScene extends Phaser.Scene {
         Object.assign(this.touch, { left, right, up, down });
       },
     });
+    // These controls live in world space while the wide camera scrolls left by
+    // half the overflow. Adding that same half offset keeps their visible
+    // screen positions at the original 16:9 gutters. Adding the full overflow
+    // pushed Kick off-screen and left Jump against the rounded corner.
     this.addTouchButton(1035 + horizontalOffset, 625 + bottomOffset, 50, 'jump', 'jump', 'pulse', 0x36d7c2);
     this.addTouchButton(1170 + horizontalOffset, 645 + bottomOffset, 60, 'kick', 'kick', 'pulse', 0xff5b78);
   }
@@ -841,6 +863,13 @@ export class KickfallScene extends Phaser.Scene {
   addTouchButton(x, y, radius, icon, action, behavior, accent) {
     const uiScale = getWideStageUiScale(this.stageLayout);
     radius *= uiScale;
+    this.touchControlDiagnostics[action] = {
+      x,
+      y,
+      radius,
+      screenX: x - this.cameras.main.scrollX,
+      screenY: y - this.cameras.main.scrollY,
+    };
     const shadow = this.add.circle(x, y + 5, radius + 3, 0x04101e, 0.2).setDepth(85);
     const surface = this.add.circle(x, y, radius, 0xdaf7ff, 0.12)
       .setStrokeStyle(2, accent, 0.48)
@@ -884,7 +913,16 @@ export class KickfallScene extends Phaser.Scene {
 
   createPauseOverlay() {
     const layout = createKickfallPauseLayout();
-    const shade = this.add.rectangle(0, 0, GAME_WIDTH, this.stageLayout.height, 0x030713, 0.7)
+    const compactPhoneUi = usesCompactPhoneUi(this);
+    const horizontalOffset = Math.max(0, this.stageLayout.width - GAME_WIDTH) / 2;
+    const shade = this.add.rectangle(
+      -horizontalOffset,
+      0,
+      this.stageLayout.width,
+      this.stageLayout.height,
+      0x030713,
+      0.7,
+    )
       .setOrigin(0)
       .setInteractive();
     const panelShadow = this.add.rectangle(
@@ -921,7 +959,7 @@ export class KickfallScene extends Phaser.Scene {
     }).setOrigin(0.5);
     const copy = this.add.text(layout.copy.x, layout.copy.y, t(this.language, 'kickfall.pauseCopy'), {
       fontFamily: 'Arial Rounded MT Bold, sans-serif',
-      fontSize: `${layout.copy.fontSize}px`,
+      fontSize: `${compactPhoneUi ? Math.max(25, layout.copy.fontSize) : layout.copy.fontSize}px`,
       fontStyle: 'bold',
       color: '#bdd9ee',
       align: 'center',
@@ -959,7 +997,16 @@ export class KickfallScene extends Phaser.Scene {
 
   createResultOverlay() {
     const layout = createKickfallResultLayout({ victory: true, hasNext: true });
-    const shade = this.add.rectangle(0, 0, GAME_WIDTH, this.stageLayout.height, 0x030713, 0.8)
+    const compactPhoneUi = usesCompactPhoneUi(this);
+    const horizontalOffset = Math.max(0, this.stageLayout.width - GAME_WIDTH) / 2;
+    const shade = this.add.rectangle(
+      -horizontalOffset,
+      0,
+      this.stageLayout.width,
+      this.stageLayout.height,
+      0x030713,
+      0.8,
+    )
       .setOrigin(0)
       .setDepth(110)
       .setInteractive();
@@ -999,7 +1046,7 @@ export class KickfallScene extends Phaser.Scene {
     }).setOrigin(0.5).setDepth(112);
     this.resultCopy = this.add.text(layout.copy.x, layout.copy.y, '', {
       fontFamily: 'Arial Rounded MT Bold, sans-serif',
-      fontSize: `${layout.copy.fontSize}px`,
+      fontSize: `${compactPhoneUi ? Math.max(25, layout.copy.fontSize) : layout.copy.fontSize}px`,
       fontStyle: 'bold',
       color: '#d7efff',
       align: 'center',
@@ -3328,6 +3375,7 @@ export class KickfallScene extends Phaser.Scene {
         kick: 'on-screen kick',
         pause: 'on-screen pause',
         joystick: this.movementJoystick?.diagnostics() ?? null,
+        buttons: { ...this.touchControlDiagnostics },
       } : {
         move: 'A/D or Left/Right',
         tiers: 'Space + W/Up or S/Down',

@@ -8,7 +8,7 @@ import { fileURLToPath } from 'node:url';
 
 const projectRoot = fileURLToPath(new URL('..', import.meta.url));
 const avdName = process.env.JOEL_ANDROID_TABLET_AVD ?? 'Joel_Football_Tablet';
-const appId = 'com.luisnomad.joelfootball';
+const appId = 'com.notjustprompts.joelfootball';
 const apkPath = path.join(projectRoot, 'android/app/build/outputs/apk/debug/app-debug.apk');
 const isWindows = process.platform === 'win32';
 

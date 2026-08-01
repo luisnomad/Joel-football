@@ -64,7 +64,15 @@ export class CustomizeScene extends Phaser.Scene {
 
     this.arenaStage = createArenaStage(this, { themeId: this.arenaTheme.id });
     this.stageLayout = this.arenaStage.layout;
-    this.add.rectangle(0, 0, this.stageLayout.width, this.stageLayout.height, 0x050a17, 0.68).setOrigin(0);
+    const horizontalOffset = Math.max(0, this.stageLayout.width - GAME_WIDTH) / 2;
+    this.add.rectangle(
+      -horizontalOffset,
+      0,
+      this.stageLayout.width,
+      this.stageLayout.height,
+      0x050a17,
+      0.68,
+    ).setOrigin(0);
 
     createButton(this, {
       x: 82,

@@ -74,4 +74,5 @@ export const EMPTY_INTENT = Object.freeze({
   dashDirection: 0,
   power: false,
   kickBoost: 0,
+  shotRestart: false,
 });

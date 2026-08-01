@@ -29,7 +29,7 @@ import { clampSimulationFrameDelta } from '../pure/fixedStep.js';
 import { arcadeAudio } from '../services/ArcadeAudio.js';
 import { clearActiveScene, setActiveScene } from '../stateBridge.js';
 import { createButton } from '../ui/createButton.js';
-import { TouchControls } from '../ui/TouchControls.js';
+import { FOOTBALL_SYSTEM_CONTROL_RADIUS, TouchControls } from '../ui/TouchControls.js';
 import { fitTextSize } from '../ui/textFit.js';
 import { isTouchLayout } from '../input/isTouchLayout.js';
 import { applySuperShot, getSuperpower, isInstantSuperpower } from '../content/superpowers.js';
@@ -39,9 +39,11 @@ import { createArenaStage } from '../ui/createArenaStage.js';
 import { createIconButton } from '../ui/createIconButton.js';
 import { createInfoOverlay } from '../ui/createInfoOverlay.js';
 import { createConfirmationOverlay } from '../ui/createConfirmationOverlay.js';
+import { usesCompactPhoneUi } from '../layout/tabletStage.js';
 import { resolveChilenaShot, shouldRedirectLobChilena } from '../pure/chilena.js';
 import {
   directionalDashContact,
+  isGoalFootPinCandidate,
   shouldResolvePlayerClash,
   sweepCircleAgainstBounds,
 } from '../pure/gameplayPhysics.js';
@@ -172,6 +174,11 @@ export class MatchScene extends Phaser.Scene {
     this.clashCooldown = 0;
     this.clashCount = 0;
     this.lastClashPoppedBall = false;
+    this.goalFootPinTimers = { left: 0, right: 0 };
+    this.goalFootPinCooldown = 0;
+    this.goalFootPinReleases = 0;
+    this.lastGoalFootPinSide = null;
+    this.lastGoalFootPinRelease = null;
     this.hudSignature = null;
     this.goalLatch = false;
     this.playersResettled = false;
@@ -185,13 +192,20 @@ export class MatchScene extends Phaser.Scene {
     this.createHud();
     this.createOverlays();
     this.touchControls = new TouchControls(this, this.inputController);
+    const useWidePhoneControls = this.isTouchLayout && this.stageLayout.width >= GAME_WIDTH + 24;
+    const widePhoneCameraOffset = useWidePhoneControls
+      ? (this.stageLayout.width - GAME_WIDTH) / 2
+      : 0;
     this.helpButton = createIconButton(this, {
-      x: this.isTouchLayout ? 1162 : 1228,
+      // Unlike TouchControls, createIconButton follows the world camera. Add
+      // one camera offset here so its visible edge gutter matches 16:9 too.
+      x: useWidePhoneControls ? 1144 + widePhoneCameraOffset : this.isTouchLayout ? 1162 : 1228,
       y: 54,
-      radius: 28,
+      radius: useWidePhoneControls ? FOOTBALL_SYSTEM_CONTROL_RADIUS : 28,
       icon: 'help',
       accent: 0x52d7e8,
       depth: 94,
+      prominent: useWidePhoneControls,
       onPress: () => this.openHelp(),
     });
     this.bindEvents();
@@ -241,8 +255,7 @@ export class MatchScene extends Phaser.Scene {
       },
       setOpponentPosition: (x = 1040) => {
         this.rightPlayer.finishChilena();
-        this.rightPlayer.sprite.setPosition(Phaser.Math.Clamp(x, 142, 1138), GROUND_Y - 89);
-        this.rightPlayer.sprite.setVelocity(0, 0);
+        this.rightPlayer.placeOnGround(Phaser.Math.Clamp(x, 142, 1138));
         this.rightPlayer.setFacing(-1);
         this.rightPlayer.stunTimer = 0;
         this.rightPlayer.stunProtection = 0;
@@ -268,8 +281,7 @@ export class MatchScene extends Phaser.Scene {
       },
       setHumanPosition: (x = 360) => {
         this.leftPlayer.finishChilena();
-        this.leftPlayer.sprite.setPosition(Phaser.Math.Clamp(x, 142, 1138), GROUND_Y - 89);
-        this.leftPlayer.sprite.setVelocity(0, 0);
+        this.leftPlayer.placeOnGround(Phaser.Math.Clamp(x, 142, 1138));
         this.leftPlayer.setFacing(1);
         this.leftPlayer.kickCooldown = 0;
         this.leftPlayer.kickTimer = 0;
@@ -355,11 +367,12 @@ export class MatchScene extends Phaser.Scene {
   }
 
   createOverlays() {
+    const compactPhoneUi = usesCompactPhoneUi(this);
     const pauseShade = this.add.rectangle(0, 0, GAME_WIDTH, this.stageLayout.height, 0x050914, 0.65).setOrigin(0).setInteractive();
     const pausePanel = this.add.rectangle(640, 352, 620, 390, 0x0d1b34, 0.96).setStrokeStyle(3, 0x8fefff, 0.42);
     const pauseTitle = this.add.text(640, 230, t(this.language, 'match.paused'), this.hudTextStyle(54, '#ffffff')).setOrigin(0.5);
     const pauseCopy = this.add.text(640, 305, t(this.language, 'match.chooseOption'), {
-      ...this.hudTextStyle(21, '#bcd1eb'),
+      ...this.hudTextStyle(compactPhoneUi ? 27 : 21, '#bcd1eb'),
       align: 'center',
       lineSpacing: 9,
     }).setOrigin(0.5);
@@ -378,7 +391,12 @@ export class MatchScene extends Phaser.Scene {
     const resultPanel = this.add.rectangle(640, 340, 610, 390, 0x0d1b34, 0.98).setStrokeStyle(4, 0xffdc63, 0.55);
     this.resultTitle = this.add.text(640, 225, t(this.language, 'match.characterWins', { name: getCharacterLabel(this.playerCharacter, this.language) }), this.hudTextStyle(54, '#ffffff')).setOrigin(0.5);
     this.resultScore = this.add.text(640, 300, '1  :  0', this.hudTextStyle(48, '#ffda55')).setOrigin(0.5);
-    this.resultCopy = this.add.text(640, 354, t(this.language, 'match.winCopy'), this.hudTextStyle(19, '#bbcee6')).setOrigin(0.5);
+    this.resultCopy = this.add.text(
+      640,
+      354,
+      t(this.language, 'match.winCopy'),
+      this.hudTextStyle(compactPhoneUi ? 26 : 19, '#bbcee6'),
+    ).setOrigin(0.5);
     this.resultOverlay = this.add.container(0, 0, [resultShade, resultPanel, this.resultTitle, this.resultScore, this.resultCopy]).setDepth(110).setVisible(false);
     this.rematchButton = createButton(this, { x: 640, y: 435, width: 310, height: 68, label: t(this.language, 'match.rematch'), color: 0x705cff, onPress: () => this.scene.restart() });
     this.menuButton = createButton(this, { x: 640, y: 509, width: 250, height: 52, label: t(this.language, 'match.mainMenu'), color: 0x1d3c60, onPress: () => this.scene.start('Intro') });
@@ -583,8 +601,9 @@ export class MatchScene extends Phaser.Scene {
     return true;
   }
 
-  openHelp() {
-    if (this.helpOverlay || this.abandonConfirmation) return;
+  async openHelp() {
+    if (this.helpOverlay || this.helpOverlayLoading || this.abandonConfirmation) return;
+    this.helpOverlayLoading = true;
     this.inputController?.neutralize();
     this.helpResumeOnClose = this.phase !== 'result' && !this.isPaused;
     if (this.helpResumeOnClose) {
@@ -596,12 +615,21 @@ export class MatchScene extends Phaser.Scene {
     this.setPauseMenuButtonsVisible(false);
     this.touchControls.setVisible(false);
     this.helpButton.setVisible(false);
-    this.helpOverlay = createInfoOverlay(this, {
+    const overlayFactory = usesCompactPhoneUi(this)
+      ? (await import('../compact/createCompactInfoOverlay.js')).createCompactInfoOverlay
+      : createInfoOverlay;
+    if (!this.sys.isActive()) {
+      this.helpOverlayLoading = false;
+      return;
+    }
+    this.helpOverlay = overlayFactory(this, {
       kind: 'help',
+      gameId: 'football',
       language: this.language,
       inputMode: this.isTouchLayout ? 'touch' : 'keyboard',
       onClose: () => this.closeHelp(),
     });
+    this.helpOverlayLoading = false;
     arcadeAudio.click();
   }
 
@@ -772,6 +800,7 @@ export class MatchScene extends Phaser.Scene {
     if (this.currentIntents.right.kickBoost > 0) {
       this.currentIntents.right = { ...this.currentIntents.right, kickBoost: 0 };
     }
+    this.handleGoalFootPin(dt);
     this.handleStrikes();
     this.handleSweptPowerContact();
     const clashResolved = this.handlePlayerClash(dt);
@@ -797,6 +826,10 @@ export class MatchScene extends Phaser.Scene {
         this.activateChilenaStrike(fighter, chilenaStrike);
         continue;
       }
+      // A failed chilena eligibility check must not consume the button press.
+      // Restart the real kick/contact cycle immediately, even if its previous
+      // animation or cooldown is still active.
+      fighter.restartPendingShot();
       const incomingPowerVelocity = this.powerBall.active && this.powerBall.owner !== fighter.side
         ? { ...this.ball.body.body.velocity }
         : null;
@@ -941,6 +974,67 @@ export class MatchScene extends Phaser.Scene {
     );
     this.game.events.emit('platform:haptic', 'medium');
     return true;
+  }
+
+  handleGoalFootPin(dt) {
+    this.goalFootPinCooldown = Math.max(0, this.goalFootPinCooldown - dt);
+    const ball = this.ball.snapshot();
+    let released = false;
+    for (const [side, defender, attacker] of [
+      ['left', this.leftPlayer, this.rightPlayer],
+      ['right', this.rightPlayer, this.leftPlayer],
+    ]) {
+      const attackerIntent = this.currentIntents[attacker.side] ?? {};
+      const defenderBounds = defender.sprite.body.bounds;
+      const candidate = isGoalFootPinCandidate({
+        defender: defender.snapshot(),
+        attacker: attacker.snapshot(),
+        ball,
+        defenderBounds,
+        defenderSide: side,
+        attackerIntent,
+        groundY: GROUND_Y,
+      });
+      this.goalFootPinTimers[side] = candidate
+        ? this.goalFootPinTimers[side] + dt
+        : Math.max(0, this.goalFootPinTimers[side] - dt * 3);
+      if (!candidate || this.goalFootPinCooldown > 0 || this.goalFootPinTimers[side] < 0.16) continue;
+
+      const pitchDirection = side === 'left' ? 1 : -1;
+      const releaseX = pitchDirection > 0
+        ? defenderBounds.max.x + ball.radius + 3
+        : defenderBounds.min.x - ball.radius - 3;
+      attacker.sprite.setPosition(attacker.sprite.x + pitchDirection * 18, attacker.sprite.y);
+      const releaseY = Math.min(
+        defenderBounds.min.y,
+        attacker.sprite.body.bounds.min.y,
+      ) - ball.radius - 4;
+      attacker.sprite.setVelocityX(pitchDirection * 5.2);
+      defender.sprite.setVelocity(pitchDirection * 2.2, -3.4);
+      // A horizontal nudge alone can rebound off the same two bodies and head
+      // into the trapped player's goal. Pop above the collision sandwich first
+      // so the ball has a clean, goal-safe route back toward the pitch.
+      this.ball.body.setPosition(releaseX, releaseY);
+      this.ball.body.setVelocity(pitchDirection * 8.6, -5.8);
+      this.ball.body.setAngularVelocity(pitchDirection * 0.14);
+      this.previousBallPosition = { x: releaseX, y: releaseY };
+      this.lastGoalFootPinRelease = {
+        side,
+        ballVx: pitchDirection * 8.6,
+        ballVy: -5.8,
+        attackerVx: pitchDirection * 5.2,
+        releaseX,
+        releaseY,
+      };
+      this.goalFootPinTimers[side] = 0;
+      this.goalFootPinCooldown = 0.65;
+      this.goalFootPinReleases += 1;
+      this.lastGoalFootPinSide = side;
+      this.spawnImpact(this.ball.body.x, this.ball.body.y, 0xffd45a, 12);
+      released = true;
+      break;
+    }
+    return released;
   }
 
   activateChilenaStrike(fighter, strike) {
@@ -1392,6 +1486,16 @@ export class MatchScene extends Phaser.Scene {
         clashCount: this.clashCount,
         clashCooldown: round(this.clashCooldown),
         lastClashPoppedBall: this.lastClashPoppedBall,
+        goalFootPinReleases: this.goalFootPinReleases,
+        lastGoalFootPinRelease: this.lastGoalFootPinRelease
+          ? { ...this.lastGoalFootPinRelease }
+          : null,
+        goalFootPinCooldown: round(this.goalFootPinCooldown),
+        goalFootPinTimers: {
+          left: round(this.goalFootPinTimers.left),
+          right: round(this.goalFootPinTimers.right),
+        },
+        lastGoalFootPinSide: this.lastGoalFootPinSide,
       },
       touchControls: this.touchControls?.visible ?? false,
       touchControlVisuals: this.touchControls?.diagnostics?.() ?? {},
@@ -1440,6 +1544,11 @@ export class MatchScene extends Phaser.Scene {
       this.stepGame(FIXED_STEP);
       if (!this.isPaused && this.phase !== 'result') this.matter.world.step(FIXED_STEP * 1000);
     }
+    // Manual Matter stepping does not emit Phaser's POST_UPDATE event. Mirror
+    // the production post-physics visual pin explicitly so deterministic
+    // chilena captures cannot trail the body by one simulation tick.
+    this.leftPlayer?.postPhysicsVisualSync?.();
+    this.rightPlayer?.postPhysicsVisualSync?.();
     this.updateVisuals(milliseconds / 1000);
     this.game.renderer.preRender();
     this.sys.render(this.game.renderer);

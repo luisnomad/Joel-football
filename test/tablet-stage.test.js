@@ -4,6 +4,7 @@ import {
   createStageLayout,
   getWideStageUiScale,
   shouldExpandWidePhoneStage,
+  shouldUseCompactPhoneUi,
   shouldExtendTabletStage,
 } from '../src/game/layout/tabletStage.js';
 
@@ -21,6 +22,40 @@ describe('non-16:9 tablet stage', () => {
       viewportHeight: 768,
       touchPoints: 5,
     })).toBe(true);
+  });
+
+  it('limits compact menus to phone-class wide touch displays', () => {
+    expect(shouldUseCompactPhoneUi({
+      viewportWidth: 924,
+      viewportHeight: 412,
+      touchPoints: 5,
+      mobileUserAgent: true,
+    })).toBe(true);
+    expect(shouldUseCompactPhoneUi({
+      viewportWidth: 732,
+      viewportHeight: 412,
+      touchPoints: 5,
+      mobileUserAgent: true,
+    })).toBe(true);
+    expect(shouldUseCompactPhoneUi({
+      viewportWidth: 1920,
+      viewportHeight: 800,
+      touchPoints: 5,
+      mobileUserAgent: false,
+    })).toBe(false);
+    expect(shouldUseCompactPhoneUi({
+      viewportWidth: 1280,
+      viewportHeight: 800,
+      touchPoints: 5,
+      mobileUserAgent: false,
+    })).toBe(false);
+    expect(shouldUseCompactPhoneUi({
+      viewportWidth: 924,
+      viewportHeight: 412,
+      touchPoints: 0,
+      coarsePointer: false,
+      mobileUserAgent: true,
+    })).toBe(false);
   });
 
   it('preserves 16:9, phones, portrait devices, and non-touch desktop layouts', () => {
@@ -58,7 +93,7 @@ describe('non-16:9 tablet stage', () => {
     expect(createStageLayout({ width: 1280, height: 720 }).extended).toBe(false);
   });
 
-  it('expands extra-wide landscape phones without changing tablets or desktop', () => {
+  it('expands extra-wide landscape touch devices without changing regular tablets or desktop', () => {
     expect(shouldExpandWidePhoneStage({
       viewportWidth: 1179,
       viewportHeight: 590,
@@ -70,8 +105,35 @@ describe('non-16:9 tablet stage', () => {
       coarsePointer: true,
     })).toBe(true);
     expect(shouldExpandWidePhoneStage({ viewportWidth: 1280, viewportHeight: 720, touchPoints: 5 })).toBe(false);
+    expect(shouldExpandWidePhoneStage({
+      viewportWidth: 1920,
+      viewportHeight: 800,
+      touchPoints: 5,
+    })).toBe(true);
+    expect(shouldExpandWidePhoneStage({ viewportWidth: 1280, viewportHeight: 800, touchPoints: 5 })).toBe(false);
     expect(shouldExpandWidePhoneStage({ viewportWidth: 1280, viewportHeight: 590 })).toBe(false);
     expect(shouldExpandWidePhoneStage({ viewportWidth: 590, viewportHeight: 1179, touchPoints: 5 })).toBe(false);
+  });
+
+  it('recognizes a wide phone from its eventual landscape shape during a portrait startup race', () => {
+    expect(shouldExpandWidePhoneStage({
+      viewportWidth: 430,
+      viewportHeight: 932,
+      touchPoints: 5,
+      forceLandscape: true,
+    })).toBe(true);
+    expect(shouldExpandWidePhoneStage({
+      viewportWidth: 412,
+      viewportHeight: 924,
+      coarsePointer: true,
+      forceLandscape: true,
+    })).toBe(true);
+    expect(shouldExpandWidePhoneStage({
+      viewportWidth: 800,
+      viewportHeight: 1280,
+      touchPoints: 5,
+      forceLandscape: true,
+    })).toBe(false);
   });
 
   it('modestly enlarges UI on horizontally expanded stages', () => {

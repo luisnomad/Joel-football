@@ -1,6 +1,7 @@
 import Phaser from 'phaser';
 import { GAME_HEIGHT, GAME_WIDTH } from '../constants.js';
 import { t } from '../i18n.js';
+import { getSceneStageLayout } from '../layout/tabletStage.js';
 import { getMiniGameEntry, loadMiniGameScene } from '../minigames/minigameCatalog.js';
 import { playerProfileStore } from '../services/PlayerProfile.js';
 import { clearActiveScene, setActiveScene } from '../stateBridge.js';
@@ -26,9 +27,12 @@ export class MiniGameLoadingScene extends Phaser.Scene {
   }
 
   create() {
+    this.stageLayout = getSceneStageLayout(this);
+    const horizontalOffset = Math.max(0, this.stageLayout.width - GAME_WIDTH) / 2;
+    if (horizontalOffset >= 12) this.cameras.main.setScroll(-horizontalOffset, 0);
     const graphics = this.add.graphics();
     graphics.fillGradientStyle(0x07152d, 0x07152d, 0x210d32, 0x210d32, 1);
-    graphics.fillRect(0, 0, GAME_WIDTH, GAME_HEIGHT);
+    graphics.fillRect(-horizontalOffset, 0, this.stageLayout.width, this.stageLayout.height);
     graphics.fillStyle(0x43d8ef, 0.1).fillCircle(210, 160, 180);
     graphics.fillStyle(0xff5e7f, 0.08).fillCircle(1080, 590, 230);
 
@@ -131,7 +135,7 @@ export class MiniGameLoadingScene extends Phaser.Scene {
       phase: this.status,
       error: this.error,
       savedProgress: this.profile?.kickfall ?? null,
-      coordinateSystem: 'origin top-left; +x right; +y down; logical canvas 1280x720',
+      coordinateSystem: `origin top-left; +x right; +y down; logical canvas ${this.stageLayout?.width ?? GAME_WIDTH}x${this.stageLayout?.height ?? GAME_HEIGHT}`,
       actions: this.status === 'error'
         ? ['press Escape to return to menu']
         : this.status === 'choice' ? ['continue saved level', 'start from level 1'] : [],

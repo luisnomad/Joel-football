@@ -1,6 +1,12 @@
 import Phaser from 'phaser';
 import { normalizeIntent } from '../pure/actions.js';
 import { createDirectionTapState, registerDirectionTap, resolveDirectionalDash } from '../pure/directionalDash.js';
+import {
+  consumeTouchShotCombo,
+  createTouchShotComboState,
+  registerTouchShotTap,
+  TOUCH_CHILENA_COMBO_WINDOW_MS,
+} from '../pure/touchShotCombo.js';
 import { resolveJoystickDashGesture } from './virtualJoystickMath.js';
 
 const consumePulse = (state, name) => {
@@ -32,6 +38,7 @@ export class InputController {
     this.touchDashArmed = true;
     this.keyboardPulse = { power: false };
     this.directionTapState = createDirectionTapState();
+    this.touchShotComboState = createTouchShotComboState();
     this.pendingDashDirection = 0;
     this.lastDashResolution = { direction: 0, purpose: 'none' };
     this.onPowerDown = () => { this.keyboardPulse.power = true; };
@@ -47,6 +54,16 @@ export class InputController {
 
   setTouch(action, down) {
     if (!(action in this.touch)) return;
+    if (
+      down
+      && !this.touch[action]
+      && (action === 'kick' || action === 'lob')
+    ) {
+      this.touchShotComboState = registerTouchShotTap(this.touchShotComboState, {
+        action,
+        at: this.scene.time.now,
+      });
+    }
     if (down && !this.touch[action] && (action === 'left' || action === 'right')) {
       this.recordDirectionPress(action === 'left' ? -1 : 1);
     }
@@ -92,6 +109,7 @@ export class InputController {
     this.scene.input.keyboard.resetKeys?.();
     Object.values(this.keys).forEach((key) => key.reset?.());
     this.resetAdvancedInput();
+    this.touchShotComboState = createTouchShotComboState();
   }
 
   sample(self = {}, context = {}) {
@@ -105,11 +123,27 @@ export class InputController {
       JustDown(this.keys.jumpArrow) ||
       JustDown(this.keys.jumpSpace) ||
       consumePulse(this.touch, 'jump');
-    const kickPressed = JustDown(this.keys.kickX) || JustDown(this.keys.kickK) || consumePulse(this.touch, 'kick');
-    const lobPressed = JustDown(this.keys.lobZ) || JustDown(this.keys.lobI) || consumePulse(this.touch, 'lob');
+    const touchKickPressed = consumePulse(this.touch, 'kick');
+    const touchLobPressed = consumePulse(this.touch, 'lob');
+    const kickPressed = JustDown(this.keys.kickX) || JustDown(this.keys.kickK) || touchKickPressed;
+    const lobPressed = JustDown(this.keys.lobZ) || JustDown(this.keys.lobI) || touchLobPressed;
     const modifierLob = kickPressed && jumpHeld;
     const requestedShot = kickPressed || lobPressed;
-    const kickBoost = requestedShot && self.kickTimer > 0 && !self.powerArmed ? 1 : 0;
+    const touchCombo = consumeTouchShotCombo(this.touchShotComboState);
+    this.touchShotComboState = touchCombo.state;
+    const touchChilenaCombo = (
+      (touchCombo.action === 'kick' && touchKickPressed)
+      || (touchCombo.action === 'lob' && touchLobPressed)
+    );
+    const kickBoost = requestedShot
+      && (self.kickTimer > 0 || touchChilenaCombo)
+      && !self.powerArmed
+      ? 1
+      : 0;
+    // A repeated human press is both a chilena attempt and a real new kick.
+    // Fighter/Match first try the aerial move; on rejection they restart the
+    // contact cycle instead of swallowing the press as an invisible boost.
+    const shotRestart = kickBoost > 0;
     const move = keyboardMove || this.touchMove || digitalTouchMove;
     let dashDirection = 0;
     if (this.pendingDashDirection) {
@@ -134,12 +168,13 @@ export class InputController {
     return normalizeIntent({
       move,
       jump: jumpPressed && !kickPressed,
-      kick: !kickBoost && kickPressed && !modifierLob,
-      lob: !kickBoost && (lobPressed || modifierLob),
+      kick: kickPressed && !modifierLob,
+      lob: lobPressed || modifierLob,
       dash: dashDirection !== 0,
       dashDirection,
       power: consumePulse(this.keyboardPulse, 'power') || consumePulse(this.touch, 'power'),
       kickBoost,
+      shotRestart,
     });
   }
 
@@ -149,6 +184,8 @@ export class InputController {
       touchDashArmed: this.touchDashArmed,
       touch: { ...this.touch },
       pendingDashDirection: this.pendingDashDirection,
+      touchChilenaComboWindowMs: TOUCH_CHILENA_COMBO_WINDOW_MS,
+      lastTouchShotIntervalMs: this.touchShotComboState.lastIntervalMs,
     };
   }
 

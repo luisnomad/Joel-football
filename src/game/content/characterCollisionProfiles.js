@@ -1,6 +1,8 @@
 const STANDARD_FOOTBALL = Object.freeze({
   bodyScale: 1,
-  headTop: 0,
+  // The tallest standard idle silhouettes (Joel, Juan, and Juanjo) occupy
+  // 222 world pixels from the shared foot anchor to the top hair pixel.
+  headTop: 222,
 });
 
 const STANDARD_KICKFALL = Object.freeze({
@@ -44,9 +46,12 @@ export const getFootballCollisionGeometry = (character) => {
   const bodyScale = Math.max(0.5, Number(profile.bodyScale) || 1);
   const headTop = Math.max(0, Number(profile.headTop) || 0);
   const headCapRadius = 40;
-  const unscaledFootReferenceY = 89;
+  // The compound's actual unscaled lower bound is y=70. The old calculation
+  // used the sprite-position offset (89), which is not a body bound and left a
+  // 19px blind strip at standard scale (22.8px for the large profiles).
+  const unscaledBodyBottomY = 70;
   const headCapY = headTop > 0
-    ? Math.min(-76, unscaledFootReferenceY + headCapRadius - headTop / bodyScale)
+    ? Math.min(-76, unscaledBodyBottomY + headCapRadius - headTop / bodyScale)
     : -76;
   return Object.freeze({
     bodyScale,

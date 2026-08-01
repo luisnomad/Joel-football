@@ -2,6 +2,6 @@
 <resources>
     <string name="app_name">Joel Football</string>
     <string name="title_activity_main">Joel Football</string>
-    <string name="package_name">com.luisnomad.joelfootball</string>
-    <string name="custom_url_scheme">com.luisnomad.joelfootball</string>
+    <string name="package_name">com.notjustprompts.joelfootball</string>
+    <string name="custom_url_scheme">com.notjustprompts.joelfootball</string>
 </resources>

@@ -11,6 +11,7 @@ export const normalizeIntent = (value = EMPTY_INTENT) => ({
   dashDirection: Math.sign(clamp(Number.isFinite(value.dashDirection) ? value.dashDirection : 0, -1, 1)),
   power: value.power === true,
   kickBoost: Math.floor(clamp(Number.isFinite(value.kickBoost) ? value.kickBoost : 0, 0, 3)),
+  shotRestart: value.shotRestart === true,
 });
 
 export const applyAiDifficulty = (intent, difficulty = 'normal') => {

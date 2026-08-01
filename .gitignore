@@ -2,6 +2,8 @@ node_modules/
 dist/
 output/
 tmp/
+.release-private/
+.playwright-mcp/
 .DS_Store
 npm-debug.log*
 __pycache__/

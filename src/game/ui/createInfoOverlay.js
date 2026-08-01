@@ -12,8 +12,9 @@ import {
 const HELP_PANEL_WIDTH = 890;
 
 export const ABOUT_LINKS = Object.freeze({
-  website: 'https://notjustprompts.ai/',
   youtube: 'https://www.youtube.com/@luisnomad',
+  privacy: 'https://notjustprompts.ai/joel-football/legal/',
+  support: 'https://notjustprompts.ai/joel-football/support/',
 });
 
 const textStyle = (size, color = '#ffffff', extra = {}) => ({
@@ -33,6 +34,34 @@ const createCloseControl = (scene, x, y, depth, onClose) => {
   return [ring, cross, zone];
 };
 
+const createAboutLinkButton = (scene, {
+  x,
+  y,
+  width,
+  label,
+  color,
+  hoverColor,
+  strokeColor,
+  depth,
+  onActivate,
+}) => {
+  const button = scene.add.rectangle(x, y, width, 50, color, 0.98)
+    .setStrokeStyle(2, strokeColor, 0.76)
+    .setDepth(depth)
+    .setInteractive({ useHandCursor: true });
+  const buttonLabel = scene.add.text(x, y, label, textStyle(15, '#ffffff', {
+    fontStyle: 'bold',
+  })).setOrigin(0.5).setDepth(depth + 0.1);
+  bindButtonInput(scene, button, {
+    onOver: () => button.setFillStyle(hoverColor, 1),
+    onOut: () => button.setFillStyle(color, 0.98),
+    onPress: () => button.setScale(0.98),
+    onRelease: () => button.setScale(1),
+    onActivate,
+  });
+  return [button, buttonLabel];
+};
+
 const createAboutContent = (scene, language, appInfo, depth, onOpenExternal) => {
   const buildLabel = appInfo?.build && appInfo.build !== 'web' ? ` (${appInfo.build})` : '';
   const creatorCharacter = getCharacter('dad');
@@ -42,30 +71,39 @@ const createAboutContent = (scene, language, appInfo, depth, onOpenExternal) => 
     .setDepth(depth);
   const website = scene.add.text(720, 344, 'NotJustPrompts.ai', textStyle(20, '#7ce8ff', {
     fontStyle: 'bold',
-  })).setOrigin(0.5).setDepth(depth + 0.1).setInteractive({ useHandCursor: true });
-  const websiteUnderline = scene.add.rectangle(720, 359, website.width, 2, 0x7ce8ff, 0.65).setDepth(depth);
-  bindButtonInput(scene, website, {
-    onOver: () => website.setColor('#ffffff'),
-    onOut: () => website.setColor('#7ce8ff'),
-    onActivate: () => onOpenExternal?.(ABOUT_LINKS.website),
-  });
-
-  const youtubeButton = scene.add.rectangle(720, 535, 270, 48, 0x182a45, 0.96)
-    .setStrokeStyle(2, 0xff5a5f, 0.72)
-    .setDepth(depth)
-    .setInteractive({ useHandCursor: true });
-  const youtubeIcon = scene.add.graphics({ x: 625, y: 535 }).setDepth(depth + 0.1);
-  youtubeIcon.fillStyle(0xff353d, 1).fillRoundedRect(-20, -13, 40, 26, 7);
-  youtubeIcon.fillStyle(0xffffff, 1).fillTriangle(-5, -8, -5, 8, 9, 0);
-  const youtubeLabel = scene.add.text(742, 535, 'Luis Nomad', textStyle(18, '#ffffff', {
-    fontStyle: 'bold',
   })).setOrigin(0.5).setDepth(depth + 0.1);
-  bindButtonInput(scene, youtubeButton, {
-    onOver: () => youtubeButton.setFillStyle(0x263c5d, 1),
-    onOut: () => youtubeButton.setFillStyle(0x182a45, 0.96),
-    onPress: () => youtubeButton.setScale(0.98),
-    onRelease: () => youtubeButton.setScale(1),
+  const youtubeButton = createAboutLinkButton(scene, {
+    x: 720,
+    y: 505,
+    width: 430,
+    label: t(language, 'about.youtube'),
+    color: 0xa91220,
+    hoverColor: 0xd21a2a,
+    strokeColor: 0xff6b73,
+    depth,
     onActivate: () => onOpenExternal?.(ABOUT_LINKS.youtube),
+  });
+  const privacyButton = createAboutLinkButton(scene, {
+    x: 614,
+    y: 565,
+    width: 190,
+    label: t(language, 'about.privacy'),
+    color: 0x12495c,
+    hoverColor: 0x1c667c,
+    strokeColor: 0x7ce8ff,
+    depth,
+    onActivate: () => onOpenExternal?.(ABOUT_LINKS.privacy),
+  });
+  const supportButton = createAboutLinkButton(scene, {
+    x: 824,
+    y: 565,
+    width: 210,
+    label: t(language, 'about.reportProblem'),
+    color: 0x65420e,
+    hoverColor: 0x815719,
+    strokeColor: 0xffdc72,
+    depth,
+    onActivate: () => onOpenExternal?.(ABOUT_LINKS.support),
   });
 
   return [
@@ -80,7 +118,6 @@ const createAboutContent = (scene, language, appInfo, depth, onOpenExternal) => 
       fontStyle: 'bold',
     })).setOrigin(0.5).setDepth(depth),
     website,
-    websiteUnderline,
     scene.add.text(720, 389, t(language, 'about.dedication'), textStyle(18, '#ffdc72', {
       fontStyle: 'bold',
     })).setOrigin(0.5).setDepth(depth),
@@ -88,10 +125,10 @@ const createAboutContent = (scene, language, appInfo, depth, onOpenExternal) => 
       lineSpacing: 5,
       wordWrap: { width: 430, useAdvancedWrap: true },
     })).setOrigin(0.5).setDepth(depth),
-    youtubeButton,
-    youtubeIcon,
-    youtubeLabel,
-    scene.add.text(720, 584, `${t(language, 'about.version')} ${appInfo?.version ?? '1.5.0'}${buildLabel}`, textStyle(16, '#a9bdd8')).setOrigin(0.5).setDepth(depth),
+    ...youtubeButton,
+    ...privacyButton,
+    ...supportButton,
+    scene.add.text(720, 614, `${t(language, 'about.version')} ${appInfo?.version ?? '1.6.0'}${buildLabel}`, textStyle(16, '#a9bdd8')).setOrigin(0.5).setDepth(depth),
   ];
 };
 
@@ -287,6 +324,9 @@ export const createInfoOverlay = (scene, {
     about: kind === 'about' ? {
       creator: t(language, 'about.creatorCharacter'),
       support: t(language, 'about.support'),
+      youtube: t(language, 'about.youtube'),
+      privacy: t(language, 'about.privacy'),
+      reportProblem: t(language, 'about.reportProblem'),
     } : null,
     creatorCharacter: creatorCharacter
       ? { id: creatorCharacter.id }

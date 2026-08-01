@@ -224,12 +224,22 @@ asset.
 - Tablet gameplay controls use highly transparent crystal-glass surfaces with
   subtle rims and strong symbols so players, the ball, and goals remain visible
   beneath the controls.
+- Tablet is the primary, fully optimized children's-game experience. Phones
+  remain supported in the same app through a separate lazy-loaded Casual-mode
+  presentation for short play sessions; they are not required to reach visual
+  or ergonomic parity across every extreme phone size. The exact product and
+  release boundary is defined in the
+  [responsive layout guide](RESPONSIVE_LAYOUT_GUIDE.md#product-decision-tablet-first-phone-casual-mode).
 - Original ball, UI marks, power/comet effect, particles, and subtle impact
   feedback.
 - The generated art must be committed under `public/assets/` and may not depend
   on the reference screenshot at runtime.
 - Assets must render cleanly at the game's target 16:9 logical resolution and
   scale responsively.
+- Every new scene and mini-game must follow the
+  [responsive layout guide](RESPONSIVE_LAYOUT_GUIDE.md), including its fixed
+  gameplay-coordinate, overflow-treatment, setup/loading/overlay, device-matrix,
+  and regression-test requirements.
 
 ### Architecture
 

@@ -93,6 +93,8 @@ export class MiniGameSetupScene extends Phaser.Scene {
   }
 
   createBackdrop() {
+    const horizontalOffset = Math.max(0, this.stageLayout.width - GAME_WIDTH) / 2;
+    if (horizontalOffset >= 12) this.cameras.main.setScroll(-horizontalOffset, 0);
     this.add.image(
       GAME_WIDTH / 2,
       this.stageLayout.height / 2,
@@ -104,7 +106,7 @@ export class MiniGameSetupScene extends Phaser.Scene {
     } else {
       wash.fillGradientStyle(0x061127, 0x061127, 0x170c2a, 0x170c2a, 0.8, 0.78, 0.96, 0.96);
     }
-    wash.fillRect(0, 0, this.stageLayout.width, this.stageLayout.height);
+    wash.fillRect(-horizontalOffset, 0, this.stageLayout.width, this.stageLayout.height);
   }
 
   createKickfallSetup() {

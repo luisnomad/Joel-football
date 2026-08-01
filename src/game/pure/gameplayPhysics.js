@@ -107,6 +107,51 @@ export const shouldResolvePlayerClash = ({ left = {}, right = {}, intents = {} }
   return (pushingInward || simultaneousKicks) && relativeSpeed < 3.2;
 };
 
+export const isGoalFootPinCandidate = ({
+  defender = {},
+  attacker = {},
+  ball = {},
+  defenderBounds = {},
+  defenderSide = 'left',
+  attackerIntent = {},
+  groundY = 636,
+} = {}) => {
+  if (defender.grounded || defender.stunned) return false;
+
+  const side = defenderSide === 'right' ? 'right' : 'left';
+  const goalDirection = side === 'left' ? -1 : 1;
+  const pitchDirection = -goalDirection;
+  const defenderX = Number(defender.x) || 0;
+  const attackerX = Number(attacker.x) || 0;
+  const ballX = Number(ball.x) || 0;
+  const ballY = Number(ball.y) || 0;
+  const ballRadius = Math.max(0, Number(ball.radius) || 0);
+  const boundsMinX = Number(defenderBounds.min?.x ?? defenderBounds.minX);
+  const boundsMaxX = Number(defenderBounds.max?.x ?? defenderBounds.maxX);
+  const boundsMaxY = Number(defenderBounds.max?.y ?? defenderBounds.maxY);
+  if (![boundsMinX, boundsMaxX, boundsMaxY].every(Number.isFinite)) return false;
+
+  const closeToOwnGoal = side === 'left' ? defenderX <= 310 : defenderX >= 970;
+  const attackerOnPitchSide = (attackerX - defenderX) * pitchDirection > 0;
+  const attackerClose = Math.abs(attackerX - defenderX) <= 128;
+  const pressingGoalward = (Number(attackerIntent.move) || 0) * goalDirection > 0.2
+    || (Number(attacker.vx) || 0) * goalDirection > 0.6;
+  const ballUnderFoot = ballX >= boundsMinX - ballRadius * 0.45
+    && ballX <= boundsMaxX + ballRadius * 0.45
+    && Math.abs((ballY - ballRadius) - boundsMaxY) <= 16;
+  const ballOnPitch = ballY + ballRadius >= Number(groundY) - 8;
+  const stalled = Math.hypot(Number(ball.vx) || 0, Number(ball.vy) || 0) < 4.5
+    && Math.abs(Number(defender.vy) || 0) < 2.5;
+
+  return closeToOwnGoal
+    && attackerOnPitchSide
+    && attackerClose
+    && pressingGoalward
+    && ballUnderFoot
+    && ballOnPitch
+    && stalled;
+};
+
 export const directionalDashContact = ({
   attacker = {},
   defender = {},

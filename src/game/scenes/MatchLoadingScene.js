@@ -4,6 +4,7 @@ import { getCharacter } from '../content/characters.js';
 import { playerProfileStore } from '../services/PlayerProfile.js';
 import { clearActiveScene, setActiveScene } from '../stateBridge.js';
 import { getArenaTheme } from '../content/matchCustomization.js';
+import { getSceneStageLayout } from '../layout/tabletStage.js';
 
 const assetUrl = (filename) => `${import.meta.env.BASE_URL}assets/${filename}`;
 
@@ -18,9 +19,20 @@ export class MatchLoadingScene extends Phaser.Scene {
   }
 
   preload() {
+    this.stageLayout = getSceneStageLayout(this);
+    const horizontalOffset = Math.max(0, this.stageLayout.width - GAME_WIDTH) / 2;
+    if (horizontalOffset >= 12) this.cameras.main.setScroll(-horizontalOffset, 0);
     const arenaTheme = getArenaTheme(playerProfileStore.get().arenaThemeId);
-    this.add.image(GAME_WIDTH / 2, GAME_HEIGHT / 2, arenaTheme.texture).setDisplaySize(GAME_WIDTH, GAME_HEIGHT);
-    this.add.rectangle(0, 0, GAME_WIDTH, GAME_HEIGHT, 0x071426, 0.34).setOrigin(0);
+    this.add.image(GAME_WIDTH / 2, GAME_HEIGHT / 2, arenaTheme.texture)
+      .setDisplaySize(this.stageLayout.width, GAME_HEIGHT);
+    this.add.rectangle(
+      -horizontalOffset,
+      0,
+      this.stageLayout.width,
+      this.stageLayout.height,
+      0x071426,
+      0.34,
+    ).setOrigin(0);
     this.add.circle(GAME_WIDTH / 2, GAME_HEIGHT / 2, 34, 0xffffff, 0.12)
       .setStrokeStyle(5, 0x74efff, 0.9);
     this.spinner = this.add.arc(GAME_WIDTH / 2, GAME_HEIGHT / 2, 34, 250, 355, false, 0xffd45f, 1);
@@ -49,7 +61,7 @@ export class MatchLoadingScene extends Phaser.Scene {
     return {
       mode: 'match-loading',
       pendingTextures: this.pendingCharacters?.map((character) => character.sheetTexture) ?? [],
-      coordinateSystem: 'origin top-left; +x right; +y down; logical canvas 1280x720',
+      coordinateSystem: `origin top-left; +x right; +y down; logical canvas ${this.stageLayout?.width ?? GAME_WIDTH}x${this.stageLayout?.height ?? GAME_HEIGHT}`,
       actions: [],
     };
   }

@@ -13,6 +13,7 @@ import {
   CHILENA_LOB_APEX_Y,
   canStartChilena,
   chilenaRotationAt,
+  evaluateChilenaEligibility,
   resolveChilenaShot,
   resolveLobChilenaLaunch,
   shouldRedirectLobChilena,
@@ -48,12 +49,60 @@ import {
 import {
   circleIntersectsCapsule,
   directionalDashContact,
+  isGoalFootPinCandidate,
   resolveAdaptiveLob,
   shouldResolvePlayerClash,
   sweepCircleAgainstBounds,
 } from '../src/game/pure/gameplayPhysics.js';
 
 describe('gameplay physics polish', () => {
+  it('recognizes a sustained ball-under-foot pin beside either goal', () => {
+    const leftFixture = {
+      defender: { x: 190, y: 525, vy: 0, grounded: false, stunned: false },
+      attacker: { x: 275, y: 547, vx: -1.2 },
+      ball: { x: 190, y: 614, vx: 0, vy: 0, radius: 22 },
+      defenderBounds: { min: { x: 165 }, max: { x: 215, y: 592 } },
+      defenderSide: 'left',
+      attackerIntent: { move: -1 },
+    };
+    expect(isGoalFootPinCandidate(leftFixture)).toBe(true);
+    expect(isGoalFootPinCandidate({
+      defender: { ...leftFixture.defender, x: 1090 },
+      attacker: { ...leftFixture.attacker, x: 1005, vx: 1.2 },
+      ball: { ...leftFixture.ball, x: 1090 },
+      defenderBounds: { min: { x: 1065 }, max: { x: 1115, y: 592 } },
+      defenderSide: 'right',
+      attackerIntent: { move: 1 },
+    })).toBe(true);
+  });
+
+  it('does not release ordinary jumps or a nearby opponent moving away', () => {
+    const fixture = {
+      defender: { x: 190, y: 525, vy: 0, grounded: false, stunned: false },
+      attacker: { x: 275, y: 547, vx: -1.2 },
+      ball: { x: 190, y: 614, vx: 0, vy: 0, radius: 22 },
+      defenderBounds: { min: { x: 165 }, max: { x: 215, y: 592 } },
+      defenderSide: 'left',
+      attackerIntent: { move: -1 },
+    };
+    expect(isGoalFootPinCandidate({
+      ...fixture,
+      defender: { ...fixture.defender, x: 500 },
+      attacker: { ...fixture.attacker, x: 585 },
+      ball: { ...fixture.ball, x: 500 },
+      defenderBounds: { min: { x: 475 }, max: { x: 525, y: 592 } },
+    })).toBe(false);
+    expect(isGoalFootPinCandidate({
+      ...fixture,
+      attacker: { ...fixture.attacker, vx: 1.2 },
+      attackerIntent: { move: 1 },
+    })).toBe(false);
+    expect(isGoalFootPinCandidate({
+      ...fixture,
+      ball: { ...fixture.ball, y: 560 },
+    })).toBe(false);
+  });
+
   it('derives dash contact from actual body sizes in both directions', () => {
     const standard = { x: 500, y: 500, width: 86, height: 190 };
     const defender = { x: 599, y: 500, width: 86, height: 190 };
@@ -477,6 +526,35 @@ describe('chilena contract', () => {
     expect(canStartChilena({ fighter: { ...dad, height: 240 }, ball: highBall, kickPresses: 2 })).toBe(false);
   });
 
+  it('reports the exact overhead-zone rejection instead of silently consuming a repeat', () => {
+    const runtimeFighter = { ...fighter, height: 280 };
+    expect(evaluateChilenaEligibility({
+      fighter: runtimeFighter,
+      ball: { x: 600, y: 268 },
+      kickPresses: 2,
+    })).toMatchObject({
+      allowed: true,
+      reason: 'eligible',
+      maximumDistance: 280,
+    });
+    expect(evaluateChilenaEligibility({
+      fighter: runtimeFighter,
+      ball: { x: 600, y: 260 },
+      kickPresses: 2,
+    })).toMatchObject({
+      allowed: false,
+      reason: 'ball-too-high-or-far',
+    });
+    expect(evaluateChilenaEligibility({
+      fighter: runtimeFighter,
+      ball: { x: 600, y: 500 },
+      kickPresses: 2,
+    })).toMatchObject({
+      allowed: false,
+      reason: 'ball-not-overhead',
+    });
+  });
+
   it('fires toward the rival goal and rewards a full meter', () => {
     const rightward = resolveChilenaShot({
       attackDirection: 1,
@@ -515,7 +593,7 @@ describe('chilena contract', () => {
     });
     expect(launch.vx).toBeGreaterThan(0);
     expect(launch.vx).toBeLessThan(3);
-    expect(launch.vy).toBeLessThan(-12);
+    expect(launch.vy).toBeLessThanOrEqual(-17);
     expect(CHILENA_LOB_APEX_Y).toBe(150);
     expect(launch.trajectory).toEqual({
       type: 'lob-chilena',
@@ -558,6 +636,7 @@ describe('provider boundary', () => {
       dashDirection: 0,
       power: false,
       kickBoost: 0,
+      shotRestart: false,
     });
     expect(safeDecide({ decide: () => { throw new Error('offline'); } }, snapshot).move).toBe(0);
   });

@@ -175,6 +175,11 @@ try {
   );
   await page.evaluate(() => window.__DISC_HOCKEY_DEBUG__.startPlaying());
   state = await readState(page);
+  assert.equal(
+    await page.evaluate(() => parseFloat(window.__SKYHEAD_GAME__.scene.getScene('DiscHockey').clockText.style.fontSize)),
+    22,
+    'Disc Hockey clock should remain readable on the regular/tablet layout',
+  );
   assert.equal(state.playMode, 'local');
   assert.equal(state.theme, 'neon');
   assert.equal(state.orientation.logicalLocked, true);
@@ -998,6 +1003,202 @@ try {
 
   await page.evaluate(() => {
     const scene = window.__SKYHEAD_GAME__.scene.getScene('DiscHockey');
+    const positions = {
+      striker: { x: 760, y: 170 },
+      interceptor: { x: 1000, y: 520 },
+      defender: { x: 1050, y: 360 },
+      goalkeeper: { x: 1110, y: 520 },
+    };
+    scene.rightPlayers = scene.rightPlayers.map((player) => ({
+      ...player,
+      ...positions[player.crazyRole],
+      vx: 0,
+      vy: 0,
+      penaltySeconds: 0,
+      ejectionSeconds: 0,
+      knockbackSeconds: 0,
+      cornerReleaseSeconds: 0,
+      cornerReleaseCorner: null,
+      cornerRecovery: null,
+      cornerPhase: null,
+      attackPhase: null,
+      aiTarget: null,
+    }));
+    scene.rightPlayer = scene.rightPlayers[0];
+    scene.leftPlayer = {
+      ...scene.leftPlayer,
+      x: 420,
+      y: 520,
+      vx: 0,
+      vy: 0,
+      target: null,
+      pointerId: null,
+    };
+    scene.puck = {
+      ...scene.puck,
+      x: 850,
+      y: 141,
+      vx: 0,
+      vy: 0,
+      powered: false,
+    };
+    scene.aiThinkTimer = 0;
+  });
+  await advance(page, 17);
+  state = await readState(page);
+  const wallRoute = state.computerAi.squad.find(({ role }) => role === 'striker');
+  assert.equal(
+    wallRoute.attackPhase,
+    'route',
+    `a striker caught left of a top-wall puck must route around it; ${JSON.stringify(wallRoute)}`,
+  );
+  assert.ok(
+    wallRoute.target.x < state.puck.x
+      && wallRoute.target.y > state.puck.y + state.puck.radius,
+    `the route must clear the puck vertically before crossing behind it; ${
+      JSON.stringify(wallRoute.target)
+    }`,
+  );
+  await capture(page, '09a1-crazy-top-wall-route');
+  await advance(page, 250);
+  state = await readState(page);
+  assert.ok(
+    Math.abs(state.puck.x - 850) < 15 && state.puck.speed < 100,
+    `routing around the puck must not nudge it toward the opponent wall; ${
+      JSON.stringify(state.puck)
+    }`,
+  );
+  await advance(page, 700);
+  state = await readState(page);
+  assert.ok(
+    state.puck.vx < -400 && state.puck.speed >= 600,
+    `the routed striker must attack instead of gently pushing; ${JSON.stringify(state.puck)}`,
+  );
+  assert.ok(
+    state.puck.y > 165,
+    `a top-wall attack must send the puck inward; ${JSON.stringify(state.puck)}`,
+  );
+  await capture(page, '09a2-crazy-top-wall-strike');
+
+  await page.evaluate(() => {
+    const scene = window.__SKYHEAD_GAME__.scene.getScene('DiscHockey');
+    const positions = {
+      striker: { x: 688.4, y: 383 },
+      interceptor: { x: 850, y: 210 },
+      defender: { x: 960, y: 540 },
+      goalkeeper: { x: 1080, y: 383 },
+    };
+    scene.rightPlayers = scene.rightPlayers.map((player) => ({
+      ...player,
+      ...positions[player.crazyRole],
+      vx: 0,
+      vy: 0,
+      aiTarget: null,
+      penaltySeconds: 0,
+      knockbackSeconds: 0,
+      cornerReleaseSeconds: 0,
+    }));
+    scene.rightPlayer = scene.rightPlayers[0];
+    scene.leftPlayer = {
+      ...scene.leftPlayer,
+      x: 430,
+      y: 383,
+      vx: 0,
+      vy: 0,
+      target: null,
+      pointerId: null,
+    };
+    window.__DISC_HOCKEY_DEBUG__.setPuck({
+      x: 630,
+      y: 383,
+      vx: 0,
+      vy: 0,
+      powered: false,
+    });
+    scene.aiThinkTimer = 0;
+  });
+  await advance(page, 17);
+  state = await readState(page);
+  const midfieldStrikerIndex = state.computerAi.squad.findIndex(
+    ({ role }) => role === 'striker',
+  );
+  const midfieldStrikerAi = state.computerAi.squad[midfieldStrikerIndex];
+  const midfieldStriker = state.players.rightSquad[midfieldStrikerIndex];
+  assert.equal(
+    midfieldStrikerAi.midfieldRelease,
+    true,
+    `the Crazy striker must yield when the puck is behind the midfield boundary; ${JSON.stringify({
+      puck: state.puck,
+      striker: midfieldStriker,
+      ai: midfieldStrikerAi,
+    })}`,
+  );
+  assert.ok(
+    midfieldStrikerAi.target.x > 750
+      && Math.abs(midfieldStrikerAi.target.y - state.puck.y) > 73,
+    `the yielding striker must open a real passing lane; ${JSON.stringify(midfieldStrikerAi)}`,
+  );
+  await advance(page, 403);
+  state = await readState(page);
+  const releasedStrikerIndex = state.computerAi.squad.findIndex(
+    ({ role }) => role === 'striker',
+  );
+  const releasedStriker = state.players.rightSquad[releasedStrikerIndex];
+  assert.ok(
+    Math.hypot(releasedStriker.x - state.puck.x, releasedStriker.y - state.puck.y)
+      > releasedStriker.radius + state.puck.radius + 8,
+    'the striker and puck must leave the midfield pin separated',
+  );
+  await capture(page, '09aa-crazy-midfield-release');
+
+  await page.evaluate(() => {
+    const scene = window.__SKYHEAD_GAME__.scene.getScene('DiscHockey');
+    const strikerIndex = scene.rightPlayers.findIndex(
+      ({ crazyRole }) => crazyRole === 'striker',
+    );
+    scene.rightPlayers[strikerIndex] = {
+      ...scene.rightPlayers[strikerIndex],
+      x: 690,
+      y: 383,
+      vx: 0,
+      vy: 0,
+      penaltySeconds: 0,
+      ejectionSeconds: 0,
+    };
+    scene.rightPlayer = scene.rightPlayers[0];
+    window.__DISC_HOCKEY_DEBUG__.setPuck({
+      x: 630,
+      y: 383,
+      vx: 45,
+      vy: 0,
+      powered: false,
+    });
+    for (let step = 0; step < 181; step += 1) {
+      scene.puck.x += 0.75;
+      scene.rightPlayers[strikerIndex] = {
+        ...scene.rightPlayers[strikerIndex],
+        x: scene.rightPlayers[strikerIndex].x + 0.75,
+      };
+      scene.updatePuckStallReflex(1 / 60);
+    }
+    scene.updateVisuals();
+  });
+  state = await readState(page);
+  assert.equal(state.puck.stallReflex.triggerSeconds, 3);
+  assert.equal(state.puck.stallReflex.count, 1);
+  assert.ok(
+    state.puck.stallReflex.lastTrigger.vx < -500,
+    `the three-second contact reflex must also repel a slow conveyor push; ${JSON.stringify(state.puck)}`,
+  );
+  assert.ok(
+    state.puck.speed > state.puck.stallReflex.escapeSpeed,
+    'the puck must remain above the stall escape speed after any immediate follow-up collision',
+  );
+  assert.equal(state.puck.stallReflex.lastTrigger.side, 'right');
+  await capture(page, '09ab-stalled-puck-reflex');
+
+  await page.evaluate(() => {
+    const scene = window.__SKYHEAD_GAME__.scene.getScene('DiscHockey');
     scene.leftPlayer = {
       ...scene.leftPlayer,
       x: 420,
@@ -1483,6 +1684,98 @@ try {
   assert.ok(loadedResources.some((name) => name.includes('puck-ice-v1.webp')));
   assert.ok(loadedResources.some((name) => name.includes('puck-neon-v1.webp')));
   assert.ok(!loadedResources.some((name) => name.includes('KickfallScene')));
+
+  const wideContext = await browser.newContext({
+    viewport: { width: 844, height: 390 },
+    deviceScaleFactor: 1,
+    hasTouch: true,
+    isMobile: true,
+  });
+  const widePage = await wideContext.newPage();
+  widePage.on('pageerror', (error) => errors.push(error.stack ?? error.message));
+  widePage.on('console', (message) => {
+    if (message.type() === 'error') errors.push(`wide console: ${message.text()}`);
+  });
+  await widePage.goto(url, { waitUntil: 'domcontentloaded' });
+  await widePage.waitForFunction(
+    () => typeof window.render_game_to_text === 'function'
+      && JSON.parse(window.render_game_to_text()).mode === 'intro',
+    null,
+    { timeout: 12_000 },
+  );
+  await clickLogical(widePage, 640, 112);
+  await widePage.waitForFunction(() => JSON.parse(window.render_game_to_text()).activeTab === 'miniGames');
+  await clickLogical(widePage, 885, 365);
+  await widePage.waitForFunction(() => JSON.parse(window.render_game_to_text()).selectedMiniGameId === 'discHockey');
+  await clickLogical(widePage, 640, 620);
+  await widePage.waitForFunction(() => JSON.parse(window.render_game_to_text()).gameId === 'discHockey');
+  await clickLogical(widePage, 845, 127);
+  await widePage.waitForFunction(() => JSON.parse(window.render_game_to_text()).activeTab === 'howToPlay');
+  await clickLogical(widePage, 640, 664);
+  await widePage.waitForFunction(() => (
+    JSON.parse(window.render_game_to_text()).minigame === 'discHockey'
+      && Boolean(window.__DISC_HOCKEY_DEBUG__)
+  ));
+  await widePage.evaluate(() => window.__DISC_HOCKEY_DEBUG__.startPlaying());
+  const wideState = await readState(widePage);
+  assert.ok(wideState.stageLayout.width > 1280, 'wide-phone Disc Hockey should use the expanded stage');
+  assert.equal(wideState.players.left.visualScale, 1.2, 'compact phones should enlarge only the pusher artwork');
+  assert.equal(wideState.players.left.radius, 48.4, 'compact-phone artwork must not change Disc Hockey collision geometry');
+  const wideLayout = await widePage.evaluate(() => {
+    const canvas = document.querySelector('canvas');
+    const canvasBounds = canvas.getBoundingClientRect();
+    const scene = window.__SKYHEAD_GAME__.scene.getScene('DiscHockey');
+    const arenaBounds = scene.arenaArtwork.getBounds();
+    const expectedOffset = (scene.stageLayout.width - 1280) / 2;
+    return {
+      canvas: {
+        left: Math.round(canvasBounds.left),
+        width: Math.round(canvasBounds.width),
+        height: Math.round(canvasBounds.height),
+      },
+      cameraScrollX: Math.round(scene.cameras.main.scrollX),
+      expectedOffset: Math.round(expectedOffset),
+      clockFontSize: parseFloat(scene.clockText.style.fontSize),
+      arenaLeft: Math.round(arenaBounds.left),
+      arenaRight: Math.round(arenaBounds.right),
+      arenaDisplayWidth: Math.round(scene.arenaArtwork.displayWidth),
+      edgeExtensions: scene.arenaEdgeExtensionLayout.map(({ side, left, right }) => ({
+        side,
+        left: Math.round(left),
+        right: Math.round(right),
+      })),
+    };
+  });
+  assert.deepEqual(wideLayout.canvas, { left: 0, width: 844, height: 390 });
+  assert.equal(wideLayout.cameraScrollX, -wideLayout.expectedOffset);
+  assert.equal(wideLayout.clockFontSize, 26, 'Disc Hockey clock should be larger on compact phones');
+  assert.deepEqual(
+    [wideLayout.arenaLeft, wideLayout.arenaRight, wideLayout.arenaDisplayWidth],
+    [0, 1280, 1280],
+    'the collision-authored rink must remain unscaled and centered on wide phones',
+  );
+  assert.deepEqual(wideLayout.edgeExtensions, [
+    { side: 'left', left: -wideLayout.expectedOffset, right: 0 },
+    { side: 'right', left: 1280, right: 1280 + wideLayout.expectedOffset },
+  ], 'decorative edge bands—not rink scaling—must cover the extra width');
+  await capture(widePage, '19-wide-phone-centered');
+  await widePage.evaluate(() => (
+    window.__SKYHEAD_GAME__.scene.getScene('DiscHockey').pauseGame('manual')
+  ));
+  const pauseShadeBounds = await widePage.evaluate(() => {
+    const scene = window.__SKYHEAD_GAME__.scene.getScene('DiscHockey');
+    const bounds = scene.pauseShade.getBounds();
+    return {
+      left: Math.round(bounds.left),
+      right: Math.round(bounds.right),
+      expectedOffset: Math.round((scene.stageLayout.width - 1280) / 2),
+    };
+  });
+  assert.ok(pauseShadeBounds.left <= -pauseShadeBounds.expectedOffset);
+  assert.ok(pauseShadeBounds.right >= 1280 + pauseShadeBounds.expectedOffset);
+  await capture(widePage, '20-wide-phone-paused');
+  await wideContext.close();
+
   assert.deepEqual(errors, []);
   console.log('Disc Hockey browser flow passed.');
 } catch (error) {

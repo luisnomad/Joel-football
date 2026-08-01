@@ -49,6 +49,14 @@ Gameplay size comes only from an explicit collision profile; Dad and Mum use
 their intentional larger profiles. Character stats do not redefine the
 collider.
 
+The nominal idle head is a release-gate reference for that stable body. Run
+`scripts/audit_roster_collision_coverage.py` after any atlas, display-scale, or
+collision-profile change. Every catalog atlas must keep its real idle alpha top
+within four logical pixels of the fixed collider. Calculate this from the
+assembled body's actual bounds, not from its sprite-position/display-origin
+offset. Action limbs use temporary sensors when gameplay needs them; per-frame
+polygon swaps are not the default.
+
 Kickfall's standard display is 84×126 and uses the same source ground anchor.
 The standard gameplay body is 44×82. An explicit collision profile may opt a
 character into a deliberately different body and matching strike geometry.
@@ -127,5 +135,6 @@ Require:
     full roster at runtime scale;
 11. screenshot inspection with zero console/page errors;
 12. final person/guardian approval.
+13. full-roster idle head-collider coverage audit.
 
 Deployment is a separate user-authorized action.

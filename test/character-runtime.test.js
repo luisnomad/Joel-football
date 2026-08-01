@@ -20,6 +20,12 @@ import {
   estimateTextureResidency,
   summarizeFrameTimes,
 } from '../src/game/services/RuntimePerformanceBenchmark.js';
+import {
+  consumeTouchShotCombo,
+  createTouchShotComboState,
+  registerTouchShotTap,
+  TOUCH_CHILENA_COMBO_WINDOW_MS,
+} from '../src/game/pure/touchShotCombo.js';
 
 const createFakeSprite = ({
   x = 0,
@@ -71,7 +77,8 @@ describe('explicit character collision profiles', () => {
   it('keeps visual scale independent from gameplay geometry', () => {
     expect(getFootballCollisionGeometry({ visualScale: 1.2 })).toMatchObject({
       bodyScale: 1,
-      headCapY: -76,
+      headTop: 222,
+      headCapY: -112,
     });
     expect(getKickfallCollisionGeometry({ visualScale: 1.2 })).toMatchObject({
       bodyWidth: 44,
@@ -99,10 +106,56 @@ describe('explicit character collision profiles', () => {
     expect(dadKickfall.footRadius).toBeCloseTo(9.6);
   });
 
+  it('extends every standard fixed head collider to the tallest authored idle silhouette', () => {
+    const joel = getCharacter('joel');
+    expect(joel.collisionProfile).toBeUndefined();
+    expect(getFootballCollisionGeometry(joel)).toMatchObject({
+      bodyScale: 1,
+      headTop: 222,
+      headCapY: -112,
+    });
+    expect(getKickfallCollisionGeometry(joel)).toMatchObject({
+      bodyWidth: 44,
+      bodyHeight: 82,
+      footForwardOffset: 30,
+    });
+  });
+
   it('migrates the retired Vex identity to canonical Bob', () => {
     expect(normalizeCharacterId('vex')).toBe('bob');
     expect(getCharacter('vex').id).toBe('bob');
     expect(getCharacter('bob').sheetTexture).toBe('bob-sheet');
+  });
+});
+
+describe('touch shot combo timing', () => {
+  it('accepts a deliberate tablet-speed double tap after the kick animation ends', () => {
+    let state = createTouchShotComboState();
+    state = registerTouchShotTap(state, { action: 'kick', at: 1_000 });
+    state = registerTouchShotTap(state, { action: 'kick', at: 1_300 });
+    const result = consumeTouchShotCombo(state);
+
+    expect(TOUCH_CHILENA_COMBO_WINDOW_MS).toBe(480);
+    expect(result.action).toBe('kick');
+    expect(result.state.pendingAction).toBeNull();
+    expect(result.state.lastIntervalMs).toBe(300);
+  });
+
+  it('rejects accidental, mixed, and expired touch shot sequences', () => {
+    let tooFast = createTouchShotComboState();
+    tooFast = registerTouchShotTap(tooFast, { action: 'kick', at: 1_000 });
+    tooFast = registerTouchShotTap(tooFast, { action: 'kick', at: 1_020 });
+    expect(consumeTouchShotCombo(tooFast).action).toBeNull();
+
+    let mixed = createTouchShotComboState();
+    mixed = registerTouchShotTap(mixed, { action: 'kick', at: 2_000 });
+    mixed = registerTouchShotTap(mixed, { action: 'lob', at: 2_250 });
+    expect(consumeTouchShotCombo(mixed).action).toBeNull();
+
+    let expired = createTouchShotComboState();
+    expired = registerTouchShotTap(expired, { action: 'lob', at: 3_000 });
+    expired = registerTouchShotTap(expired, { action: 'lob', at: 3_500 });
+    expect(consumeTouchShotCombo(expired).action).toBeNull();
   });
 });
 

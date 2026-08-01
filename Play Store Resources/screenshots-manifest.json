@@ -1,0 +1,54 @@
+[
+  {
+    "locale": "en-US",
+    "device": "phone",
+    "width": 1920,
+    "height": 1080,
+    "screenshots": [
+      "01-football-action.png",
+      "02-kickfall-action.png",
+      "03-disc-hockey-action.png",
+      "04-build-your-match.png",
+      "05-choose-a-mini-game.png"
+    ]
+  },
+  {
+    "locale": "en-US",
+    "device": "tablet",
+    "width": 1920,
+    "height": 1080,
+    "screenshots": [
+      "01-football-action.png",
+      "02-kickfall-action.png",
+      "03-disc-hockey-action.png",
+      "04-build-your-match.png",
+      "05-choose-a-mini-game.png"
+    ]
+  },
+  {
+    "locale": "es-ES",
+    "device": "phone",
+    "width": 1920,
+    "height": 1080,
+    "screenshots": [
+      "01-football-action.png",
+      "02-kickfall-action.png",
+      "03-disc-hockey-action.png",
+      "04-build-your-match.png",
+      "05-choose-a-mini-game.png"
+    ]
+  },
+  {
+    "locale": "es-ES",
+    "device": "tablet",
+    "width": 1920,
+    "height": 1080,
+    "screenshots": [
+      "01-football-action.png",
+      "02-kickfall-action.png",
+      "03-disc-hockey-action.png",
+      "04-build-your-match.png",
+      "05-choose-a-mini-game.png"
+    ]
+  }
+]

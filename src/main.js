@@ -3,20 +3,14 @@ import './styles.css';
 import { GAME_HEIGHT, GAME_WIDTH } from './game/constants.js';
 import { advanceActiveScene, renderActiveState } from './game/stateBridge.js';
 import { BootScene } from './game/scenes/BootScene.js';
-import { IntroScene } from './game/scenes/IntroScene.js';
 import { MatchScene } from './game/scenes/MatchScene.js';
 import { MatchLoadingScene } from './game/scenes/MatchLoadingScene.js';
-import { PowerLabScene } from './game/scenes/PowerLabScene.js';
-import { SettingsScene } from './game/scenes/SettingsScene.js';
 import { SplashScene } from './game/scenes/SplashScene.js';
-import { CustomizeScene } from './game/scenes/CustomizeScene.js';
 import { MiniGameLoadingScene } from './game/scenes/MiniGameLoadingScene.js';
-import { MiniGamesScene } from './game/scenes/MiniGamesScene.js';
-import { MiniGameSetupScene } from './game/scenes/MiniGameSetupScene.js';
 import { arcadeAudio } from './game/services/ArcadeAudio.js';
-import { detectExtendedTabletStage, detectWidePhoneStage } from './game/layout/tabletStage.js';
 import { PLATFORM_EVENTS } from './platform/PlatformServices.js';
 import { createPlatformServices } from './platform/createPlatformServices.js';
+import { createDeviceProfile, publishDeviceProfile } from './platform/deviceProfile.js';
 import { installGameSurfaceInputGuard } from './platform/gameSurfaceInput.js';
 import { createRuntimePerformanceBenchmark } from './game/services/RuntimePerformanceBenchmark.js';
 
@@ -24,10 +18,54 @@ const gameShell = document.getElementById('game-shell');
 installGameSurfaceInputGuard(gameShell);
 
 const platformServices = createPlatformServices();
-const useExtendedTabletStage = detectExtendedTabletStage({ forceLandscape: platformServices.native });
-const useWidePhoneStage = detectWidePhoneStage();
+const deviceProfile = publishDeviceProfile(createDeviceProfile({ platformServices }));
+const useExtendedTabletStage = deviceProfile.layout.extendedTabletStage;
+const useWidePhoneStage = deviceProfile.layout.wideStage;
+const useCompactPhoneUi = deviceProfile.layout.compactPhoneUi;
 
-const config = {
+// Android/iOS packages are deliberate app launches rather than incidental web
+// visits. Their native WebView is configured for media autoplay, so unlock the
+// shared audio service immediately while keeping browser playback gesture-gated.
+if (platformServices.native) arcadeAudio.unlock();
+
+// Dynamic resolution-specific menu loading is intentionally asynchronous.
+// Keep diagnostics callable during that very short import window so test and
+// accessibility clients can wait for Boot/Splash without racing an undefined
+// bridge.
+window.render_game_to_text = () => JSON.stringify({ mode: 'boot-loading' });
+window.advanceTime = () => {};
+
+const loadMenuScenes = async () => {
+  if (useCompactPhoneUi) return import('./game/compact/index.js');
+  const [
+    { IntroScene },
+    { CustomizeScene },
+    { SettingsScene },
+    { PowerLabScene },
+    { MiniGamesScene },
+    { MiniGameSetupScene },
+  ] = await Promise.all([
+    import('./game/scenes/IntroScene.js'),
+    import('./game/scenes/CustomizeScene.js'),
+    import('./game/scenes/SettingsScene.js'),
+    import('./game/scenes/PowerLabScene.js'),
+    import('./game/scenes/MiniGamesScene.js'),
+    import('./game/scenes/MiniGameSetupScene.js'),
+  ]);
+  return { IntroScene, CustomizeScene, SettingsScene, PowerLabScene, MiniGamesScene, MiniGameSetupScene };
+};
+
+const startGame = async () => {
+  const {
+    IntroScene,
+    CustomizeScene,
+    SettingsScene,
+    PowerLabScene,
+    MiniGamesScene,
+    MiniGameSetupScene,
+  } = await loadMenuScenes();
+
+  const config = {
   type: Phaser.CANVAS,
   parent: 'game',
   width: GAME_WIDTH,
@@ -74,10 +112,12 @@ const config = {
     MatchLoadingScene,
     MatchScene,
   ],
-};
+  };
 
-const game = new Phaser.Game(config);
-const runtimePerformanceBenchmark = createRuntimePerformanceBenchmark({
+  const game = new Phaser.Game(config);
+  game.registry.set('compactPhoneUi', useCompactPhoneUi);
+  game.registry.set('deviceProfile', deviceProfile);
+  const runtimePerformanceBenchmark = createRuntimePerformanceBenchmark({
   game,
   renderer: config.type === Phaser.CANVAS ? 'canvas' : 'webgl',
 });
@@ -93,6 +133,7 @@ const platformActions = Object.freeze({
   installWebApp: () => platformServices.installWebApp(),
   openExternalUrl: (url) => platformServices.openExternalUrl(url),
   lockLandscape: () => platformServices.lockLandscape(),
+  getDeviceProfile: () => deviceProfile,
 });
 game.registry.set('platformActions', platformActions);
 
@@ -130,6 +171,8 @@ window.__SKYHEAD_PLATFORM_DEBUG__ = {
     ...platformServices.diagnostics(),
     extendedTabletStage: useExtendedTabletStage,
     widePhoneStage: useWidePhoneStage,
+    compactPhoneUi: useCompactPhoneUi,
+    deviceProfile,
   }),
   setActiveForTesting: (isActive) => platformServices.emit(PLATFORM_EVENTS.activeChange, { isActive }),
   backForTesting: () => platformServices.emit(PLATFORM_EVENTS.backButton),
@@ -147,9 +190,14 @@ window.addEventListener('pagehide', () => {
   platformServices.destroy();
 }, { once: true });
 
-window.addEventListener('keydown', (event) => {
+  window.addEventListener('keydown', (event) => {
   if (['ArrowLeft', 'ArrowRight', 'ArrowUp', 'Space'].includes(event.code)) event.preventDefault();
   if (event.key.toLowerCase() !== 'f') return;
   if (event.repeat) return;
   platformActions.toggleFullscreen();
+  });
+};
+
+startGame().catch((error) => {
+  console.error('Unable to start Joel Football', error);
 });

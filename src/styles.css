@@ -79,7 +79,8 @@ body {
   display: block;
   width: 100%;
   height: 100%;
-  object-fit: contain;
+  object-fit: cover;
+  object-position: center;
 }
 
 .startup-spinner {
@@ -126,12 +127,10 @@ canvas {
   touch-action: none;
 }
 
-@media (orientation: landscape) and (pointer: coarse) and (max-height: 600px) {
+@media (orientation: landscape) and (pointer: coarse) and (max-height: 600px),
+  (orientation: landscape) and (pointer: coarse) and (min-aspect-ratio: 19 / 10) {
   #game-shell {
     padding: 0;
   }
 
-  #startup-splash img {
-    object-fit: cover;
-  }
 }

@@ -1,4 +1,4 @@
-package com.luisnomad.joelfootball;
+package com.notjustprompts.joelfootball;
 
 import android.os.Bundle;
 
@@ -12,6 +12,9 @@ public class MainActivity extends BridgeActivity {
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
+        // Native installs should begin menu music as soon as the game loads.
+        // Browsers retain their normal gesture-gated autoplay behavior.
+        getBridge().getWebView().getSettings().setMediaPlaybackRequiresUserGesture(false);
         enterImmersiveMode();
     }
 

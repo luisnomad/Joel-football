@@ -119,12 +119,19 @@ rtk python .agents/skills/create-game-character/scripts/audit_character_motion_p
   --id <id> \
   --atlas public/assets/player-<id>-sheet-v<version>.webp \
   --reference-atlas public/assets/player-<same-cohort-reference>-sheet-v<version>.webp
+rtk python .agents/skills/create-game-character/scripts/audit_roster_collision_coverage.py \
+  --root .
 ```
 
 Repeat `--reference-atlas` for at least three same-cohort roster characters.
 Re-hash unrelated atlases and require identical hashes. Inspect the transparent
 pose sheet, packed atlas, portrait, generated roster-parity board, and
 motion-parity board visually.
+The collision audit is roster-wide by design. It measures each atlas's real
+idle alpha top at final Football scale against the declared fixed collider and
+fails when artwork extends more than four logical pixels above physics. Do not
+approve a character-specific exception until the shared body calculation and
+the complete existing roster have been audited.
 The parity audit applies each catalog `visualScale`, reports the target's idle
 silhouette against the roster median, and places every idle frame on one shared
 runtime ground line. Its geometry thresholds catch gross scale drift; they do
@@ -162,6 +169,11 @@ If `visualScale` differs from `1`, prove it is independent from physics:
 
 Any non-standard gameplay size requires an explicit, documented
 `collisionProfile`; never derive collision geometry from `visualScale`.
+Do not copy a sprite-position or display-origin offset into collision math.
+Measure against the actual Matter compound bounds after the body is assembled
+and foot-anchored. A stable main body plus temporary action sensors is the
+default: do not swap detailed polygons per frame unless a measured gameplay
+case cannot be represented by that model.
 
 Do not deploy, publish, sync Android, or install on the tablet unless the user
 explicitly requests it.
@@ -193,6 +205,9 @@ Capture and visually inspect:
   dash, stun, chilena, and Big Guy;
 - both left- and right-side facing;
 - grounded feet and collider diagnostics;
+- ball contact at the idle hairline and both upper head corners for every
+  roster member, using
+  `scripts/audit_roster_collision_coverage.py` before browser/device checks;
 - Kickfall idle, run, jump, kick, and platform registration;
 - normal and Crazy Hockey engravings at regulation pusher size;
 - About screen;
