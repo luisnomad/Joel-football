@@ -1,5 +1,8 @@
 # Disc Hockey mini-game specification
 
+Optional reading for Disc Hockey behavior and acceptance. Read external/global references
+only when relevant to the immediate task.
+
 ## Product goal
 
 Add a fast, child-friendly, top-down disc hockey mini-game to Joel Football.

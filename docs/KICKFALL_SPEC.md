@@ -1,5 +1,8 @@
 # Kickfall Mini-Game Specification
 
+Optional reading for Kickfall behavior and acceptance. Read external/global references
+only when relevant to the immediate task.
+
 ## Product intent
 
 Kickfall is an optional, short arcade mode inside Joel Football. Soccer balls
@@ -19,7 +22,7 @@ The mode should create a repeating pressure-and-release rhythm:
 
 ## Entry and character selection
 
-- The Intro screen exposes a dedicated **Kickfall** button.
+- Enter Kickfall through the Mini-games selection and setup journey.
 - Kickfall uses the currently selected player character. The existing Intro
   selector therefore allows every available character to enter the mode.
 - The selected rival appears as the opposing kicker in boss levels.
@@ -84,7 +87,7 @@ The mode should create a repeating pressure-and-release rhythm:
   only trimmed/downscaled runtime PNGs live in `public/`.
 - Cosmic Foundry runtime assets and authoring rules are documented in
   `docs/KICKFALL_THEMES.md`; the exact built-in image-generation briefs are in
-  `docs/KICKFALL_COSMIC_ASSET_PROMPTS.md`.
+  [optional original Cosmic briefs](archive/docs/KICKFALL_COSMIC_ASSET_PROMPTS.md).
 
 ## Campaign board
 

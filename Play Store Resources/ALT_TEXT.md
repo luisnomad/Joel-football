@@ -1,5 +1,8 @@
 # Suggested Google Play alt text
 
+Optional reading for store artwork accessibility copy. Read external/global references
+only when relevant to the immediate task.
+
 Keep each description with its matching localized asset in Play Console.
 
 ## Shared artwork

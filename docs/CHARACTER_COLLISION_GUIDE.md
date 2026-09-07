@@ -1,5 +1,8 @@
 # Character collision guide
 
+Optional reading for character or collider changes. Read external/global references
+only when relevant to the immediate task.
+
 ## Runtime contract
 
 Football deliberately uses a stable compound Matter body: torso, foot, head,

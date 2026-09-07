@@ -29,14 +29,6 @@ long legs, long arms, long torso, broad adult shoulders, and a smaller head
 relative to the body than the compact roster characters. Do not shorten,
 compress, chibify, or enlarge his head.
 
-## Superseded compact experiment
-
-An intermediate refinement enlarged the head and shortened the torso and legs
-to the compact adult roster proportion. Luis explicitly rejected that
-direction and approved the original tall anchor instead. The compact anchor and
-sheet remain archived as `*-compact-v1*` provenance files and must not be used
-as runtime sources.
-
 ## Twelve-pose source sheet
 
 Using the approved tall Dad anchor as the exact identity, body-proportion, and
@@ -63,3 +55,6 @@ remain fully inside its conceptual cell with generous separation. Use one
 perfectly flat `#ff00ff` background. No grid,
 captions, numbers, text, football, scenery, floor, shadows, extra figures,
 extra limbs, cropped hair/hands/shoes, gray hair, or magenta in the subject.
+
+Optional reading only for provenance investigation: [full generation record](../../../docs/archive/source-assets/characters/dad-v1/PROMPTS.md).
+Read external/global generation references only when relevant to the immediate task.

@@ -21,47 +21,22 @@ The deep navy V-neck jersey, golden-yellow trim and shorts, royal-blue side
 panels, navy-and-gold socks, cream-and-navy boots, and cobalt wristband are
 Dad's fixed game kit.
 
-## Sources
+## Canonical sources and runtime contract
 
-- `identity-anchor-chroma.png`: approved full-body identity and outfit anchor
-  on flat magenta.
-- `identity-anchor.png`: locally keyed transparent anchor.
-- `pose-sheet-chroma.png`: generated twelve-pose 4×3 contact sheet.
-- `pose-sheet.png`: locally keyed transparent contact sheet consumed by
-  `scripts/build-character-animation-atlases.py`.
-- `identity-anchor-compact-v1*.png` and `pose-sheet-compact-v1*.png`: archived
-  superseded compact-proportion experiment; never used at runtime.
-- `PROMPTS.md`: the complete identity and pose-sheet prompt set.
+- `identity-anchor-chroma.png` and `identity-anchor.png`: approved identity anchor.
+- `pose-sheet-chroma.png` and `pose-sheet.png`: canonical twelve-pose source.
+- [PROMPTS.md](PROMPTS.md): canonical prompts and processing settings.
+- Lossless atlas: `source-assets/animation/final/player-dad-sheet-v1.png`.
+- Runtime outputs: `public/assets/player-dad-sheet-v1.webp` and
+  `public/assets/player-dad-portrait.png`.
 
-Chroma removal used the installed imagegen helper with border auto-keying, soft
-matte, thresholds 12/220, and despill.
+Catalog `visualScale: 1.2` changes the artwork; the explicit `dad-large`
+collision profile controls Football/Kickfall geometry independently. Ground
+anchors remain registered, and Hockey keeps regulation pusher diameter.
 
-## Runtime contract
+Preserve the approved tall 405-pixel idle normalization; do not reuse the
+rejected compact-proportion experiment.
 
-The atlas builder isolates each pose with bleed-aware cell recovery, gives Dad
-a dedicated 405-pixel tall normalization inside each 320×480 cell, places
-grounded alpha at `y=418`, preserves at least eight horizontal transparent
-pixels, and writes:
-
-- `source-assets/animation/final/player-dad-sheet-v1.png`
-- `public/assets/player-dad-sheet-v1.webp`
-- `public/assets/player-dad-portrait.png`
-
-Frame order is idle, legacy run, jump, high kick/chilena, dash, stun, run A,
-run passing, run B, kick anticipation, kick contact, and kick recovery.
-
-The character catalog applies `visualScale: 1.2` in Football and Kickfall.
-That scales only Dad's rendered artwork. Football retains the shared compound
-player collider, Kickfall retains its shared 44×82 body, grounded display
-origins remain registered to the same foot line, and Disc Hockey intentionally
-keeps the regulation pusher diameter.
-
-## Validation
-
-The runtime atlas passed the reusable character auditor: 1280×1440 pixels,
-twelve non-empty 320×480 frames, at least eight transparent pixels on both
-horizontal sides, and grounded visible alpha ending at `y=418`. At runtime the
-405-pixel authored idle and `visualScale: 1.2` produce approximately 284
-visible pixels of height, keeping Dad clearly taller than Mum. Football,
-Kickfall, Hockey, selector, and About screenshots remain human visual gates
-before tablet deployment.
+Optional reading for this character: [previous decisions and validation](../../../docs/archive/source-assets/characters/dad-v1/README.md).
+For rebuilds, use the [shared contract](../../../docs/characters/PROJECT_CONTRACT.md)
+and validate the current outputs; old test counts are historical evidence.

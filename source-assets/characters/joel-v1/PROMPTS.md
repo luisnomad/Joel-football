@@ -51,27 +51,6 @@ flat bright magenta removable background across the whole sheet. No grid
 lines, captions, numbers, text, props, scenery, cast shadows, extra figures, or
 magenta in the character.
 
-## Splash replacement
 
-Edit the supplied Joel Football title splash. Replace only the fictional boy
-with the approved real-photo-derived Joel identity while preserving the exact
-airborne football-kick composition, scale, placement, teal/coral kit, ball,
-stadium, lighting, crop, and the title text `JOEL FOOTBALL`. Keep all other
-pixels and layout as close to the source as possible.
-
-## App icon replacement
-
-Edit the supplied app-icon master. Replace only the fictional boy with the
-approved real-photo-derived Joel identity. Preserve the same centered
-head-and-shoulders icon composition, energetic smile, teal/coral palette,
-football branding, bold mobile-game rendering, safe circular crop, and
-text-free design. Keep facial likeness clear at small icon sizes.
-
-## Menu-card replacements
-
-For each supplied Kickfall and Disc Hockey menu-card master, replace only the
-small baked-in fictional Joel with the approved identity. Preserve the card's
-arena, lighting, effects, framing, all other characters and objects, and exact
-composition. In Kickfall, retain the original tiny gameplay pose and scale. In
-Disc Hockey, retain the original engraving treatment, pusher placement, and
-diameter. Do not introduce text or modify the card layout.
+Optional reading only for provenance investigation: [full generation record](../../../docs/archive/source-assets/characters/joel-v1/PROMPTS.md).
+Read external/global generation references only when relevant to the immediate task.

@@ -1,5 +1,8 @@
 # Joel Football character contract
 
+Optional reading for character geometry or runtime integration. Read external/global references
+only when relevant to the immediate task.
+
 ## Repository map
 
 - Catalog: `src/game/content/characters.js`
@@ -50,7 +53,7 @@ their intentional larger profiles. Character stats do not redefine the
 collider.
 
 The nominal idle head is a release-gate reference for that stable body. Run
-`scripts/audit_roster_collision_coverage.py` after any atlas, display-scale, or
+`.agents/skills/create-game-character/scripts/audit_roster_collision_coverage.py` after any atlas, display-scale, or
 collision-profile change. Every catalog atlas must keep its real idle alpha top
 within four logical pixels of the fixed collider. Calculate this from the
 assembled body's actual bounds, not from its sprite-position/display-origin

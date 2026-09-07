@@ -1,5 +1,8 @@
 # Original sound sources
 
+Optional reading for audio processing or rights provenance. Read external/global references
+only when relevant to the immediate task.
+
 This folder preserves the supplied, full-quality recordings. The browser ships
 the optimized copies from `public/assets/sound`.
 

@@ -1,3 +1,8 @@
+> Historical record. Optional reading only for reproducing the existing feature graphic.
+> This is past evidence, not current instructions or proof of release readiness.
+> Original location: `Play Store Resources/source/feature-graphic-prompt.md`; bare relative paths in the record use that location.
+> Read external/global references only when relevant to the immediate task; verify changing claims before relying on them.
+
 # Feature graphic generation record
 
 Generated with the built-in OpenAI image-generation tool on 2026-08-01.

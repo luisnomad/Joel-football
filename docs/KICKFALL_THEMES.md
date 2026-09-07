@@ -1,5 +1,8 @@
 # Kickfall visual themes
 
+Optional reading for Kickfall theme changes. Read external/global references
+only when relevant to the immediate task.
+
 Kickfall rendering is selected through `kickfallThemes.js`. A theme is a visual
 skin, not a level definition. It may replace the background, lane material,
 gate, catch rail, cleat, colors, and ambient timing without changing gameplay

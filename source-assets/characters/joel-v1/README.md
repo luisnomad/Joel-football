@@ -1,5 +1,8 @@
 # Joel character V1
 
+Optional reading for Joel likeness or source-asset work. Read external/global references
+only when relevant to the immediate task.
+
 Generated on 2026-07-29 with OpenAI's built-in image generation. Four
 guardian-supplied family photos were used as private identity references. The
 photos are intentionally not stored in the repository.

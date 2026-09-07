@@ -1,5 +1,8 @@
 # Joel Football — Product and Acceptance Specification
 
+Optional reading for Football product behavior and acceptance. Read external/global references
+only when relevant to the immediate task.
+
 The project was originally developed under the working title “Skyhead
 Showdown.” Its V1 product requirements remain recorded below; the shipped name
 is Joel Football.

@@ -1,5 +1,8 @@
 # Android client
 
+Optional reading for native builds, signing, deployment, or device checks. Read external/global references
+only when relevant to the immediate task.
+
 Joel Football uses Capacitor as a native client shell. The Phaser/Vite source
 remains shared with the website: `npm run build` creates `dist/`, and Capacitor
 copies that exact folder into the Android application.

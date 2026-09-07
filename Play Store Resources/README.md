@@ -28,12 +28,14 @@ the feature graphic and does not claim gameplay that is absent from the game.
 
 Run `node scripts/capture-play-store-screenshots.mjs` from the project root.
 
-## Google Play checks
+## Release checks
 
-- [x] App icon is a 512×512 32-bit PNG under 1 MB.
-- [x] Feature graphic is a 1024×500 24-bit PNG without transparency.
-- [x] Every screenshot is a 24-bit PNG without transparency.
-- [x] Every screenshot is exactly 1920×1080 and shows the current game.
-- [ ] English screenshots are assigned to `en-US`.
-- [ ] Spanish screenshots are assigned to `es-ES`.
-- [ ] Phone and tablet screenshots are uploaded to their matching device slots.
+Recheck the icon, feature graphic, and screenshots against current Play formats
+and the actual release candidate. Upload English/Spanish sets to their matching
+locale and phone/tablet slots. Consult external Play requirements only when
+relevant to this release task.
+
+Optional reading: [release checklist](../docs/PLAY_STORE_RELEASE_CHECKLIST.md),
+[previous asset checks](<../docs/archive/Play Store Resources/README.md>), and
+[feature graphic prompt](<../docs/archive/Play Store Resources/source/feature-graphic-prompt.md>)
+for reproduction of the existing art.

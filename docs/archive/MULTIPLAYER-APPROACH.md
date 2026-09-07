@@ -1,3 +1,8 @@
+> Historical record. Optional reading only for revisiting the unimplemented July LAN proposal; it was not marked rejected.
+> This is past evidence, not current instructions or proof of release readiness.
+> Original location: `MULTIPLAYER-APPROACH.md`; bare relative paths in the record use that location.
+> Read external/global references only when relevant to the immediate task; verify changing claims before relying on them.
+
 # Joel Football — Multiplayer Approach
 
 **Version:** 1.0  

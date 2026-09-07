@@ -1,5 +1,8 @@
 # Joel Football — Responsive Layout Guide
 
+Optional reading for scene layout, scaling, art geometry, or responsive controls. Read external/global references
+only when relevant to the immediate task.
+
 This document is the layout contract for Joel Football, Kickfall, Disc Hockey,
 and future mini-games. Read it before adding a scene, changing arena art,
 altering collision geometry, or modifying Phaser scaling.

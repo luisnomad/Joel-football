@@ -1,5 +1,8 @@
 # Image-generation contract
 
+Optional reading for character raster generation or chroma processing. Read external/global references
+only when relevant to the immediate task.
+
 ## Reference selection
 
 Use no more than five references per generation:
@@ -72,7 +75,8 @@ exaggerated head-soccer visual language.
 
 ## Chroma removal
 
-Use the installed helper:
+When chroma removal is needed, locate the installed imagegen helper and read
+its global guidance only for this task:
 
 ```bash
 rtk python /absolute/path/to/imagegen/scripts/remove_chroma_key.py \
@@ -107,7 +111,7 @@ the active imagegen skill's approval rules.
 - every approved revision prompt;
 - pose-sheet prompt;
 - reference-image roles without copying private photo paths into public docs;
-- explicit rejected/superseded directions;
+- a link to rejected/superseded directions under `docs/archive/`;
 - chroma-removal settings.
 
 `README.md` must include:

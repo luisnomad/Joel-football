@@ -1,3 +1,8 @@
+> Historical record. Optional reading only for animation decision history and superseded alternatives.
+> This is past evidence, not current instructions or proof of release readiness.
+> Original location: `docs/CHARACTER_ANIMATION_SPIKE.md`; bare relative paths in the record use that location.
+> Read external/global references only when relevant to the immediate task; verify changing claims before relying on them.
+
 # Character animation spike
 
 Date: 2026-07-10

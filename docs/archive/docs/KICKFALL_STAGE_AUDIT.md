@@ -1,3 +1,8 @@
+> Historical record. Optional reading only for the recorded twenty-stage route results.
+> This is past evidence, not current instructions or proof of release readiness.
+> Original location: `docs/KICKFALL_STAGE_AUDIT.md`; bare relative paths in the record use that location.
+> Read external/global references only when relevant to the immediate task; verify changing claims before relying on them.
+
 # Kickfall Campaign Route Audit
 
 This is the authored-layout safety review for all twenty Kickfall stages.

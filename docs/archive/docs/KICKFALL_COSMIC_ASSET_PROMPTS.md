@@ -1,3 +1,8 @@
+> Historical record. Optional reading only for reproducing the shipped Cosmic Foundry artwork.
+> This is past evidence, not current instructions or proof of release readiness.
+> Original location: `docs/KICKFALL_COSMIC_ASSET_PROMPTS.md`; bare relative paths in the record use that location.
+> Read external/global references only when relevant to the immediate task; verify changing claims before relying on them.
+
 # Cosmic Foundry generated-asset briefs
 
 Mode: built-in image generation. Images 1 and 2 supplied by the user were used

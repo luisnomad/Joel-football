@@ -1,5 +1,8 @@
 # Shared Impulse and Pressure System
 
+Optional reading for impulse/pressure mechanics. Read external/global references
+only when relevant to the immediate task.
+
 ## Purpose
 
 The force system turns a player's intuitive “kick it harder” behaviour into a
