@@ -1,6 +1,6 @@
 import Phaser from 'phaser';
 import { GAME_HEIGHT, GAME_WIDTH } from '../constants.js';
-import { getCharacter } from '../content/characters.js';
+import { getCharacter, getCharacterSheetFrameConfig } from '../content/characters.js';
 import { playerProfileStore } from '../services/PlayerProfile.js';
 import { clearActiveScene, setActiveScene } from '../stateBridge.js';
 import { getArenaTheme } from '../content/matchCustomization.js';
@@ -46,10 +46,11 @@ export class MatchLoadingScene extends Phaser.Scene {
     this.pendingCharacters = [...new Map(lineup.map((character) => [character.sheetTexture, character])).values()]
       .filter((character) => !this.textures.exists(character.sheetTexture));
     this.pendingCharacters.forEach((character) => {
-      this.load.spritesheet(character.sheetTexture, assetUrl(character.sheetAsset), {
-        frameWidth: 320,
-        frameHeight: 480,
-      });
+      this.load.spritesheet(
+        character.sheetTexture,
+        assetUrl(character.sheetAsset),
+        getCharacterSheetFrameConfig(character),
+      );
     });
   }
 

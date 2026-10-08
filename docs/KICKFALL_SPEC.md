@@ -165,20 +165,24 @@ coordinate from a tier above or below never captures or teleports the ball.
 ## Controls and traversal
 
 - Desktop movement: A/D or Left/Right.
-- Desktop tier transfer: hold W/Up or S/Down and press Space to move one tier
-  in that direction. A vertical direction by itself does not transfer.
-- Desktop jump: press Space without a vertical direction.
+- Desktop tier transfer (one-tap, audit H3, 2026-10-08): a single press of
+  W/Up or S/Down moves one tier in that direction. Each press transfers once;
+  holding the key does not chain transfers. Up on the top tier and Down on the
+  bottom tier do nothing.
+- Desktop jump: Space, always a free jump (it no longer combines with a
+  vertical direction).
 - Desktop kick: X or K.
-- Touch exposes a four-way direction pad plus separate Jump and Kick controls;
-  hold Up/Down and tap Jump for a tier transfer.
+- Touch exposes the joystick plus separate Jump and Kick controls. Flicking
+  the stick straight up or down (the straight vertical sectors) transfers one
+  tier. Diagonal sectors only run, so a diagonal sweep while running or jumping
+  never changes lane by accident.
 - P, Escape, or the visible Pause control freezes simulation and opens the same
   three-action hierarchy as the football match: Resume, Restart Level, and
   Leave Kickfall.
 - Leaving an active level always opens a confirmation overlay. Stay returns to
   the existing pause menu; Leave returns to Intro. Unlocked campaign progress
   remains saved even though the current run is discarded.
-- Jump + Up/Down performs a short, readable transfer to exactly one adjacent
-  tier.
+- A tier transfer is a short, readable move to exactly one adjacent tier.
   The character uses the jump pose during the transfer, but this is a distinct
   lane-navigation action rather than the free jump.
 - Tier direction is briefly buffered so a press made on the edge of a landing
@@ -267,6 +271,29 @@ coordinate from a tier above or below never captures or teleports the ball.
   balls remaining. Boss levels also require the rival to be defeated.
 - Victory and defeat freeze play and show Retry plus Main Menu. Victory exposes
   Continue only when a later authored level exists.
+
+## Stars and combos (audit H1–H2, 2026-10-08)
+
+Rules live in `kickfallRules.js` (`resolveKickfallStars`, `stepKickfallCombo`);
+the thresholds are tuning starting points pending an owner playtest.
+
+- **Stars (0–3, victory only):**
+  - 1 star: clear the level.
+  - 2 stars: also finish with at least 35% of the clock left. On an untimed
+    level, finish within 1.4× the spawn schedule.
+  - 3 stars: also show skill, with a gate-break combo of 2+ or at most 30% of
+    kicks touching no ball (a wasted kick).
+- The result panel shows the run's stars as a badge on its top edge. The
+  profile keeps each authored level's best result in `kickfall.stars`,
+  sanitised to integers 0–3, and a replay never lowers it. The Kickfall card
+  in the Mini-games selection (tablet and phone) shows the total out of 60
+  next to the Continue level.
+- **Combos:** a gate break within 6 seconds of the previous one chains a combo,
+  with the multiplier capped at ×3. A combo of 2+ shows a gold "COMBO ×N!"
+  banner, extra impact bursts, a camera shake and the power-up sound.
+- **Full cascade:** when the level's last gate breaks, play runs at 0.4× speed
+  for 0.6 s, scaling Matter's timing. Slow motion always ends before the result
+  panel.
 
 ## Character fairness
 

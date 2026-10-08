@@ -1,5 +1,11 @@
 #!/usr/bin/env python3
-"""Validate a Joel Football twelve-frame character atlas."""
+"""Validate a Joel Football character atlas.
+
+Two layouts (src/game/pure/characterAnimation.js CHARACTER_LAYOUTS), detected
+from the image size:
+  classic    1280x1440, 4x3 cells of 320x480, 12 frames
+  roster-v2  2016x1920, 6x4 cells of 336x480, 24 frames (sprite redo)
+"""
 
 from __future__ import annotations
 
@@ -10,12 +16,20 @@ from pathlib import Path
 from PIL import Image
 
 
-ATLAS_SIZE = (1280, 1440)
-CELL_SIZE = (320, 480)
 GROUND_Y = 418
 MIN_SIDE_MARGIN = 8
 ALPHA_THRESHOLD = 8
-GROUNDED = frozenset({0, 1, 4, 5, 6, 7, 8, 9, 10, 11})
+LAYOUTS = {
+    (1280, 1440): {
+        "id": "classic", "cell": (320, 480), "columns": 4, "frames": 12,
+        "grounded": frozenset({0, 1, 4, 5, 6, 7, 8, 9, 10, 11}),
+    },
+    (2016, 1920): {
+        "id": "roster-v2", "cell": (336, 480), "columns": 6, "frames": 24,
+        # every cell except jump (13) and the chilena drawings (17-19)
+        "grounded": frozenset(set(range(24)) - {13, 17, 18, 19}),
+    },
+}
 
 
 def visible_bbox(image: Image.Image) -> tuple[int, int, int, int] | None:
@@ -29,14 +43,19 @@ def audit(path: Path) -> dict[str, object]:
     atlas = Image.open(path).convert("RGBA")
     errors: list[str] = []
     frames: list[dict[str, int]] = []
-    if atlas.size != ATLAS_SIZE:
+    layout = LAYOUTS.get(atlas.size)
+    if layout is None:
         errors.append(
-            f"atlas is {atlas.size[0]}x{atlas.size[1]}, expected 1280x1440"
+            f"atlas is {atlas.size[0]}x{atlas.size[1]}, expected "
+            + " or ".join(f"{w}x{h}" for w, h in LAYOUTS)
         )
+        layout = LAYOUTS[(1280, 1440)]
+    CELL_SIZE = layout["cell"]
+    GROUNDED = layout["grounded"]
 
-    for frame in range(12):
-        column = frame % 4
-        row = frame // 4
+    for frame in range(layout["frames"]):
+        column = frame % layout["columns"]
+        row = frame // layout["columns"]
         cell = atlas.crop((
             column * CELL_SIZE[0],
             row * CELL_SIZE[1],
@@ -71,6 +90,7 @@ def audit(path: Path) -> dict[str, object]:
     return {
         "atlas": str(path.resolve()),
         "size": {"width": atlas.width, "height": atlas.height},
+        "layout": layout["id"],
         "frames": frames,
         "errors": errors,
         "ok": not errors,

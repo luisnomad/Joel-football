@@ -74,7 +74,9 @@ def audit(root: Path) -> dict[str, object]:
             errors.append(f"{character['id']}: missing atlas {asset}")
             continue
         atlas = Image.open(asset).convert("RGBA")
-        idle = atlas.crop((0, 0, CELL_WIDTH, CELL_HEIGHT))
+        # roster-v2 atlases (2016 px wide, 6 columns) use 336 px cells.
+        cell_width = 336 if atlas.width == 2016 else CELL_WIDTH
+        idle = atlas.crop((0, 0, cell_width, CELL_HEIGHT))
         bbox = visible_bbox(idle)
         if bbox is None:
             errors.append(f"{character['id']}: idle frame is empty")

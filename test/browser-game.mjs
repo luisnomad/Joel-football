@@ -5,7 +5,8 @@ import { chromium } from 'playwright';
 
 const root = new URL('..', import.meta.url).pathname;
 const output = new URL('../output/e2e/', import.meta.url).pathname;
-const port = 4175;
+// E2E_PORT lets parallel runs use separate dev servers.
+const port = Number(process.env.E2E_PORT) || 4175;
 const url = `http://127.0.0.1:${port}`;
 
 const waitForServer = async () => {
@@ -24,7 +25,10 @@ const waitForServer = async () => {
 const readState = (page) => page.evaluate(() => JSON.parse(window.render_game_to_text()));
 
 const readAnimationAtlasMetrics = (page) => page.evaluate(async () => {
-  const analyze = async (filename) => {
+  // classic: 4x3 cells of 320x480; roster-v2 (sprite redo): 6x4 cells of 336x480.
+  const CLASSIC = { columns: 4, cellWidth: 320, count: 12 };
+  const ROSTER_V2 = { columns: 6, cellWidth: 336, count: 24 };
+  const analyze = async (filename, layout = CLASSIC) => {
     const image = new Image();
     image.src = new URL(`assets/${filename}`, window.location.href).href;
     await image.decode();
@@ -35,15 +39,15 @@ const readAnimationAtlasMetrics = (page) => page.evaluate(async () => {
     context.drawImage(image, 0, 0);
     const pixels = context.getImageData(0, 0, canvas.width, canvas.height).data;
     const frames = [];
-    for (let frame = 0; frame < 12; frame += 1) {
-      const originX = (frame % 4) * 320;
-      const originY = Math.floor(frame / 4) * 480;
-      let left = 320;
+    for (let frame = 0; frame < layout.count; frame += 1) {
+      const originX = (frame % layout.columns) * layout.cellWidth;
+      const originY = Math.floor(frame / layout.columns) * 480;
+      let left = layout.cellWidth;
       let top = 480;
       let right = 0;
       let bottom = 0;
       for (let y = 0; y < 480; y += 1) {
-        for (let x = 0; x < 320; x += 1) {
+        for (let x = 0; x < layout.cellWidth; x += 1) {
           const alphaIndex = ((originY + y) * canvas.width + originX + x) * 4 + 3;
           if (pixels[alphaIndex] <= 8) continue;
           left = Math.min(left, x);
@@ -54,15 +58,15 @@ const readAnimationAtlasMetrics = (page) => page.evaluate(async () => {
       }
       frames.push({ frame, left, top, right, bottom });
     }
-    return { width: image.naturalWidth, height: image.naturalHeight, frames };
+    return { width: image.naturalWidth, height: image.naturalHeight, frames, layout };
   };
   return {
-    joel: await analyze('player-joel-sheet-v1.webp'),
+    joel: await analyze('player-joel-sheet-v2.webp', ROSTER_V2),
     dad: await analyze('player-dad-sheet-v1.webp'),
     mum: await analyze('player-mum-sheet-v1.webp'),
-    bob: await analyze('player-bob-sheet-v2.webp'),
-    lucia: await analyze('player-lucia-sheet-v2.webp'),
-    luna: await analyze('player-luna-sheet-v2.webp'),
+    bob: await analyze('player-bob-sheet-v3.webp', ROSTER_V2),
+    lucia: await analyze('player-lucia-sheet-v3.webp', ROSTER_V2),
+    luna: await analyze('player-luna-sheet-v3.webp', ROSTER_V2),
     juan: await analyze('player-juan-sheet-v3.webp'),
     juanjo: await analyze('player-juanjo-sheet-v1.webp'),
   };
@@ -267,8 +271,23 @@ const answerForChallenge = ({ operation, left, right }) => {
 };
 
 const assertAgeAppropriateChallenge = (challenge) => {
-  assert.ok(['addition', 'subtraction', 'multiplication', 'division'].includes(challenge.operation));
-  if (challenge.operation === 'addition') {
+  assert.ok(['starter', 'explorer', 'champion'].includes(challenge.level), 'every challenge should carry its adaptive level');
+  const answer = answerForChallenge(challenge);
+  assert.ok(Number.isInteger(answer) && answer >= 0, 'answers must be whole and non-negative');
+  assert.equal(challenge.choices.length, 4);
+  assert.equal(new Set(challenge.choices).size, 4, 'answer choices must be unique');
+  assert.ok(challenge.choices.includes(answer));
+  if (challenge.level === 'starter') {
+    assert.ok(['addition', 'subtraction'].includes(challenge.operation));
+    assert.ok(Math.max(challenge.left, challenge.right, answer) <= 20);
+  } else if (challenge.level === 'explorer') {
+    assert.ok(['addition', 'subtraction', 'multiplication'].includes(challenge.operation));
+    if (challenge.operation === 'multiplication') {
+      assert.ok([2, 5, 10].includes(challenge.left) || [2, 5, 10].includes(challenge.right));
+    } else {
+      assert.ok(Math.max(challenge.left, challenge.right, answer) <= 99);
+    }
+  } else if (challenge.operation === 'addition') {
     assert.ok(challenge.left >= 10 && challenge.right >= 10);
   } else if (challenge.operation === 'subtraction') {
     assert.ok(challenge.right >= 10 && challenge.left - challenge.right >= 10);
@@ -288,7 +307,7 @@ const answerChallenge = async (page, challenge, correct = true) => {
   const index = challenge.choices.indexOf(target);
   const state = await readState(page);
   const x = state.compactPhoneUi ? 340 + index * 200 : 400 + index * 160;
-  const y = state.compactPhoneUi ? 370 : 430;
+  const y = state.compactPhoneUi ? 335 : 380;
   await touchControl(page, x, y, 35);
 };
 
@@ -381,14 +400,19 @@ try {
   );
   const groundedVisualFrames = new Set([0, 1, 4, 5, 6, 7, 8, 9, 10, 11]);
   const atlasMetrics = await readAnimationAtlasMetrics(page);
+  // roster-v2 grounded cells (CHARACTER_LAYOUTS['roster-v2'].grounded): all but jump (13) and chilena (17-19).
+  const rosterV2GroundedFrames = new Set([0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 14, 15, 16, 20, 21, 22, 23]);
+  const groundedFramesFor = (atlasLayout) => (atlasLayout === 'roster-v2' ? rosterV2GroundedFrames : groundedVisualFrames);
   for (const [player, atlas] of Object.entries(atlasMetrics)) {
-    assert.deepEqual([atlas.width, atlas.height], [1280, 1440]);
+    const rosterV2 = atlas.layout.columns === 6;
+    assert.deepEqual([atlas.width, atlas.height], rosterV2 ? [2016, 1920] : [1280, 1440]);
+    const grounded = rosterV2 ? rosterV2GroundedFrames : groundedVisualFrames;
     for (const frame of atlas.frames) {
       assert.ok(
-        frame.left >= 8 && 320 - frame.right >= 8,
+        frame.left >= 8 && atlas.layout.cellWidth - frame.right >= 8,
         `${player} frame ${frame.frame} must keep at least 8 px of horizontal padding; got ${JSON.stringify(frame)}`,
       );
-      if (groundedVisualFrames.has(frame.frame)) {
+      if (grounded.has(frame.frame)) {
         assert.equal(frame.bottom, 418, `${player} grounded frame ${frame.frame} must share the foot baseline`);
       }
     }
@@ -589,13 +613,13 @@ try {
       layout: scene.infoOverlay.layout,
       left: [
         'MOVER',
-        'Corre y elige un carril superior o inferior',
+        'Corre y toca arriba o abajo para cambiar de carril',
         'SALTAR',
-        'Mantén una dirección al saltar para cambiar de carril',
+        'Salta los balones sueltos de tu carril',
       ].map(textBounds),
       right: [
         'CAMBIAR DE CARRIL',
-        'Mantén arriba o abajo mientras saltas',
+        'Toca arriba o abajo una vez',
         'CHUTAR',
         'Rompe muros y libera balones atrapados',
       ].map(textBounds),
@@ -757,34 +781,37 @@ try {
   await page.keyboard.up('d');
   state = await readState(page);
   assert.ok(state.player.x > kickfallStartX + 80, `Kickfall movement should respond immediately; moved ${state.player.x - kickfallStartX}px`);
+  // Joel uses the sprite-redo roster-v2 atlas: a six-drawing run loop in cells
+  // 3-8, animated at 14-24 drawings/s (owner playtest: the old distance-only
+  // cadence read choppy). 12 samples x 40 ms therefore show roughly 6-12
+  // changes; the upper bound still rejects per-tick flicker.
+  const rosterV2RunCells = [3, 4, 5, 6, 7, 8];
   assert.ok(
-    kickfallRunFrames.some((frame) => [6, 7, 8].includes(frame)),
+    kickfallRunFrames.some((frame) => rosterV2RunCells.includes(frame)),
     `Kickfall running should use animated run frames; got ${kickfallRunFrames.join(',')}`,
   );
   const kickfallRunTransitions = kickfallRunFrames.slice(1)
     .filter((frame, index) => frame !== kickfallRunFrames[index]).length;
   assert.ok(
-    kickfallRunTransitions >= 2 && kickfallRunTransitions <= 5,
-    `Kickfall running should hold each pose long enough to read; frames=${kickfallRunFrames.join(',')}`,
+    kickfallRunTransitions >= 4 && kickfallRunTransitions <= 14,
+    `Kickfall running should animate fluidly without flicker; frames=${kickfallRunFrames.join(',')}`,
   );
-  assert.ok(new Set(kickfallRunFrames).size >= 3, 'Kickfall running should still cycle through all three run drawings');
+  assert.ok(new Set(kickfallRunFrames).size >= 4, 'Kickfall running should cycle through the run drawings');
 
-  await hold(page, 'ArrowDown', 20);
+  // One-tap lane change (owner playtest 2026-10-08): a single Up/Down press
+  // moves exactly one tier; holding does not repeat.
+  await hold(page, 'ArrowDown', 120);
   await advance(page, 380);
   state = await readState(page);
-  assert.equal(state.player.tierId, 'top', 'Down alone must not transfer the player');
-  await holdCombo(page, ['ArrowDown', 'Space'], 20);
-  await advance(page, 380);
-  state = await readState(page);
-  assert.equal(state.player.tierId, 'upper', 'Jump + Down should transfer exactly one tier lower');
-  assert.ok(state.player.y > 240, 'Jump + Down should visibly land the character on the platform below');
-  await holdCombo(page, ['s', 'Space'], 20);
+  assert.equal(state.player.tierId, 'upper', 'one Down press should transfer exactly one tier lower, even when held');
+  assert.ok(state.player.y > 240, 'the Down tap should visibly land the character on the platform below');
+  await hold(page, 's', 20);
   await advance(page, 380);
   assert.equal((await readState(page)).player.tierId, 'lower');
-  await holdCombo(page, ['ArrowUp', 'Space'], 20);
+  await hold(page, 'ArrowUp', 20);
   await advance(page, 380);
   state = await readState(page);
-  assert.equal(state.player.tierId, 'upper', 'Jump + Up should transfer exactly one tier higher');
+  assert.equal(state.player.tierId, 'upper', 'one Up press should transfer exactly one tier higher');
   assert.ok(Math.abs(state.player.platformSurfaceY - state.player.visualGroundAnchorY) < 3);
   await hold(page, 'Space', 20);
   state = await readState(page);
@@ -795,14 +822,14 @@ try {
   assert.equal(state.player.grounded, true, 'Kickfall jump should return to the ramp promptly');
   assert.ok(Math.abs(state.player.platformSurfaceY - state.player.visualGroundAnchorY) < 3);
 
-  await holdCombo(page, ['ArrowUp', 'Space'], 20);
+  await hold(page, 'ArrowUp', 20);
   await advance(page, 380);
   assert.equal((await readState(page)).player.tierId, 'top');
-  await holdCombo(page, ['ArrowUp', 'Space'], 20);
+  await hold(page, 'ArrowUp', 20);
+  await advance(page, 380);
   state = await readState(page);
-  assert.equal(state.player.tierId, 'top', 'a blocked upward transfer must stay on the top lane');
-  assert.ok(state.player.vy < 0, 'jump plus an unavailable lane direction should fall back to a normal jump');
-  await advance(page, 700);
+  assert.equal(state.player.tierId, 'top', 'Up on the top lane has nowhere to go and must stay put');
+  await advance(page, 320);
 
   const bufferedJumpFixture = await page.evaluate(() => window.__KICKFALL_DEBUG__.prepareBufferedJump('upper'));
   await hold(page, 'Space', 20);
@@ -1007,6 +1034,10 @@ try {
   assert.equal(state.level.number, 1);
   assert.deepEqual(state.actions, ['retry', 'continue', 'main menu']);
   assert.ok(state.audio.gameEffectPlays.levelFinished >= 1, 'winning a Kickfall level should use the supplied finish cue');
+  // Stars: 1-3 for a win (clear, fast, skilled), saved as the level's best.
+  assert.ok(state.rating.stars >= 1 && state.rating.stars <= 3, `a win should earn 1-3 stars; ${JSON.stringify(state.rating)}`);
+  assert.equal(state.campaign.stars['1'], state.rating.stars, 'the earned stars should be saved for level 1');
+  const victoryStars = state.rating.stars;
   await capture(page, `${output}/01-kickfall-victory.png`);
 
   await touchControl(page, 640, 490, 35);
@@ -1018,7 +1049,7 @@ try {
     hasNext: true,
     tierModes: ['downhill', 'downhill', 'downhill', 'downhill'],
   });
-  assert.deepEqual(state.campaign, { highestUnlockedLevel: 2, lastPlayedLevel: 2 });
+  assert.deepEqual(state.campaign, { highestUnlockedLevel: 2, lastPlayedLevel: 2, stars: { 1: victoryStars } });
   assert.deepEqual(state.timer, { enabled: true, totalSeconds: 60, remainingSeconds: 60 });
   assert.equal(state.progress.quota, 10);
   assert.equal(state.spawn.intervalSeconds, 2.65);
@@ -1484,9 +1515,12 @@ try {
   const bossRig = await page.evaluate(() => {
     const scene = window.__SKYHEAD_GAME__.scene.getScene('Kickfall');
     const originalCharacter = scene.rivalCharacter;
+    // The contact drawing's index depends on the boss's atlas layout
+    // (classic 10, roster-v2 11).
+    const contactFrame = scene.bossLayout.kickContact;
     scene.rivalCharacter = {
       ...originalCharacter,
-      frameScales: { 10: 1.15 },
+      frameScales: { [contactFrame]: 1.15 },
     };
     scene.boss.kickCooldown = 999;
     scene.boss.kickVisualTimer = 0.2;
@@ -1495,6 +1529,7 @@ try {
       physicsVisible: scene.boss.sprite.visible,
       visualVisible: scene.boss.visual.visible,
       frame: Number(scene.boss.visual.frame.name),
+      contactFrame,
       scaleXRatio: scene.boss.visual.scaleX / scene.boss.visualBaseScale.x,
       scaleYRatio: scene.boss.visual.scaleY / scene.boss.visualBaseScale.y,
     };
@@ -1505,7 +1540,7 @@ try {
   });
   assert.deepEqual(
     [bossRig.physicsVisible, bossRig.visualVisible, bossRig.frame],
-    [false, true, 10],
+    [false, true, bossRig.contactFrame],
     'the Kickfall boss must use the shared hidden-body/display-sprite rig',
   );
   assert.ok(Math.abs(bossRig.scaleXRatio - 1.15 * 1.05) < 0.001);
@@ -1666,7 +1701,7 @@ try {
   await touchControl(page, 345, 294, 35);
   await page.waitForFunction(() => JSON.parse(window.render_game_to_text()).mode === 'minigame-setup');
   state = await readState(page);
-  assert.deepEqual(state.progress, { highestUnlockedLevel: 2, lastPlayedLevel: 2 });
+  assert.deepEqual(state.progress, { highestUnlockedLevel: 2, lastPlayedLevel: 2, stars: { 1: victoryStars } });
   assert.ok(state.actions.includes('continue Kickfall'));
   assert.ok(state.actions.includes('start Kickfall from level 1'));
   await capture(page, `${output}/01-kickfall-resume-choice.png`);
@@ -1851,8 +1886,8 @@ try {
   });
   assert.deepEqual(state.modalExternalLinks, {
     youtube: 'https://www.youtube.com/@luisnomad',
-    privacy: 'https://notjustprompts.ai/joel-football/legal/',
-    support: 'https://notjustprompts.ai/joel-football/support/',
+    privacy: 'https://notjustprompts.ai/games/legal/',
+    support: 'https://notjustprompts.ai/games/support/?game=joel-football',
   });
   await capture(page, `${output}/01-about.png`);
   const youtubePopupPromise = page.waitForEvent('popup');
@@ -1867,12 +1902,12 @@ try {
   const privacyPopupPromise = page.waitForEvent('popup');
   await touchControl(page, 614, 565, 30);
   const privacyPopup = await privacyPopupPromise;
-  assert.match(privacyPopup.url(), /^https:\/\/notjustprompts\.ai\/joel-football\/legal\/?/);
+  assert.match(privacyPopup.url(), /^https:\/\/notjustprompts\.ai\/games\/legal\/?/);
   await privacyPopup.close();
   const supportPopupPromise = page.waitForEvent('popup');
   await touchControl(page, 824, 565, 30);
   const supportPopup = await supportPopupPromise;
-  assert.match(supportPopup.url(), /^https:\/\/notjustprompts\.ai\/joel-football\/support\/?/);
+  assert.match(supportPopup.url(), /^https:\/\/notjustprompts\.ai\/games\/support\/?\?game=joel-football/);
   await supportPopup.close();
   await page.evaluate(() => window.__SKYHEAD_PLATFORM_DEBUG__.backForTesting());
   await page.waitForFunction(() => JSON.parse(window.render_game_to_text()).modal === null);
@@ -1987,7 +2022,8 @@ try {
   state = await readState(page);
   assert.equal(state.language, 'es');
   assert.equal(state.powers.fireball, 0);
-  assert.equal(state.operationMode, 'random');
+  assert.equal(state.operationMode, 'adaptive');
+  assert.equal(state.mathProgress.level, 'explorer', 'new profiles should start at the middle math level');
   assert.equal(state.lastOperation, null);
   assert.ok(!state.actions.includes('select operation'), 'the child should have no operation selector');
   await capture(page, `${output}/01-power-lab-es.png`);
@@ -2004,7 +2040,7 @@ try {
   assert.equal(state.mathLockRemainingMs, 0, 'correct answers should not start a penalty');
   assert.ok(state.audio.gameEffectPlays.powerUp >= 1, 'earning a power charge should use the supplied power-up cue');
   await capture(page, `${output}/01-math-success.png`);
-  await touchControl(page, 640, 595, 30);
+  await touchControl(page, 640, 632, 30);
   await touchControl(page, 1090, 638, 30);
   state = await readState(page);
   assert.equal(state.equippedPowerId, 'fireball', 'an earned power should be equipable');
@@ -2012,7 +2048,7 @@ try {
   await touchControl(page, 805, 638, 35);
   state = await readState(page);
   await answerChallenge(page, state.challenge, true);
-  await touchControl(page, 640, 595, 30);
+  await touchControl(page, 640, 632, 30);
   state = await readState(page);
   assert.equal(state.powers.fireball, 2, 'correct challenges should accumulate charges');
 
@@ -2065,13 +2101,14 @@ try {
   assert.equal(state.players.right.name, 'Joel');
   assert.equal(state.players.left.displayHeight, 280, 'gameplay characters should use the taller natural sprite ratio');
   assert.equal(state.players.right.displayHeight, 280);
-  assert.ok(Math.abs(state.players.left.displayWidth / state.players.left.displayHeight - 2 / 3) < 0.01);
+  // Lucia uses the sprite-redo roster-v2 atlas: 336x480 cells (aspect 0.7).
+  assert.ok(Math.abs(state.players.left.displayWidth / state.players.left.displayHeight - 336 / 480) < 0.01);
   assert.equal(state.players.left.facing, 1, 'the selected player should face the opponent at kickoff');
   assert.equal(state.players.right.facing, -1, 'the selected opponent should face the player at kickoff');
   assert.deepEqual(
     [state.players.left.nativeFacing, state.players.left.visualFlipped],
-    [-1, true],
-    'Lucia gameplay art should mirror from its native left-facing direction on the player side',
+    [1, false],
+    'Lucia is redrawn facing right, so on the player side she is shown unmirrored',
   );
   assert.deepEqual(
     [state.players.right.nativeFacing, state.players.right.visualFlipped],
@@ -2081,15 +2118,18 @@ try {
   assert.ok(Math.abs(state.players.left.visualGroundAnchorY - 636) < 0.2);
   assert.ok(Math.abs(state.players.right.visualGroundAnchorY - 636) < 0.2);
   assert.equal(state.players.left.visualGroundAnchorY, state.players.right.visualGroundAnchorY);
+  // Joel is a sprite-redo kid: a 328 px idle in the 480 px cell puts his hairline
+  // at 636 - 328 * 280 / 480 ≈ 444.7, and the 'kid' head cap (headTop 193) tops
+  // out at ≈443. The collider must reach the drawn hairline, not the old adult one.
   assert.ok(
-    state.players.right.collisionTopY <= 415,
+    state.players.right.collisionTopY <= 445,
     `Joel's fixed head collider must reach his idle hairline; got ${state.players.right.collisionTopY}`,
   );
   const joelHeaderCoverage = await page.evaluate(() => {
     const match = window.__SKYHEAD_GAME__.scene.getScene('Match');
     const matches = match.matter.query.point(
       [match.rightPlayer.sprite.body],
-      { x: match.rightPlayer.sprite.x, y: 425 },
+      { x: match.rightPlayer.sprite.x, y: 452 },
     );
     return matches.length;
   });
@@ -2194,8 +2234,14 @@ try {
   assert.ok(runDistance > 95, `20%-faster movement should cover the pitch decisively; got ${runDistance}`);
   assert.ok(runPoses.has('run-stride') && runPoses.has('run-contact'), 'running should alternate two leg poses');
   assert.equal(state.players.left.enhancedAnimation, true);
-  assert.ok(runVisualFrames.has(6) && runVisualFrames.has(7) && runVisualFrames.has(8), `running should use all three authored drawings; got ${[...runVisualFrames]}`);
-  assert.ok(runAnimationStages.has('contact-a') && runAnimationStages.has('contact-b'), 'running should alternate planted feet');
+  // Joel is on the roster-v2 atlas: a six-drawing run loop in cells 3-8 with
+  // planted feet at loop phases 0 and 3 (stages run-0 / run-3).
+  const matchRunCells = [3, 4, 5, 6, 7, 8];
+  assert.ok(
+    [...runVisualFrames].filter((frame) => matchRunCells.includes(frame)).length >= 4,
+    `running should cycle through the authored run drawings; got ${[...runVisualFrames]}`,
+  );
+  assert.ok(runAnimationStages.has('run-0') && runAnimationStages.has('run-3'), 'running should alternate planted feet');
   assert.ok(Math.abs(state.players.left.visualGroundAnchorY - 636) < 0.2, 'running feet should stay registered to the pitch');
   await capture(page, `${output}/02-run-cycle.png`);
 
@@ -2501,43 +2547,41 @@ try {
   await hold(page, 'k', 17);
   state = await readState(page);
   assert.equal(state.players.left.chilenaSuccesses, chilenaSuccessesBefore + 1, 'the second fast kick press should trigger a reachable chilena');
+  // Joel is a sprite-redo (roster-v2) character: a framed chilena. The press
+  // starts the move; the shot is applied when the contact drawing's boot meets
+  // the ball (see test/framed-chilena-browser.mjs for the geometric checks).
   assert.equal(state.players.left.chilenaActive, true);
+  assert.equal(state.players.left.chilenaFramed, true);
   assert.equal(state.players.left.pose, 'chilena');
-  assert.equal(state.players.left.facing, -1, 'Joel should turn his back to the rival goal during the rotation');
+  assert.equal(state.players.left.facing, -1, 'Joel should turn his back to the rival goal during the chilena');
   assert.ok(state.players.left.vy < 0, 'the chilena should lift Joel into the air');
+  for (let tick = 0; tick < 40 && !state.players.left.lastChilenaContact; tick += 1) {
+    await advance(page, 1000 / 60);
+    state = await readState(page);
+  }
+  assert.equal(state.players.left.lastChilenaContact?.outcome, 'contact', 'the boot should meet the ball');
   assert.equal(state.players.left.meter, 100, 'a successful chilena should fully reward the energy meter');
   assert.equal(state.powerBall.active, true);
   assert.equal(state.powerBall.owner, 'left');
   assert.equal(state.powerBall.superpowerId, 'chilena');
-  assert.ok(state.ball.vx > 24 && state.ball.vy > 0, `an aerial chilena should aim down toward the rival goal center; got ${state.ball.vx}, ${state.ball.vy}`);
+  assert.ok(
+    state.ball.vx > 12 && state.ball.vy > 0 && Math.hypot(state.ball.vx, state.ball.vy) > 20,
+    `an aerial chilena should drive down toward the rival goal; got ${state.ball.vx}, ${state.ball.vy}`,
+  );
   assert.equal(state.lastChilenaStrike?.side, 'left');
   assert.equal(state.lastChilenaStrike?.meterAfter, 100);
   assert.equal(state.hud.announcement, '¡CHILENA!');
-  await advance(page, 150);
+  await advance(page, 100);
   state = await readState(page);
-  assert.ok(
-    state.players.left.chilenaRotation > 65 && state.players.left.chilenaRotation < 180,
-    `a left-side attacker should lean backward toward the rival goal; got ${state.players.left.chilenaRotation}`,
-  );
+  // Framed chilenas carry the body orientation in the drawings: no spin.
+  assert.equal(state.players.left.chilenaRotation, 0);
   const chilenaVisual = await page.evaluate(() => {
     const fighter = window.__SKYHEAD_GAME__.scene.getScene('Match').leftPlayer;
-    const bounds = fighter.visual.getBounds();
-    return {
-      pivotX: fighter.visual.x,
-      pivotY: fighter.visual.y,
-      bodyX: fighter.sprite.x,
-      bodyY: fighter.sprite.y,
-      bottom: bounds.bottom,
-    };
+    return { bottom: fighter.visual.getBounds().bottom };
   });
   assert.ok(
-    Math.abs(chilenaVisual.pivotX - chilenaVisual.bodyX) < 0.2
-      && Math.abs(chilenaVisual.pivotY - chilenaVisual.bodyY) < 0.2,
-    `the chilena should pivot around the airborne torso; ${JSON.stringify(chilenaVisual)}`,
-  );
-  assert.ok(
     chilenaVisual.bottom < 636,
-    `the rotating artwork must clear the pitch instead of orbiting through it; bottom=${chilenaVisual.bottom}`,
+    `the airborne chilena artwork must stay above the pitch; bottom=${chilenaVisual.bottom}`,
   );
   await capture(page, `${output}/02-chilena.png`);
   await advance(page, 1150);
@@ -2551,7 +2595,7 @@ try {
   assert.equal(state.players.left.facing, 1, 'Joel should face the rival goal again after landing');
   assert.equal(state.players.left.grounded, true);
   assert.ok(Math.abs(state.players.left.y - 547) < 8, `the visual-only rotation must return Joel to his normal ground height; got y=${state.players.left.y}`);
-  assert.ok(groundedVisualFrames.has(state.players.left.visualFrame), `chilena landing should restore a grounded pose; got frame ${state.players.left.visualFrame}`);
+  assert.ok(groundedFramesFor(state.players.left.atlasLayout).has(state.players.left.visualFrame), `chilena landing should restore a grounded pose; got frame ${state.players.left.visualFrame}`);
   assert.ok(Math.abs(state.players.left.visualGroundAnchorY - 636) < 0.2, 'chilena landing should return Joel to the shared foot baseline');
   await capture(page, `${output}/02-chilena-landing.png`);
 
@@ -2567,6 +2611,11 @@ try {
   await hold(page, 'i', 17);
   state = await readState(page);
   assert.equal(state.players.left.chilenaSuccesses, lobChilenaSuccessesBefore + 1);
+  // Framed chilena (roster-v2 Joel): the lob launches when the boot meets the ball.
+  for (let tick = 0; tick < 40 && state.powerBall.superpowerId !== 'chilena-lob'; tick += 1) {
+    await advance(page, 1000 / 60);
+    state = await readState(page);
+  }
   assert.equal(state.powerBall.superpowerId, 'chilena-lob');
   assert.equal(state.powerBall.trajectory?.phase, 'rising');
   assert.equal(state.lastChilenaStrike?.variant, 'lob');
@@ -2650,6 +2699,8 @@ try {
   assert.equal(state.powerBall.superpowerId, 'fireball', 'the equipped charge should augment a successful power strike');
   assert.equal(state.inventory.equippedCount, 1, 'a successful enhanced strike should consume exactly one charge');
   assert.ok(state.ball.vx > 26, 'Fireball should launch faster than the standard power shot');
+  assert.equal(state.powerBall.visuals.kind, 'fire', 'Fireball should wear the fire effect, not the standard energy comet');
+  assert.ok(state.powerBall.visuals.particles > 0 && state.powerBall.visuals.glowVisible, 'the fire effect should be live');
   await capture(page, `${output}/02-power-shot.png`);
 
   await page.keyboard.press('r');
@@ -2671,6 +2722,11 @@ try {
   assert.deepEqual(state.lastInstantPower, { powerId: 'ice', target: 'right' });
   assert.equal(state.players.right.frozen, true, 'Freeze should immobilize the opponent immediately on the power press');
   assert.ok(state.players.right.freezeSeconds > 4.7, 'Freeze should provide five active-play seconds');
+  assert.deepEqual(
+    { halo: state.players.right.statusVisual?.halo, iceBlock: state.players.right.statusVisual?.iceBlock },
+    { halo: 'frozen', iceBlock: true },
+    'a frozen rival should be visibly encased in ice (drawn, not a Canvas no-op tint)',
+  );
   assert.match(state.players.right.statusCue, /❄.*4\.[7-9]s/, 'Freeze should show a live field countdown');
   assert.equal(state.inventory.equippedCount, 0, 'Freeze should consume one charge when it activates');
   assert.ok(state.players.left.meter < 1, 'an instant power should spend the full meter immediately');
@@ -2772,8 +2828,10 @@ try {
   await advance(page, 450);
   state = await readState(page);
   assert.equal(state.powerBall.superpowerId, 'big', 'Big Guy should activate from a successful powered strike');
+  assert.equal(state.powerBall.visuals.kind, 'gold', 'the Big Guy shot should wear the gold effect');
   assert.ok(state.players.left.bigGuySeconds > 9.5, 'Big Guy should remain active for ten seconds');
   assert.equal(state.players.left.bigGuyScale, 2, 'Joel should finish expanding to exactly twice his normal size');
+  assert.equal(state.players.left.statusVisual?.halo, 'bigGuy', 'Big Guy should wear a visible gold halo');
   assert.equal(state.players.left.grounded, true, 'the larger physics body should keep its feet grounded');
   assert.equal(state.hud.announcement, '¡TÍO GRANDE!');
   await capture(page, `${output}/02-big-guy-grown.png`);
@@ -3008,7 +3066,15 @@ try {
   assert.ok(state.ball.x > 148, `a perched ball should roll back into play; x=${state.ball.x}, y=${state.ball.y}`);
   await capture(page, `${output}/03-goal-perch-released.png`);
 
-  await page.evaluate(() => window.__SKYHEAD_DEBUG__.setBall({ x: 1212, y: 373 }));
+  await page.evaluate(() => {
+    // Isolate the perch release from the AI: an active rival can chase the
+    // released ball and (depending on real-loop timing) kick it into its own
+    // goal, which froze the ball inside the right goal mouth in ~half the runs.
+    window.__SKYHEAD_DEBUG__.setOpponentPosition(900);
+    // 1.4 s covers the 1.15 s observation and expires before the next fixture.
+    window.__SKYHEAD_DEBUG__.stunOpponent(1.4);
+    window.__SKYHEAD_DEBUG__.setBall({ x: 1212, y: 373 });
+  });
   await advance(page, 250);
   state = await readState(page);
   assert.ok(state.ball.x > 1132 && state.ball.y < 396, 'fixture should reproduce a ball perched above the right goal');
@@ -3088,9 +3154,22 @@ try {
   assert.equal(state.audio.whistlePlays, goalWhistlePlaysBefore + 1, 'the goal whistle should begin playback immediately');
   assert.deepEqual(state.audio.recentWhistles.at(-1), { label: 'goal', cutoffMs: null }, 'the goal should retain a full-length whistle');
   await capture(page, `${output}/04-ground-goal-regression.png`);
-  await advance(page, 1800);
+  // Reactive net: the scored ball is not frozen on the line; it carries into
+  // the left goal's net and settles on the ground inside the goal.
+  assert.equal(state.goalNets.left.captured, true, 'the scored ball should be captured by the left net');
+  await advance(page, 450);
+  state = await readState(page);
+  assert.equal(state.mode, 'goal');
+  assert.ok(
+    state.ball.x < 126 && state.ball.x >= state.goalNets.left.backX && state.ball.y > 600,
+    `the ball should settle inside the left goal, on the ground; ${JSON.stringify({ ball: state.ball, net: state.goalNets.left })}`,
+  );
+  assert.equal(state.goalNets.right.captured, false);
+  // 100 + 450 + 1350 ms keeps the original 1.9 s from the goal to this check.
+  await advance(page, 1350);
   state = await readState(page);
   assert.equal(state.mode, 'countdown');
+  assert.equal(state.goalNets.left.captured, false, 'the next round should release the netted ball');
   await page.waitForTimeout(220);
   await capture(page, `${output}/04-post-goal-reset.png`);
   state = await readState(page);
@@ -3882,7 +3961,8 @@ try {
     mobileState.touchControlVisuals['system:pause'].radius >= 44,
     'wide-phone Pause should meet a comfortable mobile touch-target size',
   );
-  assert.equal(mobileState.touchControlVisuals['system:pause'].surfaceFillAlpha, 0.34);
+  // Solid backing so Pause/Help read clearly over the pitch on phones (audit C5).
+  assert.equal(mobileState.touchControlVisuals['system:pause'].surfaceFillAlpha, 0.88);
   assert.equal(mobileState.touchControlVisuals['system:pause'].symbolAlpha, 1);
   const mobileControlOverflow = mobileState.stageLayout.width - 1280;
   assert.deepEqual(
@@ -4269,7 +4349,16 @@ try {
   const touchGroundY = (await readState(mobilePage)).players.left.y;
   await touchStageControl(mobilePage, 1020 + mobileControlOverflow, 630, 80);
   mobileState = await readState(mobilePage);
-  assert.ok(mobileState.players.left.y < touchGroundY && mobileState.players.left.vy < 0, 'touch jump should launch upward');
+  assert.ok(
+    mobileState.players.left.y < touchGroundY && mobileState.players.left.vy < 0,
+    `touch jump should launch upward; ${JSON.stringify({
+      touchGroundY,
+      mode: mobileState.mode,
+      player: mobileState.players.left,
+      intent: mobileState.currentIntent.left,
+      ball: mobileState.ball,
+    })}`,
+  );
   await advance(mobilePage, 1050);
 
   mobileState = await readState(mobilePage);
@@ -4362,6 +4451,11 @@ try {
     `the regression must exercise tablet timing rather than a frame-perfect double tap; got ${mobileState.inputDiagnostics.lastTouchShotIntervalMs}ms`,
   );
   assert.equal(mobileState.players.left.chilenaActive, true);
+  // Framed chilena (roster-v2 Joel): the reward and the shot land at boot contact.
+  for (let tick = 0; tick < 40 && mobileState.powerBall.superpowerId !== 'chilena'; tick += 1) {
+    await advance(mobilePage, 1000 / 60);
+    mobileState = await readState(mobilePage);
+  }
   assert.equal(mobileState.players.left.meter, 100);
   assert.equal(mobileState.powerBall.superpowerId, 'chilena');
   await advance(mobilePage, 150);
@@ -4376,7 +4470,7 @@ try {
   assert.equal(mobileState.players.left.facing, 1);
   assert.equal(mobileState.players.left.grounded, true);
   assert.ok(Math.abs(mobileState.players.left.y - 547) < 8, `tablet chilena landing should preserve Joel's ground height; got y=${mobileState.players.left.y}`);
-  assert.ok(groundedVisualFrames.has(mobileState.players.left.visualFrame), `chilena landing should use a grounded pose; got frame ${mobileState.players.left.visualFrame}`);
+  assert.ok(groundedFramesFor(mobileState.players.left.atlasLayout).has(mobileState.players.left.visualFrame), `chilena landing should use a grounded pose; got frame ${mobileState.players.left.visualFrame}`);
   assert.ok(
     Math.abs(mobileState.players.left.visualGroundAnchorY - 636) < 1.5,
     `chilena landing feet should remain visually registered; got ${mobileState.players.left.visualGroundAnchorY}`,
@@ -4393,6 +4487,11 @@ try {
   await mobilePage.waitForTimeout(260);
   await touchStageControl(mobilePage, 1195 + mobileControlOverflow, 475, 17);
   mobileState = await readState(mobilePage);
+  // Framed chilena (roster-v2 Joel): the lob launches at boot contact.
+  for (let tick = 0; tick < 40 && mobileState.powerBall.superpowerId !== 'chilena-lob'; tick += 1) {
+    await advance(mobilePage, 1000 / 60);
+    mobileState = await readState(mobilePage);
+  }
   assert.equal(mobileState.powerBall.superpowerId, 'chilena-lob', 'double-tapping the tablet Lob icon should start the high chilena');
   assert.equal(mobileState.powerBall.trajectory?.phase, 'rising');
   await capture(mobilePage, `${output}/05-touch-lob-chilena-launch.png`);
@@ -4647,7 +4746,11 @@ try {
   await advance(tabletPage, 40);
   tabletState = await readState(tabletPage);
   assert.equal(tabletState.controls.joystick.direction, 'down-right', 'Jump must not steal the joystick pointer');
-  assert.equal(tabletState.player.tierTransfer?.targetTierId, 'upper');
+  assert.equal(
+    tabletState.player.tierTransfer?.targetTierId ?? null,
+    null,
+    'Jump during a diagonal joystick run must jump, not change lanes',
+  );
   await tabletTouch.send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [jumpTouch] });
   await advance(tabletPage, 40);
   tabletState = await readState(tabletPage);
@@ -4658,7 +4761,16 @@ try {
   tabletState = await readState(tabletPage);
   assert.equal(tabletState.controls.joystick.direction, 'neutral');
   assert.equal(tabletState.controls.joystick.pointerId, null);
-  assert.equal(tabletState.player.tierId, 'upper', 'joystick Down + Jump should move to the adjacent lower tier');
+  assert.equal(tabletState.player.tierId, 'top', 'a diagonal joystick run must not change lanes');
+  // A straight joystick flick down changes lane once.
+  const joystickDownTouch = { ...joystickCenterTouch, y: joystickCenterTouch.y + tabletState.controls.joystick.radius * 0.85 };
+  await tabletTouch.send('Input.dispatchTouchEvent', { type: 'touchStart', touchPoints: [joystickCenterTouch] });
+  await tabletTouch.send('Input.dispatchTouchEvent', { type: 'touchMove', touchPoints: [joystickDownTouch] });
+  await advance(tabletPage, 120);
+  await tabletTouch.send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [joystickDownTouch] });
+  await advance(tabletPage, 380);
+  tabletState = await readState(tabletPage);
+  assert.equal(tabletState.player.tierId, 'upper', 'a straight joystick Down flick should move to the adjacent lower tier');
   await touchControl(tabletPage, 1035, 705, 35);
   tabletState = await readState(tabletPage);
   assert.equal(tabletState.player.tierId, 'upper', 'tablet Jump should remain separate from tier direction');
@@ -4667,6 +4779,17 @@ try {
   tabletState = await readState(tabletPage);
   assert.equal(tabletState.player.grounded, true, 'tablet Jump should land promptly');
   assert.ok(Math.abs(tabletState.player.platformSurfaceY - tabletState.player.visualGroundAnchorY) < 3);
+  // A straight Up flick returns to the top lane, where the kick-while-running
+  // check below has an open run to the right.
+  const joystickUpTouch = { ...joystickCenterTouch, y: joystickCenterTouch.y - tabletState.controls.joystick.radius * 0.85 };
+  await tabletTouch.send('Input.dispatchTouchEvent', { type: 'touchStart', touchPoints: [joystickCenterTouch] });
+  await tabletTouch.send('Input.dispatchTouchEvent', { type: 'touchMove', touchPoints: [joystickUpTouch] });
+  await advance(tabletPage, 120);
+  await tabletTouch.send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [joystickUpTouch] });
+  await advance(tabletPage, 380);
+  tabletState = await readState(tabletPage);
+  assert.equal(tabletState.player.tierId, 'top', 'a straight joystick Up flick should move to the adjacent upper tier');
+  assert.equal(tabletState.player.grounded, true);
   const joystickRightTouch = {
     ...joystickCenterTouch,
     x: joystickCenterTouch.x + tabletState.controls.joystick.radius * 0.91,
@@ -4687,7 +4810,10 @@ try {
   assert.equal(tabletState.controls.joystick.direction, 'right', 'Kick must not steal the joystick pointer');
   assert.equal(tabletState.controls.joystick.pointerId, kickJoystickPointerId);
   assert.ok(tabletState.player.kickCooldown > 0, 'Kick should fire while the joystick remains held right');
-  assert.ok(tabletState.player.vx > 0, 'rightward joystick movement must continue during Kick');
+  assert.ok(
+    tabletState.player.vx > 0,
+    `rightward joystick movement must continue during Kick; ${JSON.stringify(tabletState.player)}`,
+  );
   await tabletTouch.send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [kickTouch] });
   await advance(tabletPage, 80);
   tabletState = await readState(tabletPage);
@@ -4759,9 +4885,20 @@ try {
       surfaceFillAlpha: tabletState.touchControlVisuals['system:pause'].surfaceFillAlpha,
       symbolAlpha: tabletState.touchControlVisuals['system:pause'].symbolAlpha,
     },
-    { x: 52, authoredRadius: 28, surfaceFillAlpha: 0.13, symbolAlpha: 0.78 },
-    'the established Android-tablet Football system controls must remain unchanged',
+    { x: 52, authoredRadius: 28, surfaceFillAlpha: 0.88, symbolAlpha: 1 },
+    'Android-tablet Football system controls keep their place and size with a solid, high-contrast backing (audit C1)',
   );
+  assert.equal(tabletState.touchControlVisuals.powerDocked, true, 'the tablet power button should dock in the band frame (audit C2)');
+  assert.deepEqual(
+    { x: tabletState.touchControlVisuals.power.x, y: tabletState.touchControlVisuals.power.y },
+    { x: 640, y: 718 },
+    'the docked power button should sit in the empty centre frame below the pitch',
+  );
+  assert.ok(
+    tabletState.touchControlVisuals.power.y - tabletState.touchControlVisuals.power.radius > 636,
+    'the docked power button must sit wholly below the pitch ground line (y 636)',
+  );
+  assert.ok(tabletState.touchControlVisuals.powerMeter, 'the docked power button should carry the meter ring');
   assert.deepEqual(
     {
       axis: tabletState.touchControlVisuals.joystick.axis,
@@ -4913,13 +5050,48 @@ try {
   await capture(penaltyPage, `${output}/07-power-lab-tablet.png`);
   await touchControl(penaltyPage, 520, 560, 35);
   let penaltyState = await readState(penaltyPage);
-  assert.equal(penaltyState.operationMode, 'random');
+  assert.equal(penaltyState.operationMode, 'adaptive');
+  assertAgeAppropriateChallenge(penaltyState.challenge);
+  const startingLevel = penaltyState.mathProgress.level;
+  await answerChallenge(penaltyPage, penaltyState.challenge, false);
+  await penaltyPage.waitForFunction(() => JSON.parse(window.render_game_to_text()).challenge?.status !== 'answering');
+  penaltyState = await readState(penaltyPage);
+  assert.equal(penaltyState.challenge?.status, 'wrong', 'one miss should explain, not lock');
+  assert.equal(penaltyState.challenge?.explained, true, 'a miss should show the answer and an explanation');
+  assert.equal(penaltyState.mathLockRemainingMs, 0, 'a single miss must not start a break');
+  assert.equal(penaltyState.powers.fireball, 0, 'a wrong answer must not award a charge');
+  await capture(penaltyPage, `${output}/07-math-explained-tablet.png`);
+  // NEW PROBLEM (left button) goes straight to a fresh question.
+  const pressNewProblem = async () => {
+    const { compactPhoneUi } = await readState(penaltyPage);
+    await touchControl(penaltyPage, compactPhoneUi ? 470 : 505, compactPhoneUi ? 612 : 632, 30);
+    await penaltyPage.waitForFunction(() => JSON.parse(window.render_game_to_text()).challenge?.status === 'answering');
+    // The touch compatibility guard ignores a second press on the same spot
+    // within TOUCH_BUTTON_GUARD_MS (real time); a child cannot re-tap that fast.
+    await penaltyPage.waitForTimeout(550);
+  };
+  await pressNewProblem();
+  penaltyState = await readState(penaltyPage);
+  assert.equal(penaltyState.challenge?.status, 'answering', 'New Problem should open a fresh question');
   assertAgeAppropriateChallenge(penaltyState.challenge);
   await answerChallenge(penaltyPage, penaltyState.challenge, false);
+  await penaltyPage.waitForFunction(() => JSON.parse(window.render_game_to_text()).challenge?.status !== 'answering');
   penaltyState = await readState(penaltyPage);
-  assert.equal(penaltyState.challenge?.status, 'locked', 'a wrong answer should immediately close further answer attempts');
-  assert.ok(penaltyState.mathLockRemainingMs > 295_000, 'a wrong answer should start a five-minute penalty');
-  assert.equal(penaltyState.powers.fireball, 0, 'a wrong answer must not award a charge');
+  assert.equal(penaltyState.challenge?.status, 'wrong');
+  if (startingLevel !== 'starter') {
+    assert.notEqual(penaltyState.mathProgress.level, startingLevel, 'two misses should ease the level');
+  }
+  await pressNewProblem();
+  penaltyState = await readState(penaltyPage);
+  assertAgeAppropriateChallenge(penaltyState.challenge);
+  await answerChallenge(penaltyPage, penaltyState.challenge, false);
+  await penaltyPage.waitForFunction(() => JSON.parse(window.render_game_to_text()).challenge?.status !== 'answering');
+  penaltyState = await readState(penaltyPage);
+  assert.equal(penaltyState.challenge?.status, 'locked', 'three misses in a row should start a short break');
+  assert.ok(
+    penaltyState.mathLockRemainingMs > 25_000 && penaltyState.mathLockRemainingMs <= 30_000,
+    `the break should last about 30 seconds (got ${penaltyState.mathLockRemainingMs})`,
+  );
   await capture(penaltyPage, `${output}/07-math-penalty-tablet.png`);
 
   await penaltyPage.reload({ waitUntil: 'domcontentloaded' });
@@ -4927,9 +5099,9 @@ try {
   await penaltyPage.evaluate(() => window.__SKYHEAD_GAME__.scene.start('PowerLab', { returnScene: 'Customize' }));
   await penaltyPage.waitForFunction(() => JSON.parse(window.render_game_to_text()).mode === 'power-lab');
   penaltyState = await readState(penaltyPage);
-  assert.ok(penaltyState.mathLockRemainingMs > 290_000, 'refresh must not bypass the persisted math penalty');
+  assert.ok(penaltyState.mathLockRemainingMs > 0, 'refresh must not bypass the persisted math break');
   await touchControl(penaltyPage, 520, 560, 35);
-  assert.equal((await readState(penaltyPage)).challenge, null, 'the solve action should remain disabled during cooldown');
+  assert.equal((await readState(penaltyPage)).challenge, null, 'the solve action should remain disabled during the break');
   assert.deepEqual(penaltyErrors, [], `penalty browser emitted errors:\n${penaltyErrors.join('\n')}`);
   await penaltyContext.close();
 

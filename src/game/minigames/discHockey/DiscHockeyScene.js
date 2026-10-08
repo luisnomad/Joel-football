@@ -1,4 +1,5 @@
 import Phaser from 'phaser';
+import { applyBakedTint } from '../../effects/bakedTint.js';
 import { FIXED_STEP, GAME_HEIGHT, GAME_WIDTH } from '../../constants.js';
 import {
   CHARACTERS,
@@ -79,6 +80,8 @@ const THEME_ART = Object.freeze({
 const PUSHER_SOURCE_SIZE = 256;
 const PUSHER_ART_DIAMETER = 236;
 const PUCK_ART_DIAMETER = 224;
+/** Colour of the powered puck in Crazy mode. */
+const POWERED_PUCK_COLOR = 0xff3d24;
 
 const round = (value, places = 1) => {
   const factor = 10 ** places;
@@ -494,29 +497,35 @@ export class DiscHockeyScene extends Phaser.Scene {
     };
 
     context.clearRect(0, 0, PUSHER_SOURCE_SIZE, PUSHER_SOURCE_SIZE);
+    // Full-colour portrait (owner, 2026-10-08), set into the disc with a
+    // subtle engraved rim: a soft inner shadow and a top-left sheen.
     drawLayer({
-      xOffset: 3,
-      yOffset: 3,
-      alpha: neon ? 0.72 : 0.58,
-      composite: 'multiply',
-      filter: 'grayscale(1) contrast(1.55) brightness(0.42)',
+      alpha: 1,
+      composite: 'source-over',
+      filter: neon ? 'saturate(1.12) contrast(1.05)' : 'contrast(1.04)',
     });
-    drawLayer({
-      xOffset: -2,
-      yOffset: -2,
-      alpha: neon ? 0.55 : 0.42,
-      composite: 'screen',
-      filter: neon
-        ? 'grayscale(1) sepia(1) saturate(2.4) brightness(1.45)'
-        : 'grayscale(1) contrast(1.4) brightness(1.45)',
-    });
-    drawLayer({
-      alpha: neon ? 0.32 : 0.48,
-      composite: neon ? 'screen' : 'multiply',
-      filter: neon
-        ? 'grayscale(1) sepia(1) saturate(2) brightness(0.9)'
-        : 'grayscale(1) contrast(1.5) brightness(0.72)',
-    });
+    context.save();
+    context.beginPath();
+    context.arc(128, 128, 72, 0, Math.PI * 2);
+    context.clip();
+    const inner = context.createRadialGradient(128, 128, 52, 128, 128, 73);
+    inner.addColorStop(0, 'rgba(4, 14, 30, 0)');
+    inner.addColorStop(1, 'rgba(4, 14, 30, 0.55)');
+    context.fillStyle = inner;
+    context.fillRect(56, 56, 144, 144);
+    context.restore();
+    context.save();
+    context.lineWidth = 3;
+    context.strokeStyle = 'rgba(4, 14, 30, 0.7)';
+    context.beginPath();
+    context.arc(128, 128, 71, 0, Math.PI * 2);
+    context.stroke();
+    context.lineWidth = 2.5;
+    context.strokeStyle = neon ? 'rgba(150, 245, 255, 0.75)' : 'rgba(255, 255, 255, 0.7)';
+    context.beginPath();
+    context.arc(128, 128, 67, Math.PI * 1.05, Math.PI * 1.45);
+    context.stroke();
+    context.restore();
     texture.refresh();
     return key;
   }
@@ -626,7 +635,12 @@ export class DiscHockeyScene extends Phaser.Scene {
         strokeThickness: 5,
       },
     ).setOrigin(0.5).setDepth(26).setVisible(this.isCrazyMode);
-    this.touchPrompt = this.add.text(GAME_WIDTH / 2, DISC_HOCKEY_ARENA.bottom - 18, t(
+    // Centred in the strip below the rink (the stands on 16:9, the extra band on
+    // 1280x800 tablets) so the hint never covers the rink's bottom edge.
+    const promptY = this.stageLayout.height > GAME_HEIGHT
+      ? (GAME_HEIGHT + this.stageLayout.height) / 2 - 6
+      : GAME_HEIGHT - 26;
+    this.touchPrompt = this.add.text(GAME_WIDTH / 2, promptY, t(
       this.language,
       this.isCrazyMode
         ? 'discHockeySetup.controls.crazy'
@@ -638,8 +652,9 @@ export class DiscHockeyScene extends Phaser.Scene {
       fontSize: '14px',
       color: neon ? '#ffcf35' : '#234c68',
       backgroundColor: neon ? '#071216cc' : '#ffffffbb',
-      padding: { x: 12, y: 6 },
-    }).setOrigin(0.5, 1).setDepth(12);
+      padding: { x: 12, y: 4 },
+      align: 'center',
+    }).setOrigin(0.5).setDepth(12);
   }
 
   createPauseOverlay() {
@@ -1746,23 +1761,24 @@ export class DiscHockeyScene extends Phaser.Scene {
         visual.displaySize * armedScale,
         visual.displaySize * armedScale,
       );
+      // Baked colour copies: the Canvas renderer ignores setTint.
       if (frozen) {
         const tint = this.themeId === 'neon' ? 0xb9efff : 0xd8f5ff;
-        visual.base.setTint(tint);
-        visual.engraving.setTint(tint);
+        applyBakedTint(visual.base, tint);
+        applyBakedTint(visual.engraving, tint);
       } else if (armed) {
-        visual.base.setTint(0xff7059);
-        visual.engraving.setTint(0xffb09a);
+        applyBakedTint(visual.base, 0xff7059);
+        applyBakedTint(visual.engraving, 0xffb09a);
       } else {
-        visual.base.clearTint();
-        visual.engraving.clearTint();
+        applyBakedTint(visual.base, null);
+        applyBakedTint(visual.engraving, null);
       }
     });
     this.puckBody
       .setPosition(this.puck.x, this.puck.y)
       .setRotation(this.puckRotation);
-    if (this.puck.powered) this.puckBody.setTint(0xff3d24);
-    else this.puckBody.clearTint();
+    // Baked red copy of the puck art (the Canvas renderer ignores setTint).
+    applyBakedTint(this.puckBody, this.puck.powered ? POWERED_PUCK_COLOR : null);
     this.renderCreaseWarnings();
     this.renderCreasePenaltyHardware();
     this.renderCrazyPowerEffects();
@@ -2013,49 +2029,52 @@ export class DiscHockeyScene extends Phaser.Scene {
   }
 
   installDebugHelpers() {
-    window.__DISC_HOCKEY_DEBUG__ = {
-      startPlaying: () => {
-        this.phase = 'playing';
-        this.countdown = 0;
-        this.announcementText.setText('');
-      },
-      setPuck: (patch = {}) => {
-        this.puck = this.limitPuckSpeed({ ...this.puck, ...patch });
-        this.puckStallReflex = createPuckStallReflexState(
-          this.puck,
-          this.puckStallReflex.count,
-        );
-        this.updateVisuals();
-      },
-      setScore: (left = 0, right = 0) => {
-        this.score = {
-          left: Math.max(0, Math.floor(Number(left) || 0)),
-          right: Math.max(0, Math.floor(Number(right) || 0)),
-        };
-        this.updateHud();
-      },
-      setTime: (seconds = DISC_HOCKEY_MATCH_SECONDS) => {
-        this.matchSecondsRemaining = Math.max(0, Number(seconds) || 0);
-        this.updateHud();
-      },
-      setCrazyPower: (energy = 0) => {
-        this.setCrazyPowerEnergy(
-          Phaser.Math.Clamp(Number(energy) || 0, 0, DISC_HOCKEY_CRAZY_POWER.maximum),
-          'debug',
-        );
-        this.updateVisuals();
-        this.updateHud();
-      },
-      finishMatch: () => this.finishMatch(),
-      score: (side = 'left') => {
-        this.phase = 'playing';
-        this.scoreGoal(side === 'right' ? 'right' : 'left');
-      },
-      claimPointer: (id, x, y) => this.claimPointer({ id, worldX: x, worldY: y }),
-      movePointer: (id, x, y) => this.movePointer({ id, worldX: x, worldY: y }),
-      releasePointer: (id) => this.releasePointer({ id }),
-      restart: () => this.restartMatch(),
-    };
+    // Test and debug API: development builds only (audit I6).
+    if (import.meta.env.DEV) {
+      window.__DISC_HOCKEY_DEBUG__ = {
+        startPlaying: () => {
+          this.phase = 'playing';
+          this.countdown = 0;
+          this.announcementText.setText('');
+        },
+        setPuck: (patch = {}) => {
+          this.puck = this.limitPuckSpeed({ ...this.puck, ...patch });
+          this.puckStallReflex = createPuckStallReflexState(
+            this.puck,
+            this.puckStallReflex.count,
+          );
+          this.updateVisuals();
+        },
+        setScore: (left = 0, right = 0) => {
+          this.score = {
+            left: Math.max(0, Math.floor(Number(left) || 0)),
+            right: Math.max(0, Math.floor(Number(right) || 0)),
+          };
+          this.updateHud();
+        },
+        setTime: (seconds = DISC_HOCKEY_MATCH_SECONDS) => {
+          this.matchSecondsRemaining = Math.max(0, Number(seconds) || 0);
+          this.updateHud();
+        },
+        setCrazyPower: (energy = 0) => {
+          this.setCrazyPowerEnergy(
+            Phaser.Math.Clamp(Number(energy) || 0, 0, DISC_HOCKEY_CRAZY_POWER.maximum),
+            'debug',
+          );
+          this.updateVisuals();
+          this.updateHud();
+        },
+        finishMatch: () => this.finishMatch(),
+        score: (side = 'left') => {
+          this.phase = 'playing';
+          this.scoreGoal(side === 'right' ? 'right' : 'left');
+        },
+        claimPointer: (id, x, y) => this.claimPointer({ id, worldX: x, worldY: y }),
+        movePointer: (id, x, y) => this.movePointer({ id, worldX: x, worldY: y }),
+        releasePointer: (id) => this.releasePointer({ id }),
+        restart: () => this.restartMatch(),
+      };
+    }
   }
 
   serializeState() {
@@ -2243,6 +2262,7 @@ export class DiscHockeyScene extends Phaser.Scene {
         color: 'red',
         sprite: THEME_ART[this.themeId].puckTexture,
         powered: this.puck.powered === true,
+        visualTint: this.puckBody?.bakedTint?.color ?? null,
         powerSerial: this.puck.powerSerial ?? 0,
         stallReflex: {
           triggerSeconds: DISC_HOCKEY_STALL_REFLEX.triggerSeconds,

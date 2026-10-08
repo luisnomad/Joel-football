@@ -1,5 +1,6 @@
 import Phaser from 'phaser';
 import {
+  BALL_RADIUS,
   CATEGORIES,
   CROSSBAR_Y,
   DEFAULT_STATS,
@@ -27,11 +28,11 @@ import {
   stepBigGuy,
 } from '../pure/bigGuy.js';
 import { armPower, chargeMeter } from '../pure/power.js';
+import { FighterStatusEffects } from '../effects/FighterStatusEffects.js';
 import { addKickBoostTaps, kickBoostMultipliers, resolveKickBoost } from '../pure/kickBoost.js';
 import {
   CHARACTER_GROUND_ANCHOR_Y,
   CHARACTER_DISPLAY_HEIGHT,
-  CHARACTER_DISPLAY_WIDTH,
   CHARACTER_GAMEPLAY_HEIGHT,
   CHARACTER_FRAMES,
   ENHANCED_CHARACTER_FRAME_COUNT,
@@ -42,17 +43,34 @@ import {
   RUN_FRAME_DISTANCE,
   TAKEOFF_STRETCH_MIN_VELOCITY,
   TAKEOFF_STRETCH_SECONDS,
-  isGroundedVisualFrame,
+  celebrateVisualAt,
+  chilenaVisualAt,
+  getCharacterLayout,
+  hitVisualAt,
+  idleVisualAt,
+  isLayoutGroundedFrame,
   kickVisualAt,
+  layoutDisplayWidth,
+  layoutKickVisualAt,
+  layoutRunVisualAt,
+  runCycleAdvance,
   runVisualAt,
   secondaryMotionAt,
+  sprintVisualAt,
 } from '../pure/characterAnimation.js';
 import {
+  CHILENA_FRAMED_MIN_UPWARD_RATIO,
   CHILENA_MAX_SECONDS,
   CHILENA_MIN_AIRTIME_SECONDS,
+  CHILENA_MIN_UPWARD_RATIO,
   CHILENA_REQUIRED_KICK_PRESSES,
   CHILENA_TAKEOFF_VELOCITY,
+  chilenaContactTargetSeconds,
+  chilenaGuidanceVelocity,
+  chilenaSurfaceDistance,
   evaluateChilenaEligibility,
+  planFramedChilena,
+  resolveChilenaContact,
   chilenaRotationAt,
   resolveChilenaShot,
   resolveLobChilenaLaunch,
@@ -61,16 +79,12 @@ import { SUPERPOWER_ACTIVE_SECONDS } from '../content/superpowers.js';
 
 const scaled = (base, stat) => base * (0.9 + stat * 0.1);
 
-/** Glow pulse speed (radians per millisecond of scene time) for status effects. */
-const STATUS_GLOW_PULSE_RATE = 0.018;
-/** Extra glow strength added at the peak of the status pulse. */
-const STATUS_GLOW_PULSE_AMPLITUDE = 0.7;
-/** Base glow strength while the chilena is airborne. */
-const CHILENA_GLOW_STRENGTH = 5;
-/** Glow color while the chilena is airborne. */
-const CHILENA_GLOW_COLOR = 0xff7b32;
-/** Tint applied to the artwork while the chilena is airborne. */
-const CHILENA_TINT = 0xffe1c7;
+/**
+ * Seconds after a framed chilena's contact before the body collides with the
+ * ball again. The physics body stays upright while the drawing lies
+ * horizontal, so the upright head cap occupies the space the boot strikes in.
+ */
+const CHILENA_BALL_PASS_SECONDS = 0.2;
 
 export class Fighter {
   constructor(scene, {
@@ -97,6 +111,10 @@ export class Fighter {
     /** Per-frame display enlargement for pipeline-shrunk drawings (or null). */
     this.frameScales = frameScales;
     this.character = character;
+    /** Atlas layout (classic 12-frame or the sprite-redo roster-v2). */
+    this.layout = getCharacterLayout(character);
+    /** Source-cell boot point on the chilena contact drawing (framed layouts). */
+    this.chilenaContactPoint = character?.chilenaContact ?? null;
     this.facing = side === 'left' ? 1 : -1;
     this.baseFacing = this.facing;
     this.textureFacing = textureFacing === -1 ? -1 : 1;
@@ -143,6 +161,16 @@ export class Fighter {
     this.prevGrounded = true;
     this.prevVelocityY = 0;
     this.chilenaAngle = 0;
+    // Framed chilena: the shot waits for the boot to meet the ball.
+    this.chilenaPendingShot = null;
+    this.chilenaContactAt = null;
+    this.chilenaTargetSeconds = 0;
+    this.chilenaMissed = false;
+    this.chilenaPreviousGap = null;
+    this.lastChilenaContact = null;
+    this.celebrating = false;
+    /** Game-time seconds for authored loops (idle, celebrate); fixed-step, not wall clock. */
+    this.animationClock = 0;
 
     const collisionGeometry = getFootballCollisionGeometry(character);
     this.collisionProfile = character?.collisionProfile ?? 'standard';
@@ -184,7 +212,7 @@ export class Fighter {
     this.hasPoseSheet = this.sprite.texture.frameTotal >= 6;
     this.hasEnhancedPoseSheet = this.sprite.texture.frameTotal >= ENHANCED_CHARACTER_FRAME_COUNT;
     this.sprite.setDisplaySize(
-      (this.hasPoseSheet ? CHARACTER_DISPLAY_WIDTH : 205) * this.visualScale,
+      (this.hasPoseSheet ? layoutDisplayWidth(this.layout) : 205) * this.visualScale,
       (this.hasPoseSheet ? CHARACTER_DISPLAY_HEIGHT : 205) * this.visualScale,
     );
     this.baseSpriteScale = { x: this.sprite.scaleX, y: this.sprite.scaleY };
@@ -212,7 +240,7 @@ export class Fighter {
     this.sprite.setFlipX(this.facing !== this.textureFacing);
     this.sprite.setFixedRotation();
     this.sprite.setCollisionCategory(CATEGORIES.PLAYER);
-    this.sprite.setCollidesWith([CATEGORIES.WORLD, CATEGORIES.PLAYER, CATEGORIES.BALL, CATEGORIES.GOAL]);
+    this.setBallCollision(true);
 
     // The Matter sprite is the physics body only: scaling or rotating it would
     // reshape the compound collider, so it never renders. All artwork lives on
@@ -227,9 +255,11 @@ export class Fighter {
     this.visual.setFlipX(this.sprite.flipX);
     this.sprite.setVisible(false);
 
-    this.statusGlow = this.visual.preFX?.addGlow?.(0xffffff, 0, 0, false) ?? null;
-
     this.aura = scene.add.graphics().setDepth(17);
+    // Halo, ice block, shield bubble, speed lines and the Big Guy pop. Drawn as
+    // shapes and baked textures because the Canvas renderer ignores tints/preFX.
+    this.statusEffects = new FighterStatusEffects(scene);
+    this.bigGuyPopSeconds = Infinity;
     this.statusText = scene.add.text(x, GROUND_Y - this.baseBodyBottomOffset - 118, '', {
       fontFamily: 'Arial Rounded MT Bold, Trebuchet MS, sans-serif',
       fontSize: '15px',
@@ -253,6 +283,14 @@ export class Fighter {
     };
     scene.events.on(Phaser.Scenes.Events.POST_UPDATE, this.postPhysicsVisualSync);
     scene.events.once(Phaser.Scenes.Events.SHUTDOWN, this.detachPostPhysicsVisualSync);
+  }
+
+  /** Player-ball body collisions (off only while a framed chilena owns the ball). */
+  setBallCollision(enabled) {
+    this.ballCollision = Boolean(enabled);
+    this.sprite.setCollidesWith(enabled
+      ? [CATEGORIES.WORLD, CATEGORIES.PLAYER, CATEGORIES.BALL, CATEGORIES.GOAL]
+      : [CATEGORIES.WORLD, CATEGORIES.PLAYER, CATEGORIES.GOAL]);
   }
 
   get grounded() {
@@ -301,6 +339,12 @@ export class Fighter {
     this.chilenaActive = false;
     this.chilenaElapsed = 0;
     this.chilenaAngle = 0;
+    this.chilenaPendingShot = null;
+    this.chilenaContactAt = null;
+    this.chilenaTargetSeconds = 0;
+    this.chilenaMissed = false;
+    this.celebrating = false;
+    if (!this.ballCollision) this.setBallCollision(true);
     this.sprite.setAngle(0);
     this.visual.setAngle(0).setVisible(true);
     this.dashTimer = 0;
@@ -332,9 +376,9 @@ export class Fighter {
     }
     this.sprite.setDisplayOrigin(this.sprite.width / 2, this.visualGroundOriginY);
     this.visual.setScale(this.baseSpriteScale.x, this.baseSpriteScale.y);
-    this.visual.clearTint();
-    if (this.statusGlow) this.statusGlow.outerStrength = 0;
     this.aura.clear();
+    this.statusEffects.clear();
+    this.bigGuyPopSeconds = Infinity;
     this.statusText.setVisible(false).setText('');
     if (powerEffects) {
       this.shieldTimer = powerEffects.shieldTimer;
@@ -350,6 +394,7 @@ export class Fighter {
     this.pendingShotRestart = null;
     const animationDistance = Math.abs(this.sprite.x - this.lastAnimationX);
     this.lastAnimationX = this.sprite.x;
+    this.animationClock += dt;
     const wasKicking = this.kickTimer > 0;
     this.kickTimer = Math.max(0, this.kickTimer - dt);
     if (wasKicking && this.kickTimer === 0) {
@@ -375,6 +420,7 @@ export class Fighter {
     this.takeoffStretchTimer = Math.max(0, this.takeoffStretchTimer - dt);
     this.kickVisualTimer = Math.max(0, this.kickVisualTimer - dt);
     this.bigGuy = stepBigGuy(this.bigGuy, dt);
+    this.bigGuyPopSeconds += dt;
     this.setBigGuyScale(this.bigGuy.scale);
     this.meter = chargeMeter(this.meter, PLAYER_TUNING.passiveChargePerSecond * dt, this.stats.power);
 
@@ -464,7 +510,7 @@ export class Fighter {
     if (this.grounded && Math.abs(this.sprite.body.velocity.x) > 0.65) {
       if (this.hasEnhancedPoseSheet) {
         const travelled = animationDistance > RUN_FRAME_DISTANCE * 2 ? 0 : animationDistance;
-        this.runCycle += travelled / RUN_FRAME_DISTANCE;
+        this.runCycle += runCycleAdvance(this.layout, { travelled, dt });
       } else {
         this.runCycle += dt * Math.max(7, Math.abs(this.sprite.body.velocity.x) * 1.25);
       }
@@ -478,11 +524,103 @@ export class Fighter {
     this.renderAura();
   }
 
-  updatePose() {
+  /**
+   * `dt` advances the authored-loop clock when the caller is not running
+   * update() (goal celebration, result screen); update() advances it itself.
+   */
+  updatePose(dt = 0) {
+    this.animationClock += Math.max(0, Number(dt) || 0);
     if (!this.hasPoseSheet) {
       this.syncVisual();
       return;
     }
+    if (!this.hasEnhancedPoseSheet) {
+      this.updateLegacyPose();
+      return;
+    }
+    // Atlas-layout driven: classic sheets resolve exactly the frames they always
+    // did; roster-v2 sheets play their authored loops and framed chilena.
+    const layout = this.layout;
+    const clockSeconds = this.animationClock;
+    let frame = layout.idle[0];
+    let pose = 'idle';
+    let stage = 'idle';
+    this.currentRunPhase = null;
+    if (this.stunned) {
+      pose = 'stun';
+      if (this.stunTimer > 0) {
+        // Hit reaction: impact on the blow, stagger, then recover before the end.
+        const hit = hitVisualAt(layout, {
+          elapsed: Math.max(0, (this.stunTotal ?? this.stunTimer) - this.stunTimer),
+          remaining: this.stunTimer,
+        });
+        frame = hit.frame;
+        stage = hit.stage === 'stun' ? 'idle' : hit.stage;
+      } else {
+        // Frozen (ice power): hold the stagger drawing, no blow and no recovery.
+        frame = layout.hit?.stagger ?? layout.stun;
+      }
+    } else if (this.chilenaActive) {
+      pose = 'chilena';
+      if (layout.chilenaFramed) {
+        const chilenaVisual = chilenaVisualAt(layout, {
+          contactAt: this.chilenaContactAt,
+          elapsed: this.chilenaElapsed,
+          contactReady: this.chilenaMissed,
+        });
+        frame = chilenaVisual.frame;
+        stage = `chilena-${chilenaVisual.stage}`;
+      } else {
+        frame = layout.chilena.contact;
+      }
+    } else if (this.dashTimer > 0) {
+      const sprint = sprintVisualAt(layout, PLAYER_TUNING.dashDuration - this.dashTimer);
+      frame = sprint?.frame ?? layout.dash;
+      pose = 'dash';
+      if (sprint) stage = sprint.stage;
+    } else if (this.kickVisualTimer > 0) {
+      // The visual timeline outlives the gameplay kick so the follow-through
+      // can play out; the strike itself still connects immediately.
+      const kickVisual = layoutKickVisualAt(layout, {
+        remaining: this.kickVisualTimer,
+        duration: KICK_VISUAL_SECONDS,
+      });
+      frame = kickVisual.frame;
+      stage = kickVisual.stage;
+      pose = this.shotType === 'lob' ? 'lob' : 'kick';
+    } else if (!this.grounded) {
+      frame = layout.jump;
+      pose = 'jump';
+    } else if (Math.abs(this.sprite.body.velocity.x) > 0.65) {
+      const runVisual = layoutRunVisualAt(layout, this.runCycle);
+      frame = runVisual.frame;
+      pose = runVisual.pose;
+      stage = runVisual.stage;
+      this.currentRunPhase = runVisual.phase;
+      if (runVisual.phase !== this.lastRunFrame) {
+        this.lastRunFrame = runVisual.phase;
+        if (runVisual.footstep) this.scene.events.emit('fighter-step', this);
+      }
+    } else if (this.celebrating && layout.celebrate.length > 1) {
+      frame = celebrateVisualAt(layout, clockSeconds).frame;
+      pose = 'celebrate';
+      stage = 'celebrate';
+    } else {
+      frame = idleVisualAt(layout, clockSeconds).frame;
+    }
+    this.currentPose = pose;
+    this.currentAnimationStage = stage;
+    this.sprite.setFrame(frame);
+    this.syncVisual();
+  }
+
+  /** Goal / win celebration loop while standing still (layouts that author one). */
+  setCelebrating(active) {
+    this.celebrating = Boolean(active);
+  }
+
+  /** Pose selection for pre-atlas sheets (6-11 frames): legacy run and kick only. */
+  updateLegacyPose() {
     let frame = CHARACTER_FRAMES.idle;
     this.currentRunPhase = null;
     this.currentAnimationStage = 'idle';
@@ -572,12 +710,15 @@ export class Fighter {
       landSquash,
       takeoffStretch,
       dashDirection: this.dashTimer > 0 ? this.dashDirection : 0,
+      dashLeanDegrees: this.layout.sprintLeanDegrees ?? null,
       chilena: this.chilenaActive,
     });
     // Pipeline-shrunk drawings (wide action poses) get their display-time
     // enlargement; the capsule mirrors it via the contact frame's factor.
     const frameBoost = this.frameScales?.[Number(this.sprite.frame.name)] ?? 1;
-    const rotatingAirborne = this.chilenaActive;
+    // Framed chilenas carry the body orientation in the drawings and keep the
+    // ordinary ground anchor; only the classic single drawing is spun.
+    const rotatingAirborne = this.chilenaActive && !this.layout.chilenaFramed;
     syncCharacterVisual({
       physicsSprite: this.sprite,
       visualSprite: this.visual,
@@ -662,7 +803,7 @@ export class Fighter {
     // character's measured boot tip (including the contact frame's display
     // enlargement), with a slim radius. The old 106/44 pole reached roughly
     // two ball-widths past the artwork.
-    const contactBoost = this.frameScales?.[CHARACTER_FRAMES.kickContact] ?? 1;
+    const contactBoost = this.frameScales?.[this.layout.kickContact] ?? 1;
     return createForwardStrikeCapsule({
       x: this.sprite.x,
       y: this.sprite.y,
@@ -733,7 +874,112 @@ export class Fighter {
     };
   }
 
+  /**
+   * World position of the boot on the chilena contact drawing for the current
+   * body position and facing (framed layouts). Every cell shares one geometry,
+   * so this is valid even while the takeoff drawing is on screen.
+   */
+  chilenaBootPosition() {
+    const offset = this.chilenaBootOffset(this.facing);
+    return { x: this.sprite.x + offset.x, y: this.sprite.body.bounds.max.y + offset.y };
+  }
+
+  /** Boot point relative to (body x, body bottom) for a given facing. */
+  chilenaBootOffset(facing) {
+    const point = this.chilenaContactPoint;
+    const scaleX = this.baseSpriteScale.x * this.bigGuyScale;
+    const scaleY = this.baseSpriteScale.y * this.bigGuyScale;
+    const flipSign = facing === this.textureFacing ? 1 : -1;
+    return {
+      x: (point.x - this.layout.frameWidth / 2) * scaleX * flipSign,
+      y: (point.y - CHARACTER_GROUND_ANCHOR_Y) * scaleY,
+    };
+  }
+
+  /**
+   * Framed chilena in flight: steer the jump so the contact drawing's boot
+   * meets the ball, and apply the shot at that moment. Returns the strike
+   * result on contact (MatchScene announces it then), otherwise null.
+   */
+  guideFramedChilena(ball) {
+    const pending = this.chilenaPendingShot;
+    if (!pending || this.chilenaContactAt !== null || this.chilenaMissed) return null;
+    const boot = this.chilenaBootPosition();
+    const ballPoint = { x: ball.body.x, y: ball.body.y };
+    const ballRadius = ball.radius ?? BALL_RADIUS;
+    const outcome = resolveChilenaContact({
+      boot,
+      ball: ballPoint,
+      ballRadius,
+      elapsed: this.chilenaElapsed,
+      targetSeconds: this.chilenaTargetSeconds,
+      previousSurfaceDistance: this.chilenaPreviousGap,
+    });
+    this.chilenaPreviousGap = chilenaSurfaceDistance({ boot, ball: ballPoint, ballRadius });
+    if (outcome === 'missed') {
+      this.chilenaMissed = true;
+      this.chilenaPendingShot = null;
+      this.lastChilenaContact = { outcome, seconds: this.chilenaElapsed, boot, ball: ballPoint };
+      return null;
+    }
+    if (outcome === 'pending') {
+      const velocity = this.sprite.body.velocity;
+      const next = chilenaGuidanceVelocity({
+        boot,
+        ball: ballPoint,
+        ballVelocity: ball.body.body.velocity,
+        velocity,
+        secondsLeft: Math.max(1 / 60, this.chilenaTargetSeconds - this.chilenaElapsed),
+      });
+      this.sprite.setVelocity(next.x, next.y);
+      return null;
+    }
+    this.chilenaContactAt = this.chilenaElapsed;
+    this.chilenaPendingShot = null;
+    this.lastChilenaContact = {
+      outcome,
+      seconds: this.chilenaElapsed,
+      boot,
+      ball: ballPoint,
+      surfaceDistance: this.chilenaPreviousGap,
+    };
+    return this.applyChilenaShot(ball, pending.lob);
+  }
+
+  applyChilenaShot(ball, lobChilena) {
+    const targetX = this.baseFacing > 0 ? GOAL_LINE_RIGHT + 24 : GOAL_LINE_LEFT - 24;
+    const targetY = (CROSSBAR_Y + GROUND_Y) / 2;
+    const shot = lobChilena
+      ? resolveLobChilenaLaunch({
+        attackDirection: this.baseFacing,
+        targetX,
+        targetY,
+      })
+      : resolveChilenaShot({
+        attackDirection: this.baseFacing,
+        ballX: ball.body.x,
+        ballY: ball.body.y,
+        targetX,
+        targetY,
+      });
+    this.meter = shot.meterAfter;
+    ball.applyStrikeVelocity(shot.vx, shot.vy, { powered: true });
+    ball.applyStrikeSpin(shot.spin);
+    this.scene.events.emit('fighter-chilena', this, shot);
+    return {
+      owner: this.side,
+      shotType: lobChilena ? 'chilena-lob' : 'chilena',
+      chilenaVariant: lobChilena ? 'lob' : 'drive',
+      chilena: true,
+      powered: true,
+      color: shot.color,
+      meterAfter: shot.meterAfter,
+      trajectory: shot.trajectory ?? null,
+    };
+  }
+
   attemptChilena(ball) {
+    if (this.chilenaActive && this.layout.chilenaFramed) return this.guideFramedChilena(ball);
     const kickPresses = 1 + this.kickBoostTaps;
     const eligibility = evaluateChilenaEligibility({
       fighter: {
@@ -748,6 +994,10 @@ export class Fighter {
       },
       ball: { x: ball.body.x, y: ball.body.y },
       kickPresses,
+      // Framed chilenas only start where the contact drawing's boot can reach.
+      minimumUpwardRatio: this.layout.chilenaFramed
+        ? CHILENA_FRAMED_MIN_UPWARD_RATIO
+        : CHILENA_MIN_UPWARD_RATIO,
     });
     if (kickPresses >= CHILENA_REQUIRED_KICK_PRESSES) {
       this.lastChilenaAttempt = eligibility;
@@ -756,6 +1006,9 @@ export class Fighter {
     // kick must not suppress a valid overhead conversion on this press.
     const allowed = eligibility.allowed;
     if (!allowed) return null;
+    if (this.layout.chilenaFramed && this.chilenaContactPoint) {
+      return this.startFramedChilena(ball, eligibility);
+    }
 
     const targetX = this.baseFacing > 0 ? GOAL_LINE_RIGHT + 24 : GOAL_LINE_LEFT - 24;
     const targetY = (CROSSBAR_Y + GROUND_Y) / 2;
@@ -810,7 +1063,80 @@ export class Fighter {
     };
   }
 
+  /**
+   * Takeoff of a framed chilena. No shot yet: the jump is steered every tick
+   * (guideFramedChilena) and the ball is struck when the boot reaches it.
+   */
+  startFramedChilena(ball, eligibility) {
+    const targetSeconds = chilenaContactTargetSeconds({
+      upwardDistance: eligibility.upwardDistance,
+      height: eligibility.maximumDistance,
+    });
+    // Only start a chilena that will connect: the same controller is planned
+    // forward first. An unreachable ball stays an ordinary kick press.
+    const ballVelocity = ball.body.body.velocity;
+    const plan = planFramedChilena({
+      fighter: {
+        x: this.sprite.x,
+        y: this.sprite.y,
+        bodyBottomOffset: this.sprite.body.bounds.max.y - this.sprite.y,
+        frictionAir: this.sprite.body.frictionAir,
+      },
+      ball: {
+        x: ball.body.x,
+        y: ball.body.y,
+        vx: ballVelocity.x,
+        vy: ballVelocity.y,
+        radius: ball.radius ?? BALL_RADIUS,
+        frictionAir: ball.body.body.frictionAir,
+      },
+      bootOffset: this.chilenaBootOffset(-this.baseFacing),
+      groundY: GROUND_Y,
+      targetSeconds,
+    });
+    if (!plan.reachable) {
+      this.lastChilenaAttempt = Object.freeze({ ...eligibility, allowed: false, reason: 'ball-unreachable' });
+      return null;
+    }
+    this.chilenaActive = true;
+    this.bigGuyGroundPin = false;
+    this.chilenaElapsed = 0;
+    this.chilenaSuccesses += 1;
+    this.chilenaContactAt = null;
+    this.chilenaMissed = false;
+    this.lastChilenaContact = null;
+    this.chilenaPreviousGap = null;
+    this.chilenaTargetSeconds = targetSeconds;
+    this.chilenaPendingShot = { lob: this.shotType === 'lob' };
+    // The drawn body lies horizontal; the upright collider must not bat the
+    // ball away before (or right after) the boot strikes it.
+    this.setBallCollision(false);
+    this.dashTimer = 0;
+    this.dashDirection = 0;
+    this.kickTimer = 0;
+    this.kickVisualTimer = 0;
+    this.kickBoostTaps = 0;
+    this.kickBoostAppliedTaps = 0;
+    this.pendingShotRestart = null;
+    this.powerArmed = 0;
+    this.ballHitSerial = this.kickSerial;
+    this.setFacing(-this.baseFacing);
+    this.sprite.setAngle(0);
+    this.syncChilenaVisual(0);
+    this.sprite.setVelocity(
+      Phaser.Math.Clamp((ball.body.x - this.sprite.x) * 0.025, -2.4, 2.4),
+      CHILENA_TAKEOFF_VELOCITY,
+    );
+    this.currentPose = 'chilena';
+    // Steer from the very first tick so short contacts are not late.
+    return this.guideFramedChilena(ball);
+  }
+
   updateChilena(dt) {
+    if (this.layout.chilenaFramed) {
+      this.updateFramedChilena(dt);
+      return;
+    }
     this.chilenaElapsed += dt;
     this.setFacing(-this.baseFacing);
     this.syncChilenaVisual(chilenaRotationAt(this.chilenaElapsed, this.baseFacing));
@@ -822,6 +1148,29 @@ export class Fighter {
       this.sprite.setVelocityY(Math.max(12, this.sprite.body.velocity.y));
     }
     if (this.chilenaElapsed >= CHILENA_MIN_AIRTIME_SECONDS && this.grounded) {
+      this.finishChilena();
+    }
+  }
+
+  updateFramedChilena(dt) {
+    this.chilenaElapsed += dt;
+    this.setFacing(-this.baseFacing);
+    this.syncChilenaVisual(0);
+    // Fall fast only once the ball has been met (or has clearly left), so the
+    // guidance controls the rise.
+    const resolved = this.chilenaContactAt !== null || this.chilenaMissed;
+    if (!this.ballCollision && (this.chilenaMissed
+      || (this.chilenaContactAt !== null && this.chilenaElapsed - this.chilenaContactAt >= CHILENA_BALL_PASS_SECONDS))) {
+      this.setBallCollision(true);
+    }
+    if (resolved) {
+      const fastFall = PLAYER_TUNING.fastFallAcceleration * 1.55 * dt * 60;
+      this.sprite.setVelocityY(this.sprite.body.velocity.y + fastFall);
+    }
+    if (this.chilenaElapsed >= CHILENA_MAX_SECONDS && !this.grounded) {
+      this.sprite.setVelocityY(Math.max(12, this.sprite.body.velocity.y));
+    }
+    if (resolved && this.chilenaElapsed >= CHILENA_MIN_AIRTIME_SECONDS && this.grounded) {
       this.finishChilena();
     }
   }
@@ -843,6 +1192,10 @@ export class Fighter {
 
   finishChilena() {
     this.chilenaActive = false;
+    if (!this.ballCollision) this.setBallCollision(true);
+    this.chilenaPendingShot = null;
+    this.chilenaContactAt = null;
+    this.chilenaMissed = false;
     this.chilenaElapsed = 0;
     this.chilenaAngle = 0;
     this.sprite.setAngle(0);
@@ -913,6 +1266,8 @@ export class Fighter {
     this.bigGuyGroundPin = false;
     if (this.chilenaActive) this.finishChilena();
     this.stunTimer = strong ? PLAYER_TUNING.stunDuration * 1.12 : PLAYER_TUNING.stunDuration;
+    /** Full length of this stun, for the hit-reaction timeline. */
+    this.stunTotal = this.stunTimer;
     this.stunProtection = this.stunTimer + PLAYER_TUNING.stunProtection;
     const knockback = strong ? PLAYER_TUNING.dashKnockback : PLAYER_TUNING.kickKnockback;
     this.sprite.setVelocity(fromDirection * knockback, strong ? -4.2 : -2.8);
@@ -940,6 +1295,7 @@ export class Fighter {
 
   activateBigGuy() {
     this.bigGuy = activateBigGuy(this.bigGuy);
+    this.bigGuyPopSeconds = 0;
   }
 
   setBigGuyScale(scale) {
@@ -1079,52 +1435,28 @@ export class Fighter {
   }
 
   updateStatusVisuals() {
-    let color = null;
-    let tint = null;
-    let strength = 0;
-    if (this.freezeTimer > 0) {
-      color = 0x9eeeff;
-      tint = 0xcaf7ff;
-      strength = 6;
-    } else if (this.shieldTimer > 0) {
-      color = 0x55e0ee;
-      tint = 0xdcfdff;
-      strength = 4.5;
-    } else if (this.hyperTimer > 0) {
-      color = 0x8dff70;
-      tint = 0xe3ffda;
-      strength = 5;
-    } else if (this.bigGuy.secondsRemaining > 0 || this.bigGuyScale > 1.01) {
-      color = 0xffc95c;
-      strength = 3;
-    } else if (this.powerArmed > 0) {
-      color = this.side === 'left' ? 0x62f5ff : 0xff9b42;
-      tint = this.side === 'left' ? 0xe2fdff : 0xffead8;
-      strength = 4;
-    } else if (this.stunned) {
-      tint = 0xb5c6d9;
-    }
-
-    if (this.chilenaActive) {
-      color = CHILENA_GLOW_COLOR;
-      tint = CHILENA_TINT;
-      strength = CHILENA_GLOW_STRENGTH;
-    }
-
-    if (this.statusGlow) {
-      if (color !== null) this.statusGlow.color = color;
-      this.statusGlow.outerStrength = strength > 0
-        ? strength + Math.sin(this.scene.time.now * STATUS_GLOW_PULSE_RATE) * STATUS_GLOW_PULSE_AMPLITUDE
-        : 0;
-    }
-    if (tint === null) this.visual.clearTint();
-    else this.visual.setTint(tint);
+    this.statusEffects.render({
+      bounds: this.sprite.body.bounds,
+      clock: this.scene.time.now / 1000,
+      velocityX: this.sprite.body.velocity.x,
+      facing: this.facing,
+      popSeconds: this.bigGuyPopSeconds,
+      status: {
+        freezeTimer: this.freezeTimer,
+        shieldTimer: this.shieldTimer,
+        hyperTimer: this.hyperTimer,
+        bigGuyActive: this.bigGuy.secondsRemaining > 0 || this.bigGuyScale > 1.01,
+        powerArmed: this.powerArmed,
+        chilenaActive: this.chilenaActive,
+        side: this.side,
+      },
+    });
   }
 
   snapshot() {
     const velocity = this.sprite.body.velocity;
     const visualFrame = this.hasPoseSheet ? Number(this.sprite.frame.name) : 0;
-    const visualGroundAnchor = this.hasEnhancedPoseSheet && isGroundedVisualFrame(visualFrame)
+    const visualGroundAnchor = this.hasEnhancedPoseSheet && isLayoutGroundedFrame(this.layout, visualFrame)
       ? getSpriteSourcePointWorldPosition(
         this.visual,
         this.visual.width / 2,
@@ -1158,9 +1490,28 @@ export class Fighter {
       kickBoostTaps: this.kickBoostTaps,
       lastKickBoostSpent: this.lastKickBoostSpent,
       chilenaActive: this.chilenaActive,
+      statusVisual: this.statusEffects.debugState(),
       chilenaSeconds: Math.round(this.chilenaElapsed * 100) / 100,
       chilenaRotation: Math.round(this.chilenaAngle * 10) / 10,
       chilenaSuccesses: this.chilenaSuccesses,
+      chilenaFramed: this.layout.chilenaFramed,
+      ballCollision: this.ballCollision,
+      chilenaPending: Boolean(this.chilenaPendingShot),
+      chilenaContactSeconds: this.chilenaContactAt === null ? null : Math.round(this.chilenaContactAt * 1000) / 1000,
+      chilenaTargetSeconds: Math.round(this.chilenaTargetSeconds * 1000) / 1000,
+      lastChilenaContact: this.lastChilenaContact
+        ? {
+          outcome: this.lastChilenaContact.outcome,
+          seconds: Math.round(this.lastChilenaContact.seconds * 1000) / 1000,
+          bootX: Math.round(this.lastChilenaContact.boot.x * 10) / 10,
+          bootY: Math.round(this.lastChilenaContact.boot.y * 10) / 10,
+          ballX: Math.round(this.lastChilenaContact.ball.x * 10) / 10,
+          ballY: Math.round(this.lastChilenaContact.ball.y * 10) / 10,
+          surfaceDistance: this.lastChilenaContact.surfaceDistance === undefined
+            ? null
+            : Math.round(this.lastChilenaContact.surfaceDistance * 10) / 10,
+        }
+        : null,
       lastChilenaAttempt: this.lastChilenaAttempt
         ? {
           allowed: this.lastChilenaAttempt.allowed,
@@ -1188,6 +1539,8 @@ export class Fighter {
       collisionTopY: Math.round(this.sprite.body.bounds.min.y * 10) / 10,
       collisionBottomY: Math.round(this.sprite.body.bounds.max.y * 10) / 10,
       enhancedAnimation: this.hasEnhancedPoseSheet,
+      atlasLayout: this.layout.id,
+      celebrating: this.celebrating,
       animationStage: this.currentAnimationStage,
       runPhase: this.currentRunPhase,
       visualOffsetY: Math.round(this.visualOffsetY * 100) / 100,
@@ -1207,6 +1560,7 @@ export class Fighter {
     this.detachPostPhysicsVisualSync?.();
     this.scene.events.off(Phaser.Scenes.Events.SHUTDOWN, this.detachPostPhysicsVisualSync);
     this.aura.destroy();
+    this.statusEffects.destroy();
     this.statusText.destroy();
     this.visual.destroy();
     this.sprite.destroy();

@@ -4,6 +4,9 @@ Optional reading when selecting follow-up work. These items were carried from
 existing records; their external status has not been verified by this docs audit.
 Do not assume old checkboxes describe today's Play Console or installed build.
 
+- **Improvement audit (2026-10-08):** prioritised, not-started tasks for gameplay,
+  HUD, menus (tablet and phone), the Power Lab and math, powers and ball types in
+  [AUDIT_2026-10-08.md](AUDIT_2026-10-08.md). The owner picks what to do.
 - **Release readiness:** reconcile account/device verification, recovery/contact
   details, off-site key backup, Android backup disclosure, target audience,
   listing/declarations, closed testing, production access, and physical-device

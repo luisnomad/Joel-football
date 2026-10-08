@@ -168,7 +168,7 @@ export class IntroScene extends Phaser.Scene {
       {
         id: 'discHockey',
         title: 'DISC HOCKEY',
-        texture: DISC_HOCKEY_PREVIEW_TEXTURE,
+        texture: this.textures.exists('menu-disc-hockey-card') ? 'menu-disc-hockey-card' : DISC_HOCKEY_PREVIEW_TEXTURE,
         subtitle: t(this.language, 'miniGames.discHockeySubtitle'),
         accent: 0xffb52f,
       },

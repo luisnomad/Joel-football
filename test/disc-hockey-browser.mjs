@@ -5,7 +5,8 @@ import { chromium } from 'playwright';
 
 const root = new URL('..', import.meta.url).pathname;
 const externalUrl = process.env.DISC_HOCKEY_TEST_URL;
-const port = 4176;
+// E2E_PORT lets parallel runs use separate dev servers.
+const port = Number(process.env.E2E_PORT) || 4176;
 const url = externalUrl ?? `http://127.0.0.1:${port}`;
 const output = new URL('../output/disc-hockey/', import.meta.url).pathname;
 
@@ -1486,6 +1487,7 @@ try {
   assert.equal(state.crazyPower.armed, false);
   assert.equal(state.crazyPower.energy, 0);
   assert.equal(state.puck.powered, true);
+  assert.equal(state.puck.visualTint, 0xff3d24, 'the powered puck should visibly turn red (baked, not a Canvas no-op tint)');
   assert.ok(state.puck.speed >= 1450);
   assert.equal(state.audio.gameEffectPlays.poweredShot, poweredShotPlaysBefore + 1);
   await capture(page, '11-crazy-powered-shot');
@@ -1546,6 +1548,7 @@ try {
   });
   await advance(page, 150);
   assert.equal((await readState(page)).puck.powered, false, 'the opponent back wall should end the Super Shot');
+  assert.equal((await readState(page)).puck.visualTint, null, 'the puck should return to its normal art');
 
   await page.evaluate(() => {
     const scene = window.__SKYHEAD_GAME__.scene.getScene('DiscHockey');

@@ -405,18 +405,20 @@ export const isKickfallKickContact = ({
   });
 };
 
+/**
+ * One-tap lane change (owner playtest, 2026-10-08): a single press of Up or
+ * Down moves to the adjacent tier; Jump is always a plain jump. `upPressed` /
+ * `downPressed` are press edges (key JustDown, or a touch direction that was
+ * not held on the previous step), so holding a direction never repeats.
+ */
 export const resolveKickfallVerticalIntent = ({
   jumpPressed = false,
-  upHeld = false,
-  downHeld = false,
-} = {}) => {
-  const verticalDirection = Number(Boolean(downHeld)) - Number(Boolean(upHeld));
-  const tierDirection = jumpPressed ? verticalDirection : 0;
-  return {
-    tierDirection,
-    jump: Boolean(jumpPressed) && tierDirection === 0,
-  };
-};
+  upPressed = false,
+  downPressed = false,
+} = {}) => ({
+  tierDirection: Number(Boolean(downPressed)) - Number(Boolean(upPressed)),
+  jump: Boolean(jumpPressed),
+});
 
 export const stepKickfallJumpBuffer = ({
   seconds = 0,
@@ -651,10 +653,67 @@ export const resolveKickfallOutcome = ({
   return null;
 };
 
+/*
+ * Stars and combos (owner-approved audit H1/H2, 2026-10-08).
+ *   1 star  - clear the level
+ *   2 stars - and finish with at least KICKFALL_SPEED_STAR_SHARE of the clock left
+ *   3 stars - and show skill: a gate-break combo of 2+, or at most
+ *             KICKFALL_WASTED_KICK_SHARE of kicks touching no ball
+ * A combo chains gate breaks that land within KICKFALL_COMBO_WINDOW_SECONDS of
+ * the previous break; the multiplier caps at 3.
+ */
+export const KICKFALL_COMBO_WINDOW_SECONDS = 6;
+export const KICKFALL_COMBO_MAX = 3;
+export const KICKFALL_SPEED_STAR_SHARE = 0.35;
+export const KICKFALL_WASTED_KICK_SHARE = 0.3;
+/** Untimed levels: the speed star needs a finish within this multiple of the spawn schedule. */
+export const KICKFALL_UNTIMED_SPEED_FACTOR = 1.4;
+
+export const stepKickfallCombo = ({ combo = 0, lastBreakAt = null, now = 0 } = {}) => {
+  const chained = lastBreakAt !== null && now - lastBreakAt <= KICKFALL_COMBO_WINDOW_SECONDS;
+  const next = chained ? combo + 1 : 1;
+  return { combo: next, multiplier: Math.min(KICKFALL_COMBO_MAX, next), lastBreakAt: now };
+};
+
+export const resolveKickfallStars = ({
+  victory = false,
+  durationSeconds = null,
+  timeRemaining = 0,
+  elapsedSeconds = 0,
+  scheduleSeconds = 0,
+  kicks = 0,
+  wastedKicks = 0,
+  bestCombo = 0,
+} = {}) => {
+  if (!victory) return 0;
+  const fast = durationSeconds
+    ? timeRemaining / durationSeconds >= KICKFALL_SPEED_STAR_SHARE
+    : elapsedSeconds <= scheduleSeconds * KICKFALL_UNTIMED_SPEED_FACTOR;
+  const tidy = kicks > 0 && wastedKicks / kicks <= KICKFALL_WASTED_KICK_SHARE;
+  const skilled = bestCombo >= 2 || tidy;
+  if (!fast) return 1;
+  return skilled ? 3 : 2;
+};
+
+/** Brief slow motion when the last gate of a level falls (a full cascade). */
+export const KICKFALL_SLOW_MO_SECONDS = 0.6;
+export const KICKFALL_SLOW_MO_SCALE = 0.4;
+
+/** ★★☆ style string for 0..3 stars. */
+export const formatKickfallStars = (stars) => {
+  const count = Math.min(3, Math.max(0, Math.floor(Number(stars) || 0)));
+  return '★'.repeat(count) + '☆'.repeat(3 - count);
+};
+
 export const createKickfallProgress = (overrides = {}) => ({
   spawned: 0,
   drained: 0,
   gatesBroken: 0,
   obstacleClears: 0,
+  kicks: 0,
+  wastedKicks: 0,
+  combo: 0,
+  bestCombo: 0,
+  lastGateBreakAt: null,
   ...overrides,
 });

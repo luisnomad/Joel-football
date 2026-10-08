@@ -71,6 +71,8 @@ export const createJourneyCard = (scene, {
   imageFocusX = 0.68,
   titleSize = Math.min(42, height * 0.25),
   layout = 'standard',
+  /** Share of the card width covered by the coloured copy panel (standard layout). */
+  panelRatio = 0.58,
   depth = 20,
   onPress,
 }) => {
@@ -105,14 +107,12 @@ export const createJourneyCard = (scene, {
   artwork.setMask(mask);
 
   const shade = scene.add.graphics().setDepth(depth + 0.2);
-  if (cinematic) {
-    shade.fillStyle(0x020817, 0.22);
-  } else {
-    shade.fillGradientStyle(0x020817, 0x020817, 0x061127, 0x061127, 0.08, 0.12, 0.42, 0.5);
-  }
+  // Solid fills only: the game renders with Phaser's Canvas renderer, where
+  // fillGradientStyle draws nothing (the card copy then sat on bare artwork).
+  shade.fillStyle(0x020817, cinematic ? 0.22 : 0.18);
   shade.fillPoints(points, true);
 
-  const colorEdge = cinematic ? left + 106 : left + width * 0.58;
+  const colorEdge = cinematic ? left + 106 : left + width * panelRatio;
   const colorPanel = scene.add.graphics().setDepth(depth + 0.3);
   if (cinematic) {
     const panelTop = top + 18;
@@ -143,13 +143,24 @@ export const createJourneyCard = (scene, {
     colorPanel.fillStyle(color, 0.96);
     colorPanel.fillRect(colorEdge + 12, panelTop + 16, 5, panelBottom - panelTop - 32);
   } else {
-    colorPanel.fillGradientStyle(color, color, Phaser.Display.Color.ValueToColor(color).darken(18).color, color, 0.98);
-    colorPanel.fillPoints([
+    const panel = [
       new Phaser.Geom.Point(left + bevel, top),
       new Phaser.Geom.Point(colorEdge + bevel, top),
       new Phaser.Geom.Point(colorEdge - bevel, bottom),
       new Phaser.Geom.Point(left, bottom),
       new Phaser.Geom.Point(left + bevel * 0.42, y),
+    ];
+    colorPanel.fillStyle(color, 0.96);
+    colorPanel.fillPoints(panel, true);
+    // A darker lower band keeps the original top-to-bottom shading.
+    const midY = y + height * 0.12;
+    const edgeAt = (py) => colorEdge + bevel - (2 * bevel * (py - top)) / height;
+    colorPanel.fillStyle(Phaser.Display.Color.ValueToColor(color).darken(18).color, 0.55);
+    colorPanel.fillPoints([
+      new Phaser.Geom.Point(left + bevel * 0.42 * ((bottom - midY) / (bottom - y)), midY),
+      new Phaser.Geom.Point(edgeAt(midY), midY),
+      new Phaser.Geom.Point(colorEdge - bevel, bottom),
+      new Phaser.Geom.Point(left, bottom),
     ], true);
   }
 

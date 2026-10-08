@@ -13,8 +13,9 @@ const HELP_PANEL_WIDTH = 890;
 
 export const ABOUT_LINKS = Object.freeze({
   youtube: 'https://www.youtube.com/@luisnomad',
-  privacy: 'https://notjustprompts.ai/joel-football/legal/',
-  support: 'https://notjustprompts.ai/joel-football/support/',
+  // Shared NJP games pages (the old /joel-football/legal and /support 301 here).
+  privacy: 'https://notjustprompts.ai/games/legal/',
+  support: 'https://notjustprompts.ai/games/support/?game=joel-football',
 });
 
 const textStyle = (size, color = '#ffffff', extra = {}) => ({
@@ -231,8 +232,8 @@ const createKickfallHelpContent = (scene, language, inputMode, depth, helpLayout
       icon: 'up',
       label: language === 'es' ? 'CAMBIAR DE CARRIL' : 'CHANGE LANE',
       description: language === 'es'
-        ? 'Mantén arriba o abajo mientras saltas'
-        : 'Hold Up or Down while jumping',
+        ? 'Toca arriba o abajo una vez'
+        : 'Tap Up or Down once',
     },
     {
       icon: 'jump',

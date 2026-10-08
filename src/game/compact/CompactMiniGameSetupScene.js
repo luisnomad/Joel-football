@@ -8,6 +8,7 @@ import { arcadeAudio } from '../services/ArcadeAudio.js';
 import { playerProfileStore } from '../services/PlayerProfile.js';
 import { clearActiveScene, setActiveScene } from '../stateBridge.js';
 import { createControlIcon } from '../ui/createControlIcon.js';
+import { kickfallTotalStars } from '../pure/profile.js';
 import { getSceneStageLayout } from '../layout/tabletStage.js';
 import {
   compactBodyText,
@@ -51,6 +52,8 @@ export class MiniGameSetupScene extends Phaser.Scene {
     this.profile = playerProfileStore.get();
     this.language = this.profile.language;
     this.stageLayout = getSceneStageLayout(this);
+    this.levelSelect = null;
+    this.levelSelectLoading = false;
     arcadeAudio.setScene('menu');
     setActiveScene(this);
     this.events.once(Phaser.Scenes.Events.SHUTDOWN, () => clearActiveScene(this));
@@ -86,18 +89,18 @@ export class MiniGameSetupScene extends Phaser.Scene {
       const canResume = hasProgress && level > 1;
       if (canResume) {
         createCompactPrimaryButton(this, {
-          x: 455,
+          x: 370,
           y: 664,
-          width: 450,
+          width: 410,
           height: 64,
           label: t(this.language, 'kickfall.resume', { level }),
           accent: 0xb47aff,
           onPress: () => this.playKickfall(level),
         });
         createCompactButton(this, {
-          x: 870,
+          x: 770,
           y: 664,
-          width: 340,
+          width: 370,
           height: 60,
           label: t(this.language, 'kickfall.fromStart'),
           color: 0x1d3c60,
@@ -106,7 +109,7 @@ export class MiniGameSetupScene extends Phaser.Scene {
         });
       } else {
         createCompactPrimaryButton(this, {
-          x: 640,
+          x: hasProgress ? 520 : 640,
           y: 664,
           width: 500,
           height: 64,
@@ -115,8 +118,23 @@ export class MiniGameSetupScene extends Phaser.Scene {
           onPress: () => this.playKickfall(1),
         });
       }
+      if (hasProgress) {
+        const stars = kickfallTotalStars(this.profile.kickfall);
+        createCompactButton(this, {
+          x: 1090,
+          y: 664,
+          width: 250,
+          height: 60,
+          label: t(this.language, 'kickfall.levels', { stars }),
+          color: 0x16406a,
+          accent: 0xffdc72,
+          onPress: () => this.openLevelSelect(),
+        });
+      }
     }
-    this.input.keyboard.on('keydown-ESC', () => this.back());
+    this.input.keyboard.on('keydown-ESC', () => {
+      if (!this.closeLevelSelect()) this.back();
+    });
   }
 
   createKickfallSetup() {
@@ -321,7 +339,38 @@ export class MiniGameSetupScene extends Phaser.Scene {
     this.scene.start('Intro', { tab: 'miniGames', gameId: this.gameId });
   }
 
+  async openLevelSelect() {
+    if (this.levelSelect || this.levelSelectLoading) return;
+    arcadeAudio.click();
+    // Loaded on demand: Kickfall code must stay out of the opening payload.
+    this.levelSelectLoading = true;
+    let createKickfallLevelSelect;
+    try {
+      ({ createKickfallLevelSelect } = await import('../ui/createKickfallLevelSelect.js'));
+    } finally {
+      this.levelSelectLoading = false;
+    }
+    if (!this.sys.isActive()) return;
+    this.levelSelect = createKickfallLevelSelect(this, {
+      progress: this.profile.kickfall,
+      language: this.language,
+      stageWidth: this.stageLayout.width,
+      stageHeight: this.stageLayout.height,
+      compact: true,
+      onSelect: (level) => this.playKickfall(level),
+      onClose: () => this.closeLevelSelect(),
+    });
+  }
+
+  closeLevelSelect() {
+    if (!this.levelSelect) return false;
+    this.levelSelect.destroy();
+    this.levelSelect = null;
+    return true;
+  }
+
   handlePlatformBack() {
+    if (this.closeLevelSelect()) return true;
     this.back();
     return true;
   }
@@ -341,7 +390,8 @@ export class MiniGameSetupScene extends Phaser.Scene {
       themeId: this.gameId === 'discHockey' ? profile.discHockey.themeId : undefined,
       playerCharacterId: profile.playerCharacterId,
       opponentId: profile.opponentId,
-      actions: ['select tab', 'change options', 'play', 'back'],
+      modal: this.levelSelect ? 'levelSelect' : null,
+      actions: ['select tab', 'change options', 'play', 'open level select', 'back'],
     };
   }
 

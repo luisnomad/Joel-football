@@ -1,5 +1,11 @@
 import { predictBallXAtHeight, isBallApproaching } from '../pure/prediction.js';
 import { clamp } from '../pure/actions.js';
+import { resolveFacing } from '../pure/facing.js';
+
+/** Within this distance of its own goal line the AI never kicks while facing that goal. */
+export const AI_OWN_GOAL_GUARD_DISTANCE = 420;
+/** How far goal-side of the ball the AI steps to turn around before clearing. */
+const GOAL_SIDE_OFFSET = 70;
 
 const signDeadzone = (value, deadzone = 16) =>
   Math.abs(value) <= deadzone ? 0 : Math.sign(value);
@@ -32,8 +38,28 @@ export const decideHeuristicIntent = (snapshot, side = 'right', difficulty = 'no
   const strikeRange = ballDistance < 112 && Math.abs(ball.y - self.y) < 105;
   const opponentPressure = Math.abs(opponent.x - self.x) < 116;
   const defenderBlocksLane = Math.abs(opponent.x - self.x) < 245 && ball.y > self.y - 58;
-  const shouldLob = strikeRange && self.grounded && defenderBlocksLane && !counterThreat;
-  const shouldKick = !shouldLob && (
+  // Own-goal guard: once the AI has run past the human it faces its movement
+  // direction (resolveFacing), so retreating toward its own goal turns it to
+  // face that goal and a kick from there scores an own goal. Near its own goal
+  // it refuses those kicks and steps goal-side of the ball instead; moving back
+  // toward the ball then turns it to face the attack direction for a clearance.
+  const attackDirection = side === 'right' ? -1 : 1;
+  const ownGoalDirection = -attackDirection;
+  const plannedMove = signDeadzone(targetX - self.x);
+  const kickFacing = resolveFacing({
+    attackDirection,
+    playerX: self.x,
+    opponentX: opponent.x,
+    movement: plannedMove,
+    currentFacing: plannedMove || attackDirection,
+  });
+  const nearOwnGoal = Math.abs(ball.x - ownGoalX) < AI_OWN_GOAL_GUARD_DISTANCE;
+  const wouldShootOwnGoal = nearOwnGoal && kickFacing === ownGoalDirection;
+  if (wouldShootOwnGoal) {
+    targetX = clamp(ball.x + ownGoalDirection * GOAL_SIDE_OFFSET, 150, 1130);
+  }
+  const shouldLob = !wouldShootOwnGoal && strikeRange && self.grounded && defenderBlocksLane && !counterThreat;
+  const shouldKick = !wouldShootOwnGoal && !shouldLob && (
     (strikeRange && (ball.y > self.y - 92 || counterThreat))
     || (counterThreat && ballDistance < 165)
   );
@@ -60,7 +86,7 @@ export const decideHeuristicIntent = (snapshot, side = 'right', difficulty = 'no
     lob: shouldLob,
     dash: dashDirection !== 0,
     dashDirection,
-    power: self.meter >= 100 && strikeRange && (ballInOwnHalf || ball.y > 515),
+    power: !wouldShootOwnGoal && self.meter >= 100 && strikeRange && (ballInOwnHalf || ball.y > 515),
     kickBoost,
   };
 };

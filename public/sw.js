@@ -1,4 +1,4 @@
-const WORKER_VERSION = '9';
+const WORKER_VERSION = '11';
 const CACHE_PREFIX = 'joel-football-';
 const CACHE_NAME = `${CACHE_PREFIX}v${WORKER_VERSION}`;
 const SHELL_FILES = ['./', './manifest.webmanifest'];

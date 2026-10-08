@@ -5,6 +5,7 @@ import {
   equipPower,
   getMathLockRemaining,
   lockMathPractice,
+  recordMathAnswer,
   sanitizeProfile,
   setDiscHockeySettings,
   setProfileAudio,
@@ -16,6 +17,7 @@ import {
   setProfileOpponent,
   setProfilePlayerCharacter,
   setKickfallLastPlayed,
+  recordKickfallStars,
   unlockKickfallLevel,
 } from '../pure/profile.js';
 
@@ -95,6 +97,7 @@ export const createPlayerProfileStore = (storage = defaultStorage(), navigatorRe
     setAudio: (patch) => commit(setProfileAudio(current, patch)),
     setKickfallLastPlayed: (level) => commit(setKickfallLastPlayed(current, level)),
     unlockKickfallLevel: (level) => commit(unlockKickfallLevel(current, level)),
+    recordKickfallStars: (level, stars) => commit(recordKickfallStars(current, level, stars)),
     earn: (powerId, amount = 1) => commit(earnPower(current, powerId, amount)),
     equip: (powerId) => commit(equipPower(current, powerId)),
     consumeEquipped: () => {
@@ -103,6 +106,11 @@ export const createPlayerProfileStore = (storage = defaultStorage(), navigatorRe
       return result.consumedPowerId;
     },
     lockMath: (now = Date.now()) => commit(lockMathPractice(current, now)),
+    recordMathAnswer: (correct, now = Date.now()) => {
+      const result = recordMathAnswer(current, correct, now);
+      commit(result.profile);
+      return result.outcome;
+    },
     getMathLockRemaining: (now = Date.now()) => getMathLockRemaining(current, now),
     clear: () => {
       try {

@@ -6,6 +6,7 @@ import {
   sanitizeArenaThemeId,
   sanitizeBallTypeId,
 } from '../content/matchCustomization.js';
+import { MATH_BREAK_MS, sanitizeMathLevel, stepMathProgress } from './mathChallenge.js';
 
 const emptyPowers = () => Object.fromEntries(SUPERPOWERS.map(({ id }) => [id, 0]));
 const RETIRED_SHOT_POWERS = Object.freeze(['lightning', 'tornado', 'rocket', 'boomerang', 'warp']);
@@ -55,13 +56,62 @@ const cleanKickfallLevel = (value) => Math.min(
   Math.max(1, Math.floor(Number(value) || 1)),
 );
 
+/** Best Kickfall stars per level: { '1': 0..3, ... } for authored levels only. */
+export const sanitizeKickfallStars = (candidate) => {
+  const stars = {};
+  if (!candidate || typeof candidate !== 'object') return stars;
+  Object.entries(candidate).forEach(([key, value]) => {
+    const level = Number(key);
+    if (!Number.isInteger(level) || cleanKickfallLevel(level) !== level) return;
+    const count = Math.min(3, Math.max(0, Math.floor(Number(value) || 0)));
+    if (count > 0) stars[String(level)] = count;
+  });
+  return stars;
+};
+
 export const sanitizeKickfallProgress = (candidate) => {
   const highestUnlockedLevel = cleanKickfallLevel(candidate?.highestUnlockedLevel);
   return {
     highestUnlockedLevel,
     lastPlayedLevel: Math.min(highestUnlockedLevel, cleanKickfallLevel(candidate?.lastPlayedLevel)),
+    stars: sanitizeKickfallStars(candidate?.stars),
   };
 };
+
+/**
+ * Tile model for the Kickfall level select: every level with its best stars,
+ * whether it can be played (up to the highest unlocked level) and whether it is
+ * the saved continue level. Lives here (not with Kickfall) because the setup
+ * menus are part of the opening payload.
+ */
+export const kickfallLevelTiles = (progress) => {
+  const safe = sanitizeKickfallProgress(progress);
+  return Array.from({ length: KICKFALL_MAX_LEVEL }, (_, index) => {
+    const level = index + 1;
+    return {
+      level,
+      unlocked: level <= safe.highestUnlockedLevel,
+      stars: safe.stars[String(level)] ?? 0,
+      current: level === safe.lastPlayedLevel,
+    };
+  });
+};
+
+/** Sum of best stars across every level (for the setup button and header). */
+export const kickfallTotalStars = (progress) => (
+  kickfallLevelTiles(progress).reduce((sum, tile) => sum + tile.stars, 0)
+);
+
+const cleanStreak = (value) => Math.min(99, Math.max(0, Math.floor(Number(value) || 0)));
+
+/** Power Lab adaptive math progress (level plus answer streaks). */
+export const sanitizeMathProgress = (candidate) => ({
+  level: sanitizeMathLevel(candidate?.level),
+  streak: cleanStreak(candidate?.streak),
+  misses: cleanStreak(candidate?.misses),
+  missRun: cleanStreak(candidate?.missRun),
+  rightRun: cleanStreak(candidate?.rightRun),
+});
 
 export const createDefaultProfile = ({ language = 'en', languageSource = 'device' } = {}) => ({
   version: PROFILE_VERSION,
@@ -74,6 +124,7 @@ export const createDefaultProfile = ({ language = 'en', languageSource = 'device
   ballTypeId: DEFAULT_BALL_TYPE_ID,
   equippedPowerId: null,
   mathLockUntil: 0,
+  mathProgress: sanitizeMathProgress(),
   powers: emptyPowers(),
   audio: sanitizeAudioSettings(),
   kickfall: sanitizeKickfallProgress(),
@@ -113,6 +164,7 @@ export const sanitizeProfile = (candidate) => {
     ballTypeId: sanitizeBallTypeId(candidate.ballTypeId),
     equippedPowerId,
     mathLockUntil: Math.max(0, Math.floor(Number(candidate.mathLockUntil) || 0)),
+    mathProgress: sanitizeMathProgress(candidate.mathProgress),
     powers,
     audio: sanitizeAudioSettings(candidate.audio),
     kickfall: sanitizeKickfallProgress(candidate.kickfall),
@@ -146,9 +198,26 @@ export const unlockKickfallLevel = (profile, level) => {
   return {
     ...safe,
     kickfall: {
+      ...safe.kickfall,
       highestUnlockedLevel: requested,
       lastPlayedLevel: requested,
     },
+  };
+};
+
+/** Total Kickfall stars earned across the campaign (max 3 per level). */
+export const totalKickfallStars = (kickfall) => Object.values(sanitizeKickfallStars(kickfall?.stars))
+  .reduce((sum, stars) => sum + stars, 0);
+
+/** Keep the best star count earned on a Kickfall level. */
+export const recordKickfallStars = (profile, level, stars) => {
+  const safe = sanitizeProfile(profile);
+  const key = String(cleanKickfallLevel(level));
+  const best = Math.max(safe.kickfall.stars[key] ?? 0, Math.min(3, Math.max(0, Math.floor(Number(stars) || 0))));
+  if (best === (safe.kickfall.stars[key] ?? 0)) return safe;
+  return {
+    ...safe,
+    kickfall: { ...safe.kickfall, stars: { ...safe.kickfall.stars, [key]: best } },
   };
 };
 
@@ -234,7 +303,32 @@ export const consumeEquippedPower = (profile) => {
   };
 };
 
-export const lockMathPractice = (profile, now = Date.now(), durationMs = 5 * 60 * 1_000) => ({
+/**
+ * Records one Power Lab answer: adapts the level and starts a short break only
+ * after several misses in a row (replaces the old five-minute lock per miss).
+ */
+export const recordMathAnswer = (profile, correct, now = Date.now()) => {
+  const safe = sanitizeProfile(profile);
+  const step = stepMathProgress(safe.mathProgress, Boolean(correct));
+  const nowMs = Math.max(0, Math.floor(Number(now) || 0));
+  return {
+    profile: {
+      ...safe,
+      mathProgress: sanitizeMathProgress(step),
+      mathLockUntil: step.takeBreak ? nowMs + MATH_BREAK_MS : safe.mathLockUntil,
+    },
+    outcome: {
+      level: step.level,
+      leveledUp: step.leveledUp,
+      leveledDown: step.leveledDown,
+      takeBreak: step.takeBreak,
+      bonusCharge: step.bonusCharge,
+      rightRun: step.rightRun,
+    },
+  };
+};
+
+export const lockMathPractice = (profile, now = Date.now(), durationMs = MATH_BREAK_MS) => ({
   ...sanitizeProfile(profile),
   mathLockUntil: Math.max(0, Math.floor(Number(now) || 0)) + Math.max(0, Math.floor(Number(durationMs) || 0)),
 });

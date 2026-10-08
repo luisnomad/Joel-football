@@ -2,7 +2,7 @@ import Phaser from 'phaser';
 import { GAME_HEIGHT, GAME_WIDTH } from '../constants.js';
 import { t } from '../i18n.js';
 import { playerProfileStore } from '../services/PlayerProfile.js';
-import { CHARACTERS, getCharacter } from '../content/characters.js';
+import { CHARACTERS, getCharacter, getCharacterSheetFrameConfig } from '../content/characters.js';
 import { getArenaTheme } from '../content/matchCustomization.js';
 
 const assetUrl = (filename) => `${import.meta.env.BASE_URL}assets/${filename}`;
@@ -33,23 +33,34 @@ export class BootScene extends Phaser.Scene {
     ];
     [...new Map(lineup.map((character) => [character.sheetTexture, character])).values()]
       .forEach((character) => {
-        this.load.spritesheet(character.sheetTexture, assetUrl(character.sheetAsset), {
-          frameWidth: 320,
-          frameHeight: 480,
-        });
+        this.load.spritesheet(
+          character.sheetTexture,
+          assetUrl(character.sheetAsset),
+          getCharacterSheetFrameConfig(character),
+        );
       });
-    this.load.image('ball', assetUrl('ball.png'));
-    this.load.svg('ball-neon', assetUrl('ball-neon.svg'), { width: 96, height: 96 });
-    this.load.svg('ball-balloon', assetUrl('ball-balloon.svg'), { width: 96, height: 112 });
-    this.load.svg('ball-rugby', assetUrl('ball-rugby.svg'), { width: 128, height: 80 });
-    this.load.svg('ball-soda-can', assetUrl('ball-soda-can.svg'), { width: 72, height: 120 });
-    this.load.svg('ball-cannonball', assetUrl('ball-cannonball.svg'), { width: 96, height: 96 });
-    this.load.image('flare', assetUrl('power-flare.png'));
-    this.load.svg('goal-side', assetUrl('goal-side.svg'), { width: 180, height: 320 });
+    // Painted balls (sprite redo). Each PNG fills the old vector art's load box
+    // at 2x, so the per-type display sizes and colliders are unchanged.
+    this.load.image('ball', assetUrl('ball-classic-v2.png'));
+    this.load.image('ball-neon', assetUrl('ball-neon-v2.png'));
+    this.load.image('ball-balloon', assetUrl('ball-balloon-v2.png'));
+    this.load.image('ball-rugby', assetUrl('ball-rugby-v2.png'));
+    this.load.image('ball-soda-can', assetUrl('ball-soda-can-v2.png'));
+    this.load.image('ball-cannonball', assetUrl('ball-cannonball-v2.png'));
+    this.load.svg('goal-frame', assetUrl('goal-frame.svg'), { width: 180, height: 320 });
+    // Painted power badges (power-icon-<id>, see ui/powerRewardBurst.js).
+    ['fireball', 'ice', 'big', 'shield', 'hyper'].forEach((id) => {
+      this.load.image(`power-icon-${id}`, assetUrl(`power-icon-${id}.png`));
+    });
     this.load.svg('control-high-kick', assetUrl('icons/high-kick.svg'), { width: 128, height: 128 });
     this.load.svg('control-kick', assetUrl('icons/kick.svg'), { width: 128, height: 128 });
     this.load.svg('control-jump', assetUrl('icons/jump.svg'), { width: 128, height: 128 });
-    this.load.image('menu-arcade-cosmic', assetUrl('menu/arcade-cosmic-card-v2.webp'));
+    // v3: the v2 level screenshot without the old Joel sprite baked into its top-left corner,
+    // which sat behind the BACK button on the full-screen Kickfall menus.
+    this.load.image('menu-arcade-cosmic', assetUrl('menu/arcade-cosmic-card-v3.webp'));
+    // A real neon-rink frame (rink lines, puck, both pushers) for the Disc Hockey
+    // card; the arena backdrop alone read as an empty dark rink on phones.
+    this.load.image('menu-disc-hockey-card', assetUrl('menu/disc-hockey-card-v1.webp'));
     this.load.image('menu-options-workshop', assetUrl('menu/options-workshop-v1.webp'));
   }
 
@@ -70,8 +81,7 @@ export class BootScene extends Phaser.Scene {
     if (!this.textures.exists('mum')) this.createFighterFallback('mum', 0x1f6fd1, 0xc9855c);
     if (!this.textures.exists('juanjo')) this.createFighterFallback('juanjo', 0x4b3038, 0xc98765);
     if (!this.textures.exists('ball')) this.createBallFallback();
-    if (!this.textures.exists('flare')) this.createFlareFallback();
-    if (!this.textures.exists('goal-side')) this.createGoalFallback();
+    if (!this.textures.exists('goal-frame')) this.createGoalFallback();
   }
 
   createArenaFallback(textureKey = 'arena-skycourt') {
@@ -116,15 +126,6 @@ export class BootScene extends Phaser.Scene {
     graphics.destroy();
   }
 
-  createFlareFallback() {
-    const graphics = this.make.graphics({ add: false });
-    graphics.fillStyle(0xffba38, 0.25).fillCircle(64, 64, 62);
-    graphics.fillStyle(0xff6b29, 0.55).fillCircle(64, 64, 46);
-    graphics.fillStyle(0xfff49b, 0.95).fillCircle(64, 64, 26);
-    graphics.generateTexture('flare', 128, 128);
-    graphics.destroy();
-  }
-
   createGoalFallback() {
     const graphics = this.make.graphics({ add: false });
     graphics.lineStyle(3, 0xbce9ef, 0.45);
@@ -134,7 +135,7 @@ export class BootScene extends Phaser.Scene {
     graphics.strokeLineShape(new Phaser.Geom.Line(24, 48, 232, 48));
     graphics.strokeLineShape(new Phaser.Geom.Line(24, 48, 24, 286));
     graphics.lineStyle(8, 0xd3eaf0, 1).strokeLineShape(new Phaser.Geom.Line(24, 286, 226, 286));
-    graphics.generateTexture('goal-side', 256, 320);
+    graphics.generateTexture('goal-frame', 256, 320);
     graphics.destroy();
   }
 }

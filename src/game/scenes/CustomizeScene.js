@@ -36,6 +36,9 @@ const textStyle = (size, color = '#ffffff', extra = {}) => ({
   ...extra,
 });
 
+/** Character preview size: the portraits are full-body, so they need room to read. */
+const PORTRAIT_SIZE = 170;
+
 export class CustomizeScene extends Phaser.Scene {
   constructor() {
     super('Customize');
@@ -105,6 +108,9 @@ export class CustomizeScene extends Phaser.Scene {
     this.createCharacterPanel(230, t(this.language, 'customize.player'), true);
     this.createCharacterPanel(640, t(this.language, 'customize.opponent'), false);
     this.createDifficultyPanel(1050);
+    // Tall tablets (1280x800) put the action buttons in the extra band: move the
+    // lower panels down with them instead of leaving dead space above the buttons.
+    this.lowerOffset = Math.round(this.stageLayout.bottomOffset * 0.45);
     this.createArenaPanel(330);
     this.createBallPanel(930);
 
@@ -137,22 +143,22 @@ export class CustomizeScene extends Phaser.Scene {
 
   createCharacterPanel(x, heading, isPlayer) {
     const character = isPlayer ? this.playerCharacter : this.opponent;
-    this.add.rectangle(x, 205, 360, 194, 0x09172e, 0.95)
+    this.add.rectangle(x, 214, 360, 212, 0x09172e, 0.95)
       .setStrokeStyle(3, character.accent, 0.5);
-    this.add.text(x, 126, heading, textStyle(16, '#8fefff')).setOrigin(0.5);
-    const portrait = this.add.image(x, 202, character.portraitTexture)
-      .setDisplaySize(126, 126)
+    this.add.text(x, 124, heading, textStyle(18, '#8fefff')).setOrigin(0.5);
+    const portrait = this.add.image(x, 208, character.portraitTexture)
+      .setDisplaySize(PORTRAIT_SIZE, PORTRAIT_SIZE)
       .setFlipX(character.nativeFacing !== (isPlayer ? 1 : -1));
-    const name = this.add.text(x, 280, getCharacterLabel(character, this.language), textStyle(
-      20,
+    const name = this.add.text(x, 302, getCharacterLabel(character, this.language), textStyle(
+      22,
       Phaser.Display.Color.IntegerToColor(character.accent).rgba,
       { stroke: '#071426', strokeThickness: 5 },
     )).setOrigin(0.5);
     createButton(this, {
       x: x - 145,
-      y: 205,
-      width: 48,
-      height: 68,
+      y: 210,
+      width: 52,
+      height: 76,
       label: '‹',
       color: 0x1a6c79,
       activateOnPointerDown: true,
@@ -160,9 +166,9 @@ export class CustomizeScene extends Phaser.Scene {
     });
     createButton(this, {
       x: x + 145,
-      y: 205,
-      width: 48,
-      height: 68,
+      y: 210,
+      width: 52,
+      height: 76,
       label: '›',
       color: 0x1a6c79,
       activateOnPointerDown: true,
@@ -178,28 +184,29 @@ export class CustomizeScene extends Phaser.Scene {
   }
 
   createDifficultyPanel(x) {
-    this.add.rectangle(x, 205, 350, 194, 0x09172e, 0.95)
+    this.add.rectangle(x, 214, 350, 212, 0x09172e, 0.95)
       .setStrokeStyle(3, 0xffc65a, 0.48);
-    this.add.text(x, 126, t(this.language, 'customize.difficulty'), textStyle(16, '#ffdc72')).setOrigin(0.5);
+    this.add.text(x, 124, t(this.language, 'customize.difficulty'), textStyle(18, '#ffdc72')).setOrigin(0.5);
     createControlIcon(this, {
       x,
-      y: 170,
+      y: 166,
       size: 38,
       icon: 'power',
       depth: 2,
       color: 0xffdc72,
       alpha: 0.9,
     });
-    this.createDifficultyButton(x - 108, 'easy');
+    this.createDifficultyButton(x - 110, 'easy');
     this.createDifficultyButton(x, 'normal');
-    this.createDifficultyButton(x + 108, 'hard');
+    this.createDifficultyButton(x + 110, 'hard');
     this.difficultyHelp = this.add.text(
       x,
-      276,
+      284,
       t(this.language, `customize.difficultyHelp.${this.profile.difficultyByGame.football}`),
       {
-        ...textStyle(12, '#b9cde5'),
-        wordWrap: { width: 310 },
+        ...textStyle(15, '#d3e2f3'),
+        align: 'center',
+        wordWrap: { width: 320 },
       },
     ).setOrigin(0.5);
   }
@@ -208,9 +215,9 @@ export class CustomizeScene extends Phaser.Scene {
     const active = this.profile.difficultyByGame.football === difficulty;
     createButton(this, {
       x,
-      y: 224,
-      width: 96,
-      height: 42,
+      y: 222,
+      width: 102,
+      height: 50,
       label: t(this.language, `settings.${difficulty}`),
       color: active ? 0xf29d38 : 0x1a395c,
       onPress: () => {
@@ -223,15 +230,15 @@ export class CustomizeScene extends Phaser.Scene {
   }
 
   createArenaPanel(x) {
-    this.add.rectangle(x, 454, 570, 276, 0x09172e, 0.95)
+    this.add.rectangle(x, 474 + this.lowerOffset, 570, 276, 0x09172e, 0.95)
       .setStrokeStyle(3, this.arenaTheme.accent, 0.5);
-    this.add.text(x, 334, t(this.language, 'customize.field'), textStyle(17, '#8fefff')).setOrigin(0.5);
-    this.arenaPreview = this.add.image(x, 428, this.arenaTheme.texture).setDisplaySize(450, 154);
-    this.arenaPreviewBorder = this.add.rectangle(x, 428, 454, 158, 0x000000, 0)
+    this.add.text(x, 354 + this.lowerOffset, t(this.language, 'customize.field'), textStyle(17, '#8fefff')).setOrigin(0.5);
+    this.arenaPreview = this.add.image(x, 448 + this.lowerOffset, this.arenaTheme.texture).setDisplaySize(450, 154);
+    this.arenaPreviewBorder = this.add.rectangle(x, 448 + this.lowerOffset, 454, 158, 0x000000, 0)
       .setStrokeStyle(3, this.arenaTheme.accent, 0.9);
     createButton(this, {
       x: x - 250,
-      y: 430,
+      y: 450 + this.lowerOffset,
       width: 52,
       height: 70,
       label: '‹',
@@ -241,7 +248,7 @@ export class CustomizeScene extends Phaser.Scene {
     });
     createButton(this, {
       x: x + 250,
-      y: 430,
+      y: 450 + this.lowerOffset,
       width: 52,
       height: 70,
       label: '›',
@@ -251,24 +258,24 @@ export class CustomizeScene extends Phaser.Scene {
     });
     this.arenaNameText = this.add.text(
       x,
-      548,
+      568 + this.lowerOffset,
       t(this.language, this.arenaTheme.nameKey),
       textStyle(24, '#ffdc72'),
     ).setOrigin(0.5);
   }
 
   createBallPanel(x) {
-    this.add.rectangle(x, 454, 530, 276, 0x09172e, 0.95)
+    this.add.rectangle(x, 474 + this.lowerOffset, 530, 276, 0x09172e, 0.95)
       .setStrokeStyle(3, this.ballType.accent ?? 0x7ce8ff, 0.5);
-    this.add.text(x, 334, t(this.language, 'customize.object'), textStyle(17, '#8fefff')).setOrigin(0.5);
-    this.add.circle(x, 430, 82, 0x7ce8ff, 0.04).setStrokeStyle(2, 0x7ce8ff, 0.16);
-    this.previewObject = this.add.image(x, 430, this.ballType.texture)
+    this.add.text(x, 354 + this.lowerOffset, t(this.language, 'customize.object'), textStyle(17, '#8fefff')).setOrigin(0.5);
+    this.add.circle(x, 450 + this.lowerOffset, 82, 0x7ce8ff, 0.04).setStrokeStyle(2, 0x7ce8ff, 0.16);
+    this.previewObject = this.add.image(x, 450 + this.lowerOffset, this.ballType.texture)
       .setDisplaySize(this.ballType.displayWidth * 1.75, this.ballType.displayHeight * 1.75)
       .setDepth(5);
     this.animateBallPreview(this.ballType);
     createButton(this, {
       x: x - 225,
-      y: 430,
+      y: 450 + this.lowerOffset,
       width: 52,
       height: 70,
       label: '‹',
@@ -278,7 +285,7 @@ export class CustomizeScene extends Phaser.Scene {
     });
     createButton(this, {
       x: x + 225,
-      y: 430,
+      y: 450 + this.lowerOffset,
       width: 52,
       height: 70,
       label: '›',
@@ -288,24 +295,24 @@ export class CustomizeScene extends Phaser.Scene {
     });
     this.ballNameText = this.add.text(
       x,
-      530,
+      550 + this.lowerOffset,
       t(this.language, this.ballType.nameKey),
       textStyle(24, '#ffdc72'),
     ).setOrigin(0.5);
     this.ballFeelText = this.add.text(
       x,
-      570,
+      590 + this.lowerOffset,
       t(this.language, `customize.feel.${this.ballType.family}`),
-      { ...textStyle(12, '#8fefff'), wordWrap: { width: 440 } },
+      { ...textStyle(14, '#a8f4ff'), wordWrap: { width: 460 } },
     ).setOrigin(0.5);
   }
 
   animateBallPreview(ballType) {
     this.previewTween?.stop();
-    this.previewObject.setY(430).setAngle(0);
+    this.previewObject.setY(450 + this.lowerOffset).setAngle(0);
     this.previewTween = this.tweens.add({
       targets: this.previewObject,
-      y: 405,
+      y: 425 + this.lowerOffset,
       angle: ballType.family === 'can' ? 16 : 180,
       duration: ballType.family === 'cannonball' ? 1200 : 850,
       yoyo: true,
@@ -323,7 +330,7 @@ export class CustomizeScene extends Phaser.Scene {
     this.profile = playerProfileStore.setPlayerCharacter(this.playerCharacter.id);
     this.playerPortrait
       .setTexture(this.playerCharacter.portraitTexture)
-      .setDisplaySize(126, 126)
+      .setDisplaySize(PORTRAIT_SIZE, PORTRAIT_SIZE)
       .setFlipX(this.playerCharacter.nativeFacing !== 1);
     this.playerNameText
       .setText(getCharacterLabel(this.playerCharacter, this.language))
@@ -340,7 +347,7 @@ export class CustomizeScene extends Phaser.Scene {
     this.profile = playerProfileStore.setOpponent(this.opponent.id);
     this.opponentPortrait
       .setTexture(this.opponent.portraitTexture)
-      .setDisplaySize(126, 126)
+      .setDisplaySize(PORTRAIT_SIZE, PORTRAIT_SIZE)
       .setFlipX(this.opponent.nativeFacing !== -1);
     this.opponentNameText
       .setText(getCharacterLabel(this.opponent, this.language))

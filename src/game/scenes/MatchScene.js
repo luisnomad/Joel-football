@@ -10,6 +10,7 @@ import {
 } from '../constants.js';
 import { createHeuristicAgentProvider } from '../ai/HeuristicAgentProvider.js';
 import { Ball } from '../entities/Ball.js';
+import { ballBounceStrength, resolveBallImpactProfile } from '../pure/ballImpactFeedback.js';
 import { Fighter } from '../entities/Fighter.js';
 import { Goal } from '../entities/Goal.js';
 import {
@@ -48,6 +49,9 @@ import {
   sweepCircleAgainstBounds,
 } from '../pure/gameplayPhysics.js';
 import { FOOTBALL_TOUCH_MOVEMENT_MODES } from '../developerOptions.js';
+import { PowerBallEffects } from '../effects/PowerBallEffects.js';
+import { powerIconTextureKey } from '../ui/powerRewardBurst.js';
+import { BallShadow } from '../effects/BallShadow.js';
 
 /**
  * Seconds left on the goal celebration timer when both players resettle to
@@ -60,6 +64,9 @@ const round = (value, places = 2) => {
   const factor = 10 ** places;
   return Math.round(value * factor) / factor;
 };
+
+/** Scoreboard meter bars (inside the 350..930 x 20..124 scoreboard panel). */
+const HUD_METER = Object.freeze({ y: 90, height: 20, width: 190, leftX: 382, rightX: 708 });
 
 const createPowerBallState = (overrides = {}) => ({
   active: false,
@@ -148,15 +155,15 @@ export class MatchScene extends Phaser.Scene {
     this.ball = new Ball(this, GAME_WIDTH / 2, 336, this.profile.ballTypeId);
     this.previousBallPosition = { x: this.ball.body.x, y: this.ball.body.y };
     this.powerBall = createPowerBallState();
-    this.trail = [];
     this.fx = [];
-    this.trailGraphics = this.add.graphics().setDepth(14);
+    this.ballImpact = resolveBallImpactProfile(this.ball.type);
+    this.sinceBallBounce = Infinity;
+    this.lastBallImpact = null;
     this.fxGraphics = this.add.graphics().setDepth(42);
-    this.powerFlare = this.add.image(this.ball.body.x, this.ball.body.y, 'flare')
-      .setDisplaySize(250, 125)
-      .setOrigin(0.78, 0.5)
-      .setDepth(15)
-      .setVisible(false);
+    // Glow, tapered streak and per-type particles for empowered balls.
+    this.powerBallEffects = new PowerBallEffects(this);
+    // Ground shadow: shows how high the ball is (headers, jumps, chilenas).
+    this.ballShadow = new BallShadow(this, { groundY: GROUND_Y });
 
     this.score = createScoreState();
     this.phase = 'countdown';
@@ -168,6 +175,7 @@ export class MatchScene extends Phaser.Scene {
     this.lastBoostedStrike = null;
     this.lastLobStrike = null;
     this.lastChilenaStrike = null;
+    this.goalScorer = null;
     this.lastInstantPower = null;
     this.sweptPlayerSaves = 0;
     this.clashTimer = 0;
@@ -205,7 +213,8 @@ export class MatchScene extends Phaser.Scene {
       icon: 'help',
       accent: 0x52d7e8,
       depth: 94,
-      prominent: useWidePhoneControls,
+      // Solid backing on every touch layout: faint glass is lost over the sky.
+      prominent: this.isTouchLayout,
       onPress: () => this.openHelp(),
     });
     this.bindEvents();
@@ -214,103 +223,107 @@ export class MatchScene extends Phaser.Scene {
     this.ball.freeze();
     this.updateHud();
 
-    window.__SKYHEAD_DEBUG__ = {
-      resumePlay: () => {
-        this.phase = 'playing';
-        this.isPaused = false;
-        this.pauseReason = null;
-        this.goalLatch = false;
-        this.goalTimer = 0;
-        this.score = { ...this.score, winner: null };
-        this.matter.world.resume();
-        this.cameras.main.resetFX();
-        this.pauseOverlay.setVisible(false);
-        this.setPauseMenuButtonsVisible(false);
-        this.announcementText.setText('').setColor('#ffffff').setFontSize(82);
-      },
-      setHumanMeter: (meter = 100) => {
-        this.leftPlayer.meter = Phaser.Math.Clamp(meter, 0, 100);
-        this.leftPlayer.powerArmed = 0;
-      },
-      grantEquippedPower: (powerId = 'fireball', count = 1) => {
-        playerProfileStore.earn(powerId, count);
-        playerProfileStore.equip(powerId);
-        this.profile = playerProfileStore.get();
-      },
-      getProfile: () => playerProfileStore.get(),
-      setBall: ({ x, y, vx = 0, vy = 0 }) => {
-        this.ball.body.setStatic(false);
-        this.ball.body.setPosition(x, y);
-        this.ball.body.setVelocity(vx, vy);
-        this.ball.body.setAngularVelocity(0);
-        this.previousBallPosition = { x, y };
-        this.powerBall = createPowerBallState();
-      },
-      setIncomingPower: ({ owner = 'right', x, y, vx, vy = 0 }) => {
-        this.ball.body.setStatic(false);
-        this.ball.body.setPosition(x, y);
-        this.ball.body.setVelocity(vx, vy);
-        this.previousBallPosition = { x, y };
-        this.powerBall = createPowerBallState({ active: true, owner, ttl: PLAYER_TUNING.powerDuration });
-      },
-      setOpponentPosition: (x = 1040) => {
-        this.rightPlayer.finishChilena();
-        this.rightPlayer.placeOnGround(Phaser.Math.Clamp(x, 142, 1138));
-        this.rightPlayer.setFacing(-1);
-        this.rightPlayer.stunTimer = 0;
-        this.rightPlayer.stunProtection = 0;
-        this.rightPlayer.dashTimer = 0;
-        this.rightPlayer.dashCooldown = 0;
-        this.rightPlayer.dashDirection = 0;
-        this.rightPlayer.kickTimer = 0;
-        this.rightPlayer.kickBoostTaps = 0;
-        this.rightPlayer.kickBoostAppliedTaps = 0;
-        this.rightPlayer.kickBoostAppliedStrength = 0;
-        this.rightPlayer.lastStrikePowered = false;
-        this.aiThinkTimer = 0;
-        this.currentIntents.right = null;
-        this.meterFlash.right = 0;
-        this.lastBoostedStrike = null;
-      },
-      setOpponentMeter: (meter = 100) => { this.rightPlayer.meter = Phaser.Math.Clamp(meter, 0, 100); },
-      stunOpponent: (seconds = 0.4) => {
-        this.rightPlayer.kickTimer = 0;
-        this.rightPlayer.kickCooldown = 0;
-        this.rightPlayer.stunTimer = Math.max(0, seconds);
-        this.rightPlayer.stunProtection = Math.max(0, seconds);
-      },
-      setHumanPosition: (x = 360) => {
-        this.leftPlayer.finishChilena();
-        this.leftPlayer.placeOnGround(Phaser.Math.Clamp(x, 142, 1138));
-        this.leftPlayer.setFacing(1);
-        this.leftPlayer.kickCooldown = 0;
-        this.leftPlayer.kickTimer = 0;
-        this.leftPlayer.kickBoostTaps = 0;
-        this.leftPlayer.kickBoostAppliedTaps = 0;
-        this.leftPlayer.kickBoostAppliedStrength = 0;
-        this.leftPlayer.lastKickBoostSpent = 0;
-        this.leftPlayer.lastStrikePowered = false;
-        this.leftPlayer.stunTimer = 0;
-        this.leftPlayer.stunProtection = 0;
-        this.leftPlayer.dashTimer = 0;
-        this.leftPlayer.dashCooldown = 0;
-        this.leftPlayer.dashDirection = 0;
-        this.inputController.resetAdvancedInput();
-        this.meterFlash.left = 0;
-        this.lastBoostedStrike = null;
-      },
-      humanKick: () => {
-        this.leftPlayer.kickCooldown = 0;
-        this.leftPlayer.startKick();
-      },
-      scoreFor: (side) => this.registerGoal(side === 'left' ? 'left' : 'right'),
-      endClock: () => { this.score = tickMatchClock({ ...this.score, secondsLeft: 0.01 }, 0.02); },
-      forceResult: (side = 'left') => {
-        this.score = { ...this.score, winner: side === 'right' ? 'right' : 'left' };
-        this.showResult();
-      },
-      snapshot: () => JSON.parse(this.serializeStateString()),
-    };
+    // Test and debug API: development builds only (audit I6).
+    if (import.meta.env.DEV) {
+      window.__SKYHEAD_DEBUG__ = {
+        resumePlay: () => {
+          this.phase = 'playing';
+          this.isPaused = false;
+          this.pauseReason = null;
+          this.goalLatch = false;
+          this.goalTimer = 0;
+          this.releaseGoalCaptures();
+          this.score = { ...this.score, winner: null };
+          this.matter.world.resume();
+          this.cameras.main.resetFX();
+          this.pauseOverlay.setVisible(false);
+          this.setPauseMenuButtonsVisible(false);
+          this.announcementText.setText('').setColor('#ffffff').setFontSize(82);
+        },
+        setHumanMeter: (meter = 100) => {
+          this.leftPlayer.meter = Phaser.Math.Clamp(meter, 0, 100);
+          this.leftPlayer.powerArmed = 0;
+        },
+        grantEquippedPower: (powerId = 'fireball', count = 1) => {
+          playerProfileStore.earn(powerId, count);
+          playerProfileStore.equip(powerId);
+          this.profile = playerProfileStore.get();
+        },
+        getProfile: () => playerProfileStore.get(),
+        setBall: ({ x, y, vx = 0, vy = 0 }) => {
+          this.ball.body.setStatic(false);
+          this.ball.body.setPosition(x, y);
+          this.ball.body.setVelocity(vx, vy);
+          this.ball.body.setAngularVelocity(0);
+          this.previousBallPosition = { x, y };
+          this.powerBall = createPowerBallState();
+        },
+        setIncomingPower: ({ owner = 'right', x, y, vx, vy = 0 }) => {
+          this.ball.body.setStatic(false);
+          this.ball.body.setPosition(x, y);
+          this.ball.body.setVelocity(vx, vy);
+          this.previousBallPosition = { x, y };
+          this.powerBall = createPowerBallState({ active: true, owner, ttl: PLAYER_TUNING.powerDuration });
+        },
+        setOpponentPosition: (x = 1040) => {
+          this.rightPlayer.finishChilena();
+          this.rightPlayer.placeOnGround(Phaser.Math.Clamp(x, 142, 1138));
+          this.rightPlayer.setFacing(-1);
+          this.rightPlayer.stunTimer = 0;
+          this.rightPlayer.stunProtection = 0;
+          this.rightPlayer.dashTimer = 0;
+          this.rightPlayer.dashCooldown = 0;
+          this.rightPlayer.dashDirection = 0;
+          this.rightPlayer.kickTimer = 0;
+          this.rightPlayer.kickBoostTaps = 0;
+          this.rightPlayer.kickBoostAppliedTaps = 0;
+          this.rightPlayer.kickBoostAppliedStrength = 0;
+          this.rightPlayer.lastStrikePowered = false;
+          this.aiThinkTimer = 0;
+          this.currentIntents.right = null;
+          this.meterFlash.right = 0;
+          this.lastBoostedStrike = null;
+        },
+        setOpponentMeter: (meter = 100) => { this.rightPlayer.meter = Phaser.Math.Clamp(meter, 0, 100); },
+        stunOpponent: (seconds = 0.4) => {
+          this.rightPlayer.kickTimer = 0;
+          this.rightPlayer.kickCooldown = 0;
+          this.rightPlayer.stunTimer = Math.max(0, seconds);
+          this.rightPlayer.stunProtection = Math.max(0, seconds);
+        },
+        setHumanPosition: (x = 360) => {
+          this.leftPlayer.finishChilena();
+          this.leftPlayer.placeOnGround(Phaser.Math.Clamp(x, 142, 1138));
+          this.leftPlayer.setFacing(1);
+          this.leftPlayer.kickCooldown = 0;
+          this.leftPlayer.kickTimer = 0;
+          this.leftPlayer.kickBoostTaps = 0;
+          this.leftPlayer.kickBoostAppliedTaps = 0;
+          this.leftPlayer.kickBoostAppliedStrength = 0;
+          this.leftPlayer.lastKickBoostSpent = 0;
+          this.leftPlayer.lastStrikePowered = false;
+          this.leftPlayer.stunTimer = 0;
+          this.leftPlayer.stunProtection = 0;
+          this.leftPlayer.dashTimer = 0;
+          this.leftPlayer.dashCooldown = 0;
+          this.leftPlayer.dashDirection = 0;
+          this.inputController.resetAdvancedInput();
+          this.meterFlash.left = 0;
+          this.lastBoostedStrike = null;
+        },
+        humanKick: () => {
+          this.leftPlayer.kickCooldown = 0;
+          this.leftPlayer.startKick();
+        },
+        scoreFor: (side) => this.registerGoal(side === 'left' ? 'left' : 'right'),
+        endClock: () => { this.score = tickMatchClock({ ...this.score, secondsLeft: 0.01 }, 0.02); },
+        forceResult: (side = 'left') => {
+          this.score = { ...this.score, winner: side === 'right' ? 'right' : 'left' };
+          this.showResult();
+        },
+        snapshot: () => JSON.parse(this.serializeStateString()),
+      };
+    }
   }
 
   createPitchDetails() {
@@ -345,10 +358,16 @@ export class MatchScene extends Phaser.Scene {
     this.clockText = this.add.text(640, 85, '1:30', this.hudTextStyle(21, '#d8e7ff')).setOrigin(0.5).setDepth(61);
     this.suddenDeathText = this.add.text(640, 113, '', this.hudTextStyle(14, '#ffda55')).setOrigin(0.5).setDepth(61);
     this.meterGraphics = this.add.graphics().setDepth(61);
-    this.superPowerPill = this.add.rectangle(640, 145, 310, 34, 0x071426, 0.8)
+    // Equipped-power chip under the scoreboard; hidden when nothing is equipped.
+    this.superPowerPill = this.add.rectangle(640, 145, 220, 34, 0x071426, 0.9)
       .setStrokeStyle(2, 0xffffff, 0.14)
       .setDepth(60);
-    this.superPowerText = this.add.text(640, 145, '', this.hudTextStyle(14, '#d9ecff')).setOrigin(0.5).setDepth(61);
+    this.superPowerBadge = this.add.circle(0, 145, 13, 0xffffff, 1).setDepth(61);
+    this.superPowerIcon = this.add.text(0, 145, '', this.hudTextStyle(14, '#071426')).setOrigin(0.5).setDepth(62);
+    // Painted power icon (power-icon-<id>); the badge + glyph remain the fallback.
+    this.superPowerImage = this.add.image(0, 145, '__DEFAULT').setDepth(62).setVisible(false);
+    this.superPowerText = this.add.text(640, 145, '', this.hudTextStyle(15, '#d9ecff')).setOrigin(0, 0.5).setDepth(61);
+    this.meterReadyGraphics = this.add.graphics().setDepth(61);
     this.announcementText = this.add.text(640, 238, '3', {
       ...this.hudTextStyle(82, '#ffffff'),
       stroke: '#10213e',
@@ -726,6 +745,12 @@ export class MatchScene extends Phaser.Scene {
       this.accumulator -= FIXED_STEP;
     }
     this.updateVisuals(dt);
+    if (this.phase === 'result') {
+      // Physics is paused on the result screen; only the winner's loop plays.
+      for (const fighter of [this.leftPlayer, this.rightPlayer]) {
+        if (fighter.celebrating) fighter.updatePose(dt);
+      }
+    }
   }
 
   stepGame(dt) {
@@ -756,15 +781,23 @@ export class MatchScene extends Phaser.Scene {
 
     if (this.phase === 'goal') {
       this.goalTimer -= dt;
+      this.stepGoals(dt);
       if (!this.playersResettled && this.goalTimer <= GOAL_RESETTLE_AT_SECONDS) {
         // Let the goal flash land, then walk both players back to kickoff so
         // they are not frozen mid-action through the wait and the countdown.
         this.playersResettled = true;
         this.leftPlayer.reset(340, { preservePowerEffects: true });
         this.rightPlayer.reset(940, { preservePowerEffects: true });
+        // The scorer keeps celebrating at the kickoff spot until the countdown.
+        this.goalScorer?.setCelebrating(true);
       }
       this.leftPlayer.continueChilenaAnimation(dt);
       this.rightPlayer.continueChilenaAnimation(dt);
+      // Standing players leave their frozen action pose: the scorer plays the
+      // celebrate loop (layouts that author one), everyone else idles.
+      for (const fighter of [this.leftPlayer, this.rightPlayer]) {
+        if (!fighter.chilenaActive) fighter.updatePose(dt);
+      }
       this.updateEffects(dt);
       if (this.goalTimer <= 0) {
         if (this.score.winner) this.showResult();
@@ -815,6 +848,7 @@ export class MatchScene extends Phaser.Scene {
       this.showResult();
       return;
     }
+    this.stepGoals(dt);
     this.checkGoal();
   }
 
@@ -848,6 +882,7 @@ export class MatchScene extends Phaser.Scene {
         };
       }
       arcadeAudio.kick(strike.powered);
+      this.playBallImpact('kick', strike.powered ? 1 : 0.7);
       if (strike.powered) arcadeAudio.powerUp();
       if (strike.boosted) this.showBoostedStrike(fighter, strike);
       if (incomingPowerVelocity) {
@@ -1047,7 +1082,7 @@ export class MatchScene extends Phaser.Scene {
       superpowerId: strike.shotType,
       trajectory: strike.trajectory,
     });
-    this.trail.length = 0;
+    this.powerBallEffects.clear();
     this.lastChilenaStrike = {
       side: fighter.side,
       variant: strike.chilenaVariant,
@@ -1123,8 +1158,8 @@ export class MatchScene extends Phaser.Scene {
     this.powerBall.counterFlash = Math.max(0, this.powerBall.counterFlash - dt);
     this.powerBall.elapsed = (this.powerBall.elapsed ?? 0) + dt;
     if (this.powerBall.ttl <= 0) {
+      // The effects fade out on their own once the power ends.
       this.powerBall = createPowerBallState();
-      this.trail.length = 0;
       return;
     }
     const trajectory = this.powerBall.trajectory;
@@ -1152,8 +1187,6 @@ export class MatchScene extends Phaser.Scene {
       this.spawnImpact(this.ball.body.x, this.ball.body.y, this.powerBall.color, 22);
       this.cameras.main.shake(110, 0.005);
     }
-    this.trail.unshift({ x: this.ball.body.x, y: this.ball.body.y });
-    this.trail.length = Math.min(this.trail.length, 14);
   }
 
   counterPower(fighter, incomingVelocity = this.ball.body.body.velocity) {
@@ -1166,7 +1199,7 @@ export class MatchScene extends Phaser.Scene {
       ttl: PLAYER_TUNING.powerDuration,
       counterFlash: 0.42,
     });
-    this.trail.length = 0;
+    this.powerBallEffects.clear();
     fighter.onBallContact(true);
     arcadeAudio.counter();
     this.announcementText.setText(t(this.language, 'match.counter')).setColor('#fff1a6').setFontSize(82);
@@ -1186,9 +1219,22 @@ export class MatchScene extends Phaser.Scene {
       const fighter = [this.leftPlayer, this.rightPlayer]
         .find((candidate) => candidate.id === fighterId) ?? null;
       if (!fighter) {
+        if (otherLabel === 'pitch-ground') {
+          const strength = ballBounceStrength({
+            downwardSpeed: this.ball.body.body.velocity.y,
+            sinceLastBounce: this.sinceBallBounce,
+          });
+          if (strength > 0) this.playBallImpact('bounce', strength);
+        }
         if (otherLabel.includes('crossbar')) {
           this.spawnImpact(this.ball.body.x, this.ball.body.y, 0xc7f8ff, 5);
           arcadeAudio.impact();
+          const velocity = this.ball.body.body.velocity;
+          this.goals.find((goal) => otherLabel.startsWith(`${goal.side}-`))?.onCrossbarHit({
+            x: this.ball.body.x,
+            y: this.ball.body.y,
+            speed: Math.hypot(velocity.x, velocity.y),
+          });
         }
         return;
       }
@@ -1202,6 +1248,24 @@ export class MatchScene extends Phaser.Scene {
         this.counterPower(fighter);
       }
     });
+  }
+
+  /** Goal nets: cloth, frame shudder, and the captured ball during a goal. */
+  stepGoals(dt) {
+    // The net only carries the ball through the goal phase; a capture that
+    // outlives it (any path back to play) is released so it cannot pin the ball.
+    if (this.phase !== 'goal' && this.goals.some((goal) => goal.captured)) this.releaseGoalCaptures();
+    this.goals.forEach((goal) => {
+      const captured = goal.update(dt);
+      if (!captured) return;
+      this.ball.body.setPosition(captured.x, captured.y);
+      this.ball.body.setRotation(this.ball.body.rotation + captured.spin);
+    });
+  }
+
+  releaseGoalCaptures() {
+    this.goals.forEach((goal) => goal.endCapture());
+    this.ball.body.setDepth(20);
   }
 
   checkGoal() {
@@ -1226,8 +1290,23 @@ export class MatchScene extends Phaser.Scene {
     this.playersResettled = false;
     this.score = addGoal(this.score, scoringSide);
     this.phase = 'goal';
+    this.goalScorer = scoringSide === 'left' ? this.leftPlayer : this.rightPlayer;
+    this.goalScorer.setCelebrating(true);
     this.goalTimer = 1.65;
+    // The ball body freezes (scoring and physics are settled), but its motion
+    // carries on into the net, which catches and settles it during the goal phase.
+    const entryVelocity = { ...this.ball.body.body.velocity };
     this.ball.freeze();
+    const scoredGoal = this.goals[scoringSide === 'left' ? 1 : 0];
+    scoredGoal.startCapture({
+      x: this.ball.body.x,
+      y: this.ball.body.y,
+      vx: entryVelocity.x,
+      vy: entryVelocity.y,
+      radius: this.ball.radius,
+    });
+    // Between the netting (9) and the frame (10): the ball reads as inside the goal.
+    this.ball.body.setDepth(9.5);
     this.announcementText.setText(t(this.language, 'match.goal')).setColor(scoringSide === 'left' ? '#7bf7ff' : '#ffbd79').setFontSize(82);
     this.spawnImpact(this.ball.body.x, this.ball.body.y, scoringSide === 'left' ? 0x63efff : 0xff7a43, 36);
     this.game.events.emit('platform:haptic', scoringSide === 'left' ? 'success' : 'heavy');
@@ -1245,7 +1324,7 @@ export class MatchScene extends Phaser.Scene {
     this.lastCountdownSecond = 0;
     this.goalLatch = false;
     this.powerBall = createPowerBallState();
-    this.trail.length = 0;
+    this.powerBallEffects.reset();
     this.meterFlash = { left: 0, right: 0 };
     this.lastBoostedStrike = null;
     this.lastLobStrike = null;
@@ -1253,6 +1332,7 @@ export class MatchScene extends Phaser.Scene {
     this.inputController.resetAdvancedInput();
     this.leftPlayer.reset(340, { preservePowerEffects: true });
     this.rightPlayer.reset(940, { preservePowerEffects: true });
+    this.releaseGoalCaptures();
     this.ball.reset(GAME_WIDTH / 2, 336);
     this.previousBallPosition = { x: this.ball.body.x, y: this.ball.body.y };
     this.ball.freeze();
@@ -1264,6 +1344,9 @@ export class MatchScene extends Phaser.Scene {
     this.phase = 'result';
     this.leftPlayer.finishChilena();
     this.rightPlayer.finishChilena();
+    const winnerFighter = this.score.winner === 'left' ? this.leftPlayer : this.rightPlayer;
+    this.leftPlayer.setCelebrating(winnerFighter === this.leftPlayer);
+    this.rightPlayer.setCelebrating(winnerFighter === this.rightPlayer);
     arcadeAudio.whistle(3, { label: 'final' });
     this.isPaused = false;
     this.pauseReason = null;
@@ -1316,12 +1399,48 @@ export class MatchScene extends Phaser.Scene {
     }
   }
 
+  /**
+   * Per-ball impact feedback (audit F3): particles and a tone layer that depend
+   * on the ball type. Bounces burst upward from the grass; kicks burst around
+   * the ball.
+   */
+  playBallImpact(kind, strength = 1) {
+    const profile = this.ballImpact;
+    const bounce = kind === 'bounce';
+    if (bounce) this.sinceBallBounce = 0;
+    const { colors, count, speed, radius, gravity } = profile.particles;
+    const total = Math.max(2, Math.round(count * (bounce ? strength : 0.6)));
+    const x = this.ball.body.x;
+    const y = bounce ? this.ball.body.y + this.ball.radius * 0.8 : this.ball.body.y;
+    for (let index = 0; index < total; index += 1) {
+      const angle = bounce
+        ? Phaser.Math.FloatBetween(Math.PI * 1.08, Math.PI * 1.92)
+        : Phaser.Math.FloatBetween(0, Math.PI * 2);
+      const particleSpeed = speed * Phaser.Math.FloatBetween(0.45, 1) * (0.6 + strength * 0.4);
+      this.fx.push({
+        x: x + Phaser.Math.FloatBetween(-0.6, 0.6) * this.ball.radius,
+        y,
+        vx: Math.cos(angle) * particleSpeed,
+        vy: Math.sin(angle) * particleSpeed,
+        life: Phaser.Math.FloatBetween(0.28, 0.5),
+        maxLife: 0.5,
+        color: colors[index % colors.length],
+        radius: radius * Phaser.Math.FloatBetween(1, 1.6),
+        gravity,
+      });
+    }
+    arcadeAudio.ballTone(bounce ? profile.bounceTone : profile.kickTone, strength);
+    if (bounce && profile.shake > 0 && strength > 0.5) this.cameras.main.shake(120, profile.shake * strength);
+    this.lastBallImpact = { kind, profile: profile.id, strength: round(strength, 2), particles: total };
+  }
+
   updateEffects(dt) {
+    this.sinceBallBounce += dt;
     this.fx.forEach((particle) => {
       particle.life -= dt;
       particle.x += particle.vx * dt;
       particle.y += particle.vy * dt;
-      particle.vy += 420 * dt;
+      particle.vy += (particle.gravity ?? 420) * dt;
       particle.vx *= 0.985;
     });
     this.fx = this.fx.filter((particle) => particle.life > 0);
@@ -1329,27 +1448,14 @@ export class MatchScene extends Phaser.Scene {
 
   updateVisuals(dt) {
     this.updateHud();
-    this.trailGraphics.clear();
-    if (this.powerBall.active) {
-      const color = this.powerBall.color ?? (this.powerBall.owner === 'left' ? 0x65efff : 0xff793e);
-      [...this.trail].reverse().forEach((point, index) => {
-        const ratio = (index + 1) / Math.max(1, this.trail.length);
-        this.trailGraphics.fillStyle(color, ratio * 0.42).fillCircle(point.x, point.y, 9 + ratio * 22);
-      });
-      const travelingLeft = this.ball.body.body.velocity.x < 0;
-      this.powerFlare
-        .setVisible(true)
-        .setPosition(this.ball.body.x, this.ball.body.y)
-        .setFlipX(travelingLeft)
-        .setOrigin(travelingLeft ? 0.22 : 0.78, 0.5)
-        .setAngle(0)
-        .setTint(color);
-      this.powerFlare.setAlpha(0.68 + Math.sin(this.time.now * 0.02) * 0.12);
-      this.ball.body.setTint(color);
-    } else {
-      this.powerFlare.setVisible(false);
-      this.ball.body.clearTint();
-    }
+    this.updateHudAccents();
+    this.ballShadow.update({ x: this.ball.body.x, y: this.ball.body.y, radius: this.ball.radius });
+    this.powerBallEffects.update(dt, {
+      powerBall: this.powerBall,
+      ballX: this.ball.body.x,
+      ballY: this.ball.body.y,
+      velocity: this.ball.body.body.velocity,
+    });
 
     this.fxGraphics.clear();
     this.fx.forEach((particle) => {
@@ -1384,30 +1490,73 @@ export class MatchScene extends Phaser.Scene {
     this.suddenDeathText.setText(this.score.suddenDeath ? t(this.language, 'match.goldenGoal') : '');
     const leftMeter = leftMeterValue / 100;
     const rightMeter = rightMeterValue / 100;
+    // Chunkier meters (20 px) with a highlight stripe; gold when full (the
+    // pulsing "ready" outline is drawn per frame in updateVisuals).
+    const { y: meterY, height: meterHeight, width: meterWidth, leftX, rightX } = HUD_METER;
+    const radius = meterHeight / 2;
     this.meterGraphics.clear();
-    this.meterGraphics.fillStyle(0x162842, 1).fillRoundedRect(382, 92, 190, 15, 7).fillRoundedRect(708, 92, 190, 15, 7);
-    this.meterGraphics.fillStyle(leftMeter >= 1 ? 0xffd94f : 0x41dced, 1).fillRoundedRect(382, 92, 190 * leftMeter, 15, 7);
-    this.meterGraphics.fillStyle(rightMeter >= 1 ? 0xffd94f : 0xff7b56, 1).fillRoundedRect(898 - 190 * rightMeter, 92, 190 * rightMeter, 15, 7);
-    this.meterGraphics.lineStyle(2, 0xffffff, 0.25).strokeRoundedRect(382, 92, 190, 15, 7).strokeRoundedRect(708, 92, 190, 15, 7);
+    this.meterGraphics.fillStyle(0x0e1d33, 1)
+      .fillRoundedRect(leftX, meterY, meterWidth, meterHeight, radius)
+      .fillRoundedRect(rightX, meterY, meterWidth, meterHeight, radius);
+    const drawFill = (x, width, color) => {
+      if (width < 1) return;
+      const r = Math.min(radius, width / 2);
+      this.meterGraphics.fillStyle(color, 1).fillRoundedRect(x, meterY, width, meterHeight, r);
+      this.meterGraphics.fillStyle(0xffffff, 0.28).fillRoundedRect(x + 3, meterY + 3, Math.max(0, width - 6), meterHeight * 0.3, r / 2);
+    };
+    drawFill(leftX, meterWidth * leftMeter, leftMeter >= 1 ? 0xffd94f : 0x41dced);
+    drawFill(rightX + meterWidth * (1 - rightMeter), meterWidth * rightMeter, rightMeter >= 1 ? 0xffd94f : 0xff7b56);
+    this.meterGraphics.lineStyle(2, 0xffffff, 0.3)
+      .strokeRoundedRect(leftX, meterY, meterWidth, meterHeight, radius)
+      .strokeRoundedRect(rightX, meterY, meterWidth, meterHeight, radius);
     if (this.meterFlash.left > 0) {
-      this.meterGraphics.fillStyle(0xffef9b, Math.min(0.5, this.meterFlash.left * 1.4)).fillRoundedRect(382, 92, 190, 15, 7);
-      this.meterGraphics.lineStyle(3, 0xffdc62, 0.9).strokeRoundedRect(382, 92, 190, 15, 7);
+      this.meterGraphics.fillStyle(0xffef9b, Math.min(0.5, this.meterFlash.left * 1.4)).fillRoundedRect(leftX, meterY, meterWidth, meterHeight, radius);
+      this.meterGraphics.lineStyle(3, 0xffdc62, 0.9).strokeRoundedRect(leftX, meterY, meterWidth, meterHeight, radius);
     }
     if (this.meterFlash.right > 0) {
-      this.meterGraphics.fillStyle(0xffef9b, Math.min(0.5, this.meterFlash.right * 1.4)).fillRoundedRect(708, 92, 190, 15, 7);
-      this.meterGraphics.lineStyle(3, 0xffdc62, 0.9).strokeRoundedRect(708, 92, 190, 15, 7);
+      this.meterGraphics.fillStyle(0xffef9b, Math.min(0.5, this.meterFlash.right * 1.4)).fillRoundedRect(rightX, meterY, meterWidth, meterHeight, radius);
+      this.meterGraphics.lineStyle(3, 0xffdc62, 0.9).strokeRoundedRect(rightX, meterY, meterWidth, meterHeight, radius);
     }
     this.leftNameText.setText(`${getCharacterLabel(this.playerCharacter, this.language)}  ${leftMeterValue}%`);
     this.rightNameText.setText(`${rightMeterValue}%  ${getCharacterLabel(this.opponent, this.language)}`);
-    if (equipped) {
+    const showChip = Boolean(equipped) && equippedCount > 0;
+    [this.superPowerPill, this.superPowerBadge, this.superPowerIcon, this.superPowerText]
+      .forEach((item) => item.setVisible(showChip));
+    this.superPowerImage.setVisible(false);
+    if (showChip) {
       this.superPowerText
-        .setText(`${equipped.icon}  ${t(this.language, 'match.powerReady', { power: t(this.language, equipped.nameKey), count: equippedCount })}`)
+        .setText(t(this.language, 'match.powerReady', { power: t(this.language, equipped.nameKey), count: equippedCount }))
         .setColor(Phaser.Display.Color.IntegerToColor(equipped.color).rgba);
-      this.superPowerPill.setStrokeStyle(2, equipped.color, 0.45);
-    } else {
-      this.superPowerText.setText(t(this.language, 'match.noPower')).setColor('#9eb2cb');
-      this.superPowerPill.setStrokeStyle(2, 0xffffff, 0.14);
+      const chipWidth = this.superPowerText.width + 58;
+      const left = 640 - chipWidth / 2;
+      this.superPowerPill.setSize(chipWidth, 34).setStrokeStyle(2, equipped.color, 0.7);
+      this.superPowerPill.setPosition(640, 145);
+      this.superPowerBadge.setPosition(left + 21, 145).setFillStyle(equipped.color, 1);
+      this.superPowerIcon.setPosition(left + 21, 145).setText(equipped.icon);
+      const iconKey = powerIconTextureKey(equipped.id);
+      if (this.textures.exists(iconKey)) {
+        this.superPowerImage.setTexture(iconKey).setDisplaySize(30, 30).setPosition(left + 21, 145).setVisible(true);
+        this.superPowerBadge.setVisible(false);
+        this.superPowerIcon.setVisible(false);
+      }
+      this.superPowerText.setPosition(left + 42, 145);
     }
+  }
+
+  /** Per-frame HUD accents: pulsing "ready" outlines on full meters and the docked power ring. */
+  updateHudAccents() {
+    if (!this.leftPlayer) return;
+    const clock = this.time.now / 1000;
+    const { y, height, width, leftX, rightX } = HUD_METER;
+    const pulse = 0.45 + 0.45 * (0.5 + 0.5 * Math.sin(clock * 7));
+    this.meterReadyGraphics.clear();
+    if (this.leftPlayer.meter >= 100) {
+      this.meterReadyGraphics.lineStyle(3, 0xfff1a8, pulse).strokeRoundedRect(leftX - 3, y - 3, width + 6, height + 6, height / 2 + 3);
+    }
+    if (this.rightPlayer.meter >= 100) {
+      this.meterReadyGraphics.lineStyle(3, 0xfff1a8, pulse).strokeRoundedRect(rightX - 3, y - 3, width + 6, height + 6, height / 2 + 3);
+    }
+    this.touchControls?.setPowerMeter(this.leftPlayer.meter / 100, clock);
   }
 
   serializeStateString() {
@@ -1432,6 +1581,7 @@ export class MatchScene extends Phaser.Scene {
       },
       score: { left: this.score?.left ?? 0, right: this.score?.right ?? 0, winner: this.score?.winner ?? null },
       ball: this.ball?.snapshot?.() ?? null,
+      ballShadow: this.ballShadow?.debugState() ?? null,
       players: { left, right },
       hud: {
         leftName: this.leftNameText?.text ?? '',
@@ -1439,13 +1589,18 @@ export class MatchScene extends Phaser.Scene {
         announcement: this.announcementText?.text ?? '',
         announcementWidth: round(this.announcementText?.width ?? 0),
         announcementFontSize: Number.parseFloat(this.announcementText?.style?.fontSize ?? 0) || 0,
+        powerChip: this.superPowerText?.visible ? this.superPowerText.text : null,
       },
+      goalNets: this.goals
+        ? { left: this.goals[0].debugState(), right: this.goals[1].debugState() }
+        : null,
       powerBall: {
         active: this.powerBall?.active ?? false,
         owner: this.powerBall?.owner ?? null,
         ttl: round(this.powerBall?.ttl ?? 0),
         superpowerId: this.powerBall?.superpowerId ?? null,
         effectTriggered: this.powerBall?.effectTriggered ?? false,
+        visuals: this.powerBallEffects?.debugState() ?? null,
         trajectory: this.powerBall?.trajectory ? {
           ...this.powerBall.trajectory,
           redirectedX: Number.isFinite(this.powerBall.trajectory.redirectedX)
@@ -1462,6 +1617,10 @@ export class MatchScene extends Phaser.Scene {
       customization: {
         arenaThemeId: this.profile?.arenaThemeId ?? 'skycourt',
         ballTypeId: this.ball?.type?.id ?? 'classic',
+      },
+      ballImpact: {
+        profile: this.ballImpact?.id ?? 'football',
+        last: this.lastBallImpact,
       },
       playerCharacter: { id: this.playerCharacter.id, name: getCharacterName(this.playerCharacter, this.language) },
       opponent: { id: this.opponent.id, name: getCharacterName(this.opponent, this.language) },

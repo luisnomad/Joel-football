@@ -10,6 +10,9 @@ import {
 
 const GLASS_TINT = 0xdaf7ff;
 const GLASS_SHADOW = 0x04101e;
+// System buttons (pause, restart, home, fullscreen) sit over the bright sky, so
+// they get a solid dark backing with an accent ring instead of faint glass.
+const SYSTEM_BACKING = 0x0b1a30;
 const FOOTBALL_JOYSTICK_BASE_RADIUS = 114;
 const JOYSTICK_EDGE_GUTTER = 64;
 // Phones need a deliberately larger, higher-contrast top row. Keep the tablet
@@ -24,6 +27,13 @@ export const FOOTBALL_TOUCH_LAYOUT = Object.freeze({
   lob: Object.freeze({ x: 1195, y: 475, radius: 56 }),
   power: Object.freeze({ x: 930, y: 500, radius: 50 }),
 });
+/**
+ * On the 1280x800 tablet stage the decorative band below the pitch has an empty
+ * hexagon frame at its centre; the power button docks there (off the pitch) with
+ * the player's meter as a ring around it. Stage coordinates (the band is below
+ * the 720 px gameplay area).
+ */
+export const FOOTBALL_POWER_DOCK = Object.freeze({ x: 640, y: 718, radius: 40, ringRadius: 47 });
 
 export class TouchControls {
   constructor(scene, input) {
@@ -94,6 +104,9 @@ export class TouchControls {
       );
     }
     const { jump, lob, power } = FOOTBALL_TOUCH_LAYOUT;
+    // The band exists only on the tall tablet stage (80 extra logical px below
+    // the pitch); long tablets and phones keep the power button where it was.
+    this.powerDocked = !this.compactPhoneUi && !this.widePhoneUi && this.gameplayYOffset >= 60;
     this.addPulseButton(
       jump.x + horizontalOverflow,
       jump.y + this.gameplayYOffset,
@@ -112,18 +125,59 @@ export class TouchControls {
       'lob',
       0x39d9a0,
     );
-    this.addPulseButton(
-      power.x + horizontalOverflow,
-      power.y + this.gameplayYOffset,
-      power.radius,
-      'power',
-      'power',
-      0xffa62b,
-    );
+    if (this.powerDocked) {
+      this.addPulseButton(
+        FOOTBALL_POWER_DOCK.x,
+        FOOTBALL_POWER_DOCK.y,
+        FOOTBALL_POWER_DOCK.radius,
+        'power',
+        'power',
+        0xffa62b,
+        { emphasized: true, solid: true },
+      );
+      this.powerRing = this.scene.add.graphics().setDepth(80.6).setScrollFactor(0);
+      this.gameplayObjects.push(this.powerRing);
+      this.setPowerMeter(0);
+    } else {
+      this.addPulseButton(
+        power.x + horizontalOverflow,
+        power.y + this.gameplayYOffset,
+        power.radius,
+        'power',
+        'power',
+        0xffa62b,
+      );
+    }
+  }
+
+  /**
+   * Meter ring around the docked power button (tablet). `ratio` 0..1; at 1 the
+   * ring turns gold and pulses with `clockSeconds`. No-op when not docked.
+   */
+  setPowerMeter(ratio = 0, clockSeconds = 0) {
+    if (!this.powerRing) return;
+    const value = Math.min(1, Math.max(0, Number(ratio) || 0));
+    const ready = value >= 1;
+    const { x, y, ringRadius } = FOOTBALL_POWER_DOCK;
+    const ring = this.powerRing;
+    ring.clear();
+    ring.lineStyle(8, 0x071426, 0.82).strokeCircle(x, y, ringRadius);
+    if (value > 0) {
+      ring.lineStyle(6, ready ? 0xffd94f : 0xffa62b, 1);
+      ring.beginPath();
+      ring.arc(x, y, ringRadius, -Math.PI / 2, -Math.PI / 2 + Math.PI * 2 * value, false);
+      ring.strokePath();
+    }
+    if (ready) {
+      const pulse = 0.35 + 0.3 * (0.5 + 0.5 * Math.sin(clockSeconds * 7));
+      ring.lineStyle(4, 0xfff1a8, pulse).strokeCircle(x, y, ringRadius + 6);
+    }
+    this.powerMeterState = { ratio: value, ready };
   }
 
   createBase(x, y, radius, icon, accent = 0xffffff, group = 'gameplay', {
     emphasized = false,
+    solid = false,
   } = {}) {
     const authoredRadius = radius;
     radius *= this.uiScale;
@@ -149,19 +203,23 @@ export class TouchControls {
       highContrastSystem ? 0.42 : emphasized ? 0.32 : 0.16,
     );
 
+    // Solid: dark backing + accent ring (system buttons, and the docked power
+    // button, which sits on the busy band art rather than the pitch).
+    const isSystem = group === 'system' || solid;
+    // Phones draw these controls at roughly half size over a busy pitch: a more
+    // opaque glass and rim keep them findable (tablet values are unchanged).
+    const phoneGameplay = !isSystem && this.compactPhoneUi;
     const surface = this.scene.add.circle(
       x,
       y,
       radius,
-      GLASS_TINT,
-      group === 'system'
-        ? this.compactPhoneUi ? 0.34 : 0.13
-        : emphasized ? 0.18 : 0.085,
+      isSystem ? SYSTEM_BACKING : GLASS_TINT,
+      isSystem ? 0.88 : phoneGameplay ? emphasized ? 0.44 : 0.2 : emphasized ? 0.18 : 0.085,
     ).setDepth(depth + 0.2);
     surface.setStrokeStyle(
-      Math.max(1.25, radius * 0.022),
-      0xf4fdff,
-      highContrastSystem ? 0.7 : emphasized ? 0.62 : 0.44,
+      Math.max(isSystem ? 2 : phoneGameplay ? 2 : 1.25, radius * (isSystem ? 0.06 : phoneGameplay ? 0.035 : 0.022)),
+      isSystem ? accent : 0xf4fdff,
+      isSystem ? 0.9 : phoneGameplay ? 0.78 : emphasized ? 0.62 : 0.44,
     );
 
     const innerRim = this.scene.add.circle(
@@ -202,9 +260,7 @@ export class TouchControls {
       size: radius * (isSystemControl ? highContrastSystem ? 0.76 : 0.72 : 0.7),
       icon,
       depth: depth + 1,
-      alpha: isSystemControl
-        ? this.compactPhoneUi ? 1 : 0.78
-        : emphasized ? 0.88 : 0.68,
+      alpha: isSystemControl || solid ? 1 : phoneGameplay ? emphasized ? 1 : 0.92 : emphasized ? 0.88 : 0.68,
     });
 
     const visualObjects = [shadow, accentGlow, surface, innerRim, highlight, glint, symbol];
@@ -303,6 +359,8 @@ export class TouchControls {
   diagnostics() {
     return {
       movementMode: this.movementMode,
+      powerDocked: Boolean(this.powerDocked),
+      powerMeter: this.powerMeterState ?? null,
       joystick: this.movementJoystick?.diagnostics?.() ?? null,
       ...Object.fromEntries(
       [...this.controlButtons].map(([key, button]) => [key, button.diagnostics()]),

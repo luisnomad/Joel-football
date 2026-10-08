@@ -378,6 +378,13 @@ class ArcadeAudio {
     this.tone({ frequency: 280, endFrequency: 480, duration: 0.09, type: 'sine', gain: 0.022 });
   }
 
+  /** Per-ball tone layer (audit F3), scaled by impact strength 0..1. */
+  ballTone(spec, strength = 1) {
+    if (!spec) return;
+    const scale = 0.5 + 0.5 * Math.min(1, Math.max(0, Number(strength) || 0));
+    this.tone({ ...spec, gain: spec.gain * scale });
+  }
+
   impact() {
     this.tone({ frequency: 82, endFrequency: 48, duration: 0.1, type: 'square', gain: 0.03 });
   }

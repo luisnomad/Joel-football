@@ -1,3 +1,4 @@
+import { totalKickfallStars } from '../pure/profile.js';
 import Phaser from 'phaser';
 import { GAME_WIDTH } from '../constants.js';
 import { CHARACTERS, cycleCharacter, getCharacter, getCharacterLabel, getCharacterName } from '../content/characters.js';
@@ -69,12 +70,18 @@ export class MiniGamesScene extends Phaser.Scene {
     const kickfall = this.activeTab === 'kickfall';
     const accent = kickfall ? 0xb47aff : 0xffcf4a;
     createCompactPanel(this, { y: 350, width: 1040, height: 350, accent });
-    const texture = kickfall ? 'menu-arcade-cosmic' : DISC_HOCKEY_PREVIEW_TEXTURE;
+    const discHockeyCard = this.textures.exists('menu-disc-hockey-card') ? 'menu-disc-hockey-card' : DISC_HOCKEY_PREVIEW_TEXTURE;
+    const texture = kickfall ? 'menu-arcade-cosmic' : discHockeyCard;
     createCompactMediaFrame(this, { x: 420, y: 350, width: 490, height: 290, texture, accent });
     const title = kickfall ? 'KICKFALL' : 'DISC HOCKEY';
     const subtitle = t(this.language, kickfall ? 'miniGames.kickfallSubtitle' : 'miniGames.discHockeySubtitle');
     const meta = kickfall
-      ? t(this.language, 'miniGames.kickfallMeta', { level: this.profile.kickfall.lastPlayedLevel, total: 20 })
+      ? t(this.language, 'miniGames.kickfallMeta', {
+        level: this.profile.kickfall.lastPlayedLevel,
+        total: 20,
+        stars: totalKickfallStars(this.profile.kickfall),
+        maxStars: 60,
+      })
       : t(this.language, 'miniGames.discHockeyMeta');
     this.add.text(900, 250, title, compactTextStyle(42, '#ffffff', { fontFamily: 'Arial Black, sans-serif' })).setOrigin(0.5);
     compactBodyText(this, 900, 344, subtitle, { width: 430, size: 26, color: '#d9f8ff' });

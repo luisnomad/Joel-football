@@ -110,15 +110,17 @@ export class IntroScene extends Phaser.Scene {
       icon: 'settings',
       color: 0xc14d37,
       accent: 0xffcf54,
-      imageFocusX: 0.86,
+      imageFocusX: 0.9,
       titleSize: 28,
+      // Narrow card: give the title its own panel so it never sits on the gear art.
+      panelRatio: 0.8,
       onPress: () => this.startSettings(),
     });
 
     this.aboutButton = createIconButton(this, {
       x: 44 + horizontalOffset,
-      y: 48,
-      radius: 32,
+      y: 50,
+      radius: 38,
       icon: 'info',
       accent: 0xffdc72,
       prominent: true,
@@ -130,10 +132,10 @@ export class IntroScene extends Phaser.Scene {
       ?? { available: false, installed: false, method: 'unavailable' };
     if (this.isTouchLayout && this.installState.available) {
       createButton(this, {
-        x: 1125,
-        y: 662 + this.stageLayout.bottomOffset,
-        width: 230,
-        height: 42,
+        x: 1110,
+        y: 660 + this.stageLayout.bottomOffset,
+        width: 270,
+        height: 56,
         label: t(this.language, 'intro.install'),
         color: 0x168e78,
         onPress: () => this.installApp(),

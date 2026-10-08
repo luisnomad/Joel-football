@@ -1,9 +1,11 @@
 import Phaser from 'phaser';
+import { applyBakedTint, bakeTintedTexture } from '../../effects/bakedTint.js';
 import { FIXED_STEP, GAME_HEIGHT, GAME_WIDTH } from '../../constants.js';
 import {
   getCharacter,
   getCharacterFrameScale,
   getCharacterName,
+  getCharacterSheetFrameConfig,
   getCharacterVisualScale,
 } from '../../content/characters.js';
 import { getKickfallCollisionGeometry } from '../../content/characterCollisionProfiles.js';
@@ -21,9 +23,15 @@ import {
   LAND_SQUASH_SECONDS,
   TAKEOFF_STRETCH_MIN_VELOCITY,
   TAKEOFF_STRETCH_SECONDS,
+  getCharacterLayout,
+  idleVisualAt,
   kickVisualAt,
-  runVisualAt,
+  layoutDisplayWidth,
+  layoutKickVisualAt,
+  layoutRunVisualAt,
+  runCycleAdvance,
   secondaryMotionAt,
+  RUN_FRAME_DISTANCE,
 } from '../../pure/characterAnimation.js';
 import { isTouchLayout } from '../../input/isTouchLayout.js';
 import { getSceneStageLayout, getWideStageUiScale, usesCompactPhoneUi } from '../../layout/tabletStage.js';
@@ -66,11 +74,18 @@ import {
   resolveKickfallOutcome,
   stepKickfallFallVelocity,
   stepKickfallJumpBuffer,
+  formatKickfallStars,
+  KICKFALL_SLOW_MO_SCALE,
+  KICKFALL_SLOW_MO_SECONDS,
+  resolveKickfallStars,
+  stepKickfallCombo,
   stepKickfallRunCycle,
   stepKickfallSurfaceRollVelocity,
   KICKFALL_RUN_FRAME_DISTANCE,
 } from './kickfallRules.js';
 import { getKickfallTheme, getKickfallThemeAssets } from './kickfallThemes.js';
+import { BallShadow } from '../../effects/BallShadow.js';
+import { chooseKickfallFollowTarget, isKickfallFollowAssistEnabled } from './kickfallAssist.js';
 
 const assetUrl = (filename) => `${import.meta.env.BASE_URL}assets/minigames/kickfall/${filename}`;
 
@@ -85,6 +100,8 @@ const CATEGORY = Object.freeze({
 const PLAYER_HEIGHT = 82;
 const PLAYER_WIDTH = 44;
 const BALL_RADIUS = 18;
+/** Red silhouette flashed over a cleat or catch rail when it is hit (baked: Canvas ignores tints). */
+const HIT_FLASH_COLOR = 0xff3d58;
 const KICK_DURATION = 0.18;
 const KICK_COOLDOWN = 0.38;
 const TIER_TRANSFER_SECONDS = 0.32;
@@ -122,6 +139,9 @@ const KICKFALL_TIME_MULTIPLIER = Object.freeze({
   normal: 1,
   hard: 0.85,
 });
+
+/** Kickfall draws a character cell at 126/480 of its source height. */
+const KICKFALL_DISPLAY_RATIO = 126 / 280;
 
 export class KickfallScene extends Phaser.Scene {
   constructor() {
@@ -204,16 +224,18 @@ export class KickfallScene extends Phaser.Scene {
       this.load.svg('kickfall-ball', assetUrl('kickfall-ball.svg'), { width: 96, height: 96 });
     }
     if (!this.textures.exists(this.character.sheetTexture)) {
-      this.load.spritesheet(this.character.sheetTexture, `${import.meta.env.BASE_URL}assets/${this.character.sheetAsset}`, {
-        frameWidth: 320,
-        frameHeight: 480,
-      });
+      this.load.spritesheet(
+        this.character.sheetTexture,
+        `${import.meta.env.BASE_URL}assets/${this.character.sheetAsset}`,
+        getCharacterSheetFrameConfig(this.character),
+      );
     }
     if (this.level.boss && !this.textures.exists(this.rivalCharacter.sheetTexture)) {
-      this.load.spritesheet(this.rivalCharacter.sheetTexture, `${import.meta.env.BASE_URL}assets/${this.rivalCharacter.sheetAsset}`, {
-        frameWidth: 320,
-        frameHeight: 480,
-      });
+      this.load.spritesheet(
+        this.rivalCharacter.sheetTexture,
+        `${import.meta.env.BASE_URL}assets/${this.rivalCharacter.sheetAsset}`,
+        getCharacterSheetFrameConfig(this.rivalCharacter),
+      );
     }
   }
 
@@ -225,6 +247,9 @@ export class KickfallScene extends Phaser.Scene {
     this.simulationSeconds = 0;
     this.accumulator = 0;
     this.progress = createKickfallProgress();
+    this.slowMoSeconds = 0;
+    this.lastStars = 0;
+    this.lastStarsNewBest = false;
     this.levelDurationSeconds = this.level.timerSeconds === null
       ? null
       : this.level.timerSeconds * KICKFALL_TIME_MULTIPLIER[this.difficulty];
@@ -235,6 +260,9 @@ export class KickfallScene extends Phaser.Scene {
     this.goBannerSeconds = 0;
     this.phase = 'countdown';
     this.balls = [];
+    this.ballShadows = new Map();
+    this.followAssist = null;
+    this.followTarget = null;
     this.nextBallId = 1;
     this.gates = [];
     this.obstacles = [];
@@ -566,10 +594,13 @@ export class KickfallScene extends Phaser.Scene {
         .setDisplaySize(144, 36)
         .setRotation(tier.angle)
         .setDepth(18);
-      flashOverlay = this.add.image(layout.x, surfaceY + 11.5, this.theme.textureKeys.catchRail)
+      flashOverlay = this.add.image(
+        layout.x,
+        surfaceY + 11.5,
+        bakeTintedTexture(this, this.theme.textureKeys.catchRail, HIT_FLASH_COLOR, { mode: 'fill' }),
+      )
         .setDisplaySize(144, 36)
         .setRotation(tier.angle)
-        .setTintFill(0xff3d58)
         .setBlendMode(Phaser.BlendModes.ADD)
         .setAlpha(0)
         .setDepth(18.7);
@@ -590,10 +621,13 @@ export class KickfallScene extends Phaser.Scene {
         .setDisplaySize(82, 29)
         .setRotation(tier.angle)
         .setDepth(18);
-      flashOverlay = this.add.image(layout.x, surfaceY - 12, this.theme.textureKeys.cleat)
+      flashOverlay = this.add.image(
+        layout.x,
+        surfaceY - 12,
+        bakeTintedTexture(this, this.theme.textureKeys.cleat, HIT_FLASH_COLOR, { mode: 'fill' }),
+      )
         .setDisplaySize(82, 29)
         .setRotation(tier.angle)
-        .setTintFill(0xff3d58)
         .setBlendMode(Phaser.BlendModes.ADD)
         .setAlpha(0)
         .setDepth(18.7);
@@ -655,7 +689,12 @@ export class KickfallScene extends Phaser.Scene {
     this.playerBodyHalfHeight = bodyHeight / 2;
     const y = playerCenterYOnTier(topTier, x, this.playerBodyHalfHeight);
     this.player = this.matter.add.sprite(x, y, this.character.sheetTexture, 0);
-    this.player.setDisplaySize(84 * visualScale, 126 * visualScale);
+    this.playerLayout = getCharacterLayout(this.character);
+    // Kickfall draws the 480 px cell 126 px tall (0.2625x of the match size).
+    this.player.setDisplaySize(
+      layoutDisplayWidth(this.playerLayout) * KICKFALL_DISPLAY_RATIO * visualScale,
+      126 * visualScale,
+    );
     this.player.setRectangle(bodyWidth, bodyHeight, { chamfer: { radius: chamferRadius } });
     this.player.setOrigin(0.5, 0.5);
     this.player.setDisplayOrigin(
@@ -698,8 +737,13 @@ export class KickfallScene extends Phaser.Scene {
     const { bodyWidth, bodyHeight, chamferRadius } = collisionGeometry;
     const bossHalfHeight = bodyHeight / 2;
     const y = playerCenterYOnTier(tier, x, bossHalfHeight);
-    const sprite = this.matter.add.sprite(x, y, this.rivalCharacter.sheetTexture, CHARACTER_FRAMES.idle);
-    sprite.setDisplaySize(84 * visualScale, 126 * visualScale);
+    const bossLayout = getCharacterLayout(this.rivalCharacter);
+    this.bossLayout = bossLayout;
+    const sprite = this.matter.add.sprite(x, y, this.rivalCharacter.sheetTexture, bossLayout.idle[0]);
+    sprite.setDisplaySize(
+      layoutDisplayWidth(bossLayout) * KICKFALL_DISPLAY_RATIO * visualScale,
+      126 * visualScale,
+    );
     sprite.setRectangle(bodyWidth, bodyHeight, { chamfer: { radius: chamferRadius } });
     sprite.setOrigin(0.5, 0.5);
     sprite.setDisplayOrigin(
@@ -713,7 +757,7 @@ export class KickfallScene extends Phaser.Scene {
     sprite.body.label = 'kickfall-boss';
     sprite.setFlipX(-tier.flow !== this.rivalCharacter.nativeFacing);
     sprite.setDepth(25);
-    const visual = this.add.sprite(x, y, this.rivalCharacter.sheetTexture, CHARACTER_FRAMES.idle)
+    const visual = this.add.sprite(x, y, this.rivalCharacter.sheetTexture, bossLayout.idle[0])
       .setOrigin(0.5, 0.5)
       .setDisplaySize(sprite.displayWidth, sprite.displayHeight)
       .setDepth(25);
@@ -773,34 +817,31 @@ export class KickfallScene extends Phaser.Scene {
       stroke: this.themeId === 'cosmic' ? '#25143f' : '#40204f',
       strokeThickness: 7,
     }).setOrigin(0.5).setDepth(62);
-    this.progressText = this.add.text(1055, 28, '', {
-      fontFamily: 'Arial Rounded MT Bold, sans-serif',
-      fontSize: '19px',
-      fontStyle: 'bold',
-      color: '#dffaff',
-      align: 'right',
-    }).setOrigin(1, 0.5).setDepth(62);
-    this.gatesText = this.add.text(1080, 53, '', {
-      fontFamily: 'Arial Rounded MT Bold, sans-serif',
-      fontSize: '13px',
-      fontStyle: 'bold',
-      color: '#ffc86e',
-      align: 'right',
-    }).setOrigin(1, 0.5).setDepth(62);
-    this.levelText = this.add.text(182, 26, '', {
-      fontFamily: 'Arial Rounded MT Bold, sans-serif',
-      fontSize: '17px',
-      fontStyle: 'bold',
-      color: this.themeId === 'cosmic' ? '#ffc76f' : '#ffdb72',
-    }).setOrigin(0, 0.5).setDepth(62);
-    this.timerText = this.add.text(182, 52, '', {
+    // Readable status chips (audit C6): solid dark backing, bigger stroked type.
+    const chips = this.add.graphics().setDepth(61);
+    chips.fillStyle(0x050a1c, 0.82);
+    chips.fillRoundedRect(172, 8, 196, 60, 14);
+    chips.fillRoundedRect(900, 8, 196, 60, 14);
+    chips.lineStyle(2, this.themeId === 'cosmic' ? 0x6fe8ff : 0xffdb72, 0.45);
+    chips.strokeRoundedRect(172, 8, 196, 60, 14);
+    chips.strokeRoundedRect(900, 8, 196, 60, 14);
+    const hudText = (size, color, extra = {}) => ({
       fontFamily: 'Arial Black, Arial Rounded MT Bold, sans-serif',
-      fontSize: '19px',
+      fontSize: `${size}px`,
       fontStyle: 'bold',
-      color: '#ffffff',
-      stroke: '#351227',
-      strokeThickness: 4,
-    }).setOrigin(0, 0.5).setDepth(62);
+      color,
+      stroke: '#050a1c',
+      strokeThickness: Math.max(3, Math.round(size * 0.18)),
+      ...extra,
+    });
+    this.progressText = this.add.text(1084, 27, '', hudText(22, '#dffaff', { align: 'right' }))
+      .setOrigin(1, 0.5).setDepth(62);
+    this.gatesText = this.add.text(1084, 53, '', hudText(16, '#ffc86e', { align: 'right' }))
+      .setOrigin(1, 0.5).setDepth(62);
+    this.levelText = this.add.text(186, 25, '', hudText(18, this.themeId === 'cosmic' ? '#ffc76f' : '#ffdb72'))
+      .setOrigin(0, 0.5).setDepth(62);
+    this.timerText = this.add.text(186, 52, '', hudText(24, '#ffffff'))
+      .setOrigin(0, 0.5).setDepth(62);
     this.bossText = this.add.text(830, 53, '', {
       fontFamily: 'Arial Rounded MT Bold, sans-serif',
       fontSize: '13px',
@@ -849,7 +890,10 @@ export class KickfallScene extends Phaser.Scene {
       axis: 'both',
       accent: 0x50d8ef,
       onChange: ({ left, right, up, down }) => {
-        Object.assign(this.touch, { left, right, up, down });
+        // Only a straight up/down sector changes lane: running diagonally
+        // (e.g. down-right) must never drop the player a tier by accident.
+        const straight = !left && !right;
+        Object.assign(this.touch, { left, right, up: up && straight, down: down && straight });
       },
     });
     // These controls live in world space while the wide camera scrolls left by
@@ -1067,6 +1111,15 @@ export class KickfallScene extends Phaser.Scene {
       fontStyle: 'bold',
       color: '#ffcf70',
     }).setOrigin(0.5).setDepth(113);
+    // Star badge on the panel's top edge, so the rest of the layout is unchanged.
+    this.resultStars = this.add.text(layout.panel.x, layout.panel.y - layout.panel.height / 2, '', {
+      fontFamily: 'Arial Rounded MT Bold, sans-serif',
+      fontSize: '44px',
+      fontStyle: 'bold',
+      color: '#ffd166',
+      stroke: '#061226',
+      strokeThickness: 8,
+    }).setOrigin(0.5).setDepth(113);
     this.resultObjects = [
       shade,
       panelShadow,
@@ -1076,6 +1129,7 @@ export class KickfallScene extends Phaser.Scene {
       this.resultCopy,
       progressPlate,
       this.resultProgress,
+      this.resultStars,
     ];
     this.resultObjects.forEach((item) => item.setVisible(false));
     const buttonLayout = Object.fromEntries(layout.buttons.map((button) => [button.id, button]));
@@ -1244,6 +1298,92 @@ export class KickfallScene extends Phaser.Scene {
       this.accumulator -= FIXED_STEP;
     }
     this.updateHud();
+    this.updateBallShadows();
+    this.updateFollowAssist();
+  }
+
+  /** Lane surface directly below a point (the nearest deck under it), or null. */
+  surfaceBelow(x, y) {
+    let best = null;
+    this.tiers?.forEach((tier) => {
+      if (x < tier.left - 4 || x > tier.left + tier.width + 4) return;
+      const surface = tierSurfaceY(tier, x);
+      if (surface < y - BALL_RADIUS - 2) return;
+      if (best === null || surface < best) best = surface;
+    });
+    return best;
+  }
+
+  /**
+   * One soft shadow per ball on the deck below it: it shows where a falling
+   * ball will land between lanes. Visual only (shared BallShadow effect).
+   */
+  updateBallShadows() {
+    if (!this.ballShadows) return;
+    const live = new Set(this.balls);
+    this.ballShadows.forEach((shadow, ball) => {
+      if (live.has(ball)) return;
+      shadow.destroy();
+      this.ballShadows.delete(ball);
+    });
+    this.balls.forEach((ball) => {
+      const surface = this.surfaceBelow(ball.body.x, ball.body.y);
+      let shadow = this.ballShadows.get(ball);
+      if (surface === null) {
+        shadow?.image.setVisible(false);
+        return;
+      }
+      if (!shadow) {
+        // A soft cyan landing glow: a dark shadow vanishes on the dark decks.
+        shadow = new BallShadow(this, { depth: 11, inset: 0, rgb: '111, 232, 255' });
+        this.ballShadows.set(ball, shadow);
+      }
+      shadow.update({ x: ball.body.x, y: ball.body.y, radius: BALL_RADIUS, groundY: surface });
+    });
+  }
+
+  /**
+   * Easy-only "follow the ball" assist (audit H3): a gold ring on the ball to
+   * chase and a chevron beside the player pointing to it (left/right on the same
+   * lane, up/down when it is on another lane). Visual only.
+   */
+  updateFollowAssist() {
+    if (!isKickfallFollowAssistEnabled(this.difficulty) || !this.player || !this.tiers) {
+      this.followTarget = null;
+      return;
+    }
+    if (!this.followAssist) this.followAssist = this.add.graphics().setDepth(23);
+    const graphics = this.followAssist.clear();
+    const playerTierIndex = this.tiers.findIndex((tier) => tier.id === this.currentTierId);
+    this.followTarget = this.phase === 'playing' && playerTierIndex >= 0
+      ? chooseKickfallFollowTarget({
+        playerX: this.player.x,
+        playerTierIndex,
+        balls: this.balls.map((ball) => {
+          const tier = this.tierForBall(ball);
+          return { id: ball.id, x: ball.body.x, tierIndex: tier ? this.tiers.indexOf(tier) : -1 };
+        }),
+      })
+      : null;
+    if (!this.followTarget) return;
+    const ball = this.balls.find((item) => item.id === this.followTarget.id);
+    const pulse = 0.5 + 0.5 * Math.sin(this.simulationSeconds * 7);
+    graphics.lineStyle(4, 0xffdc72, 0.55 + pulse * 0.4);
+    graphics.strokeCircle(ball.body.x, ball.body.y, BALL_RADIUS + 7 + pulse * 4);
+    const { direction, laneDelta } = this.followTarget;
+    if (direction === 0 && laneDelta === 0) return;
+    // Beside the player, not above: the top lane sits right under the HUD.
+    const side = direction || this.facing || 1;
+    const x = this.player.x + side * (50 + pulse * 5);
+    const y = this.player.y - 6;
+    graphics.fillStyle(0xffdc72, 0.95);
+    graphics.lineStyle(3, 0x3a1f00, 0.9);
+    const points = direction !== 0
+      ? [[x + direction * 22, y], [x - direction * 13, y - 18], [x - direction * 13, y + 18]]
+      : [[x, y + Math.sign(laneDelta) * 20], [x - 18, y - Math.sign(laneDelta) * 12], [x + 18, y - Math.sign(laneDelta) * 12]];
+    const flat = points.flat();
+    graphics.fillTriangle(...flat);
+    graphics.strokeTriangle(...flat);
   }
 
   stepGame(dt) {
@@ -1256,6 +1396,13 @@ export class KickfallScene extends Phaser.Scene {
       || this.phase === 'victory'
       || this.phase === 'defeat'
     ) return;
+    // Full-cascade slow motion: game time and Matter run at a fraction for a moment.
+    if (this.slowMoSeconds > 0) {
+      this.slowMoSeconds = Math.max(0, this.slowMoSeconds - dt);
+      const scale = this.slowMoSeconds > 0 ? KICKFALL_SLOW_MO_SCALE : 1;
+      this.matter.world.engine.timing.timeScale = scale;
+      dt *= scale;
+    }
     this.simulationSeconds += dt;
     if (
       this.forceCombo
@@ -1317,13 +1464,18 @@ export class KickfallScene extends Phaser.Scene {
     const { JustDown } = Phaser.Input.Keyboard;
     const left = this.keys.leftA.isDown || this.keys.leftArrow.isDown || this.touch.left;
     const right = this.keys.rightD.isDown || this.keys.rightArrow.isDown || this.touch.right;
-    const upHeld = this.keys.tierUpW.isDown || this.keys.tierUpArrow.isDown || this.touch.up;
-    const downHeld = this.keys.tierDownS.isDown || this.keys.tierDownArrow.isDown || this.touch.down;
+    // Lane changes trigger on the press edge, so a held direction moves one tier.
+    const upPressed = JustDown(this.keys.tierUpW) || JustDown(this.keys.tierUpArrow)
+      || (this.touch.up && !this.previousTouchUp);
+    const downPressed = JustDown(this.keys.tierDownS) || JustDown(this.keys.tierDownArrow)
+      || (this.touch.down && !this.previousTouchDown);
+    this.previousTouchUp = this.touch.up;
+    this.previousTouchDown = this.touch.down;
     const jumpPressed = JustDown(this.keys.jumpSpace) || this.consumeTouchPulse('jump');
     const kick = JustDown(this.keys.kickX)
       || JustDown(this.keys.kickK)
       || this.consumeTouchPulse('kick');
-    const verticalIntent = resolveKickfallVerticalIntent({ jumpPressed, upHeld, downHeld });
+    const verticalIntent = resolveKickfallVerticalIntent({ jumpPressed, upPressed, downPressed });
     return {
       move: Number(right) - Number(left),
       jumpPressed,
@@ -1339,6 +1491,7 @@ export class KickfallScene extends Phaser.Scene {
   }
 
   stepPlayer(dt) {
+    this.animationClock = (this.animationClock ?? 0) + dt;
     const input = this.sampleInput();
     if (this.tierTransfer) {
       this.stepTierTransfer(dt);
@@ -1392,7 +1545,12 @@ export class KickfallScene extends Phaser.Scene {
         velocityY: this.player.body.velocity.y,
       }));
     }
-    if (input.kick && this.kickCooldown <= 0) this.startKick();
+    if (input.kick && this.kickCooldown <= 0) {
+      const hitBall = this.startKick();
+      // Star rating: a kick that touches no ball is a wasted kick.
+      this.progress.kicks += 1;
+      if (!hitBall) this.progress.wastedKicks += 1;
+    }
 
     if (this.player.x < 58) {
       this.player.setX(58);
@@ -1408,7 +1566,13 @@ export class KickfallScene extends Phaser.Scene {
     if (Math.abs(this.player.body.velocity.x) > 0.55 && grounded) {
       // Guard against tier-transfer teleports registering as a huge stride.
       const travelled = animationDistance > KICKFALL_RUN_FRAME_DISTANCE * 2 ? 0 : animationDistance;
-      this.runCycle = stepKickfallRunCycle({ cycle: this.runCycle, distance: travelled });
+      this.runCycle = this.playerLayout?.runMinDrawingsPerSecond > 0
+        // Same cadence floor/cap as the match, on Kickfall's shorter stride.
+        ? this.runCycle + runCycleAdvance(this.playerLayout, {
+          travelled: travelled * (RUN_FRAME_DISTANCE / KICKFALL_RUN_FRAME_DISTANCE),
+          dt,
+        })
+        : stepKickfallRunCycle({ cycle: this.runCycle, distance: travelled });
     } else if (!grounded) {
       this.runCycle = 0;
     }
@@ -1940,7 +2104,7 @@ export class KickfallScene extends Phaser.Scene {
     ball.body.setVelocity(0, 0);
     ball.body.setAngularVelocity(0);
     if (!ball.body.body.isStatic) ball.body.setStatic(true);
-    ball.body.setTint(0xc9fbff);
+    applyBakedTint(ball.body, 0xc9fbff);
   }
 
   holdPocketBall(ball, obstacle) {
@@ -1966,7 +2130,7 @@ export class KickfallScene extends Phaser.Scene {
     ball.body.setAngularVelocity(0);
     if (!ball.body.body.isStatic) ball.body.setStatic(true);
     ball.body.setScale(baseScaleX, baseScaleY);
-    ball.body.clearTint();
+    applyBakedTint(ball.body, null);
   }
 
   stepPocketCapture(ball, obstacle, dt) {
@@ -1997,7 +2161,7 @@ export class KickfallScene extends Phaser.Scene {
     capture.beam?.destroy();
     if (ball.body?.active) {
       ball.body.setScale(capture.baseScaleX, capture.baseScaleY);
-      ball.body.clearTint();
+      applyBakedTint(ball.body, null);
     }
     ball.magnetCapture = null;
   }
@@ -2132,7 +2296,7 @@ export class KickfallScene extends Phaser.Scene {
         if (gate.health <= 0) {
           this.breakGate(gate);
         } else {
-          gate.image.setTint(0xffc7a0).setAlpha(0.86);
+          applyBakedTint(gate.image, 0xffc7a0).setAlpha(0.86);
           this.spawnImpact(ball.body.x, ball.body.y, this.theme.palette.gateEnergy, 5);
           this.cameras.main.shake(90, 0.003);
         }
@@ -2213,10 +2377,11 @@ export class KickfallScene extends Phaser.Scene {
       }
     }
 
+    const bossLayout = this.bossLayout ?? getCharacterLayout(this.rivalCharacter);
     const kickVisual = (boss.kickVisualTimer ?? 0) > 0
-      ? kickVisualAt({ remaining: boss.kickVisualTimer, duration: KICK_VISUAL_SECONDS })
+      ? layoutKickVisualAt(bossLayout, { remaining: boss.kickVisualTimer, duration: KICK_VISUAL_SECONDS })
       : null;
-    const frame = kickVisual?.frame ?? CHARACTER_FRAMES.idle;
+    const frame = kickVisual?.frame ?? idleVisualAt(bossLayout, this.animationClock ?? 0).frame;
     if (frame < boss.sprite.texture.frameTotal) boss.sprite.setFrame(frame);
     this.syncBossVisual(kickVisual ? `kick-${kickVisual.stage}` : 'idle', kickVisual?.stage ?? 'idle');
   }
@@ -2266,6 +2431,27 @@ export class KickfallScene extends Phaser.Scene {
     this.cameras.main.shake(280, 0.013);
     this.announcementText.setText('');
     this.goBannerSeconds = 0;
+    // Chained gate breaks build a combo: a louder, bigger moment each step.
+    const combo = stepKickfallCombo({
+      combo: this.progress.combo,
+      lastBreakAt: this.progress.lastGateBreakAt,
+      now: this.simulationSeconds,
+    });
+    this.progress.combo = combo.combo;
+    this.progress.lastGateBreakAt = combo.lastBreakAt;
+    this.progress.bestCombo = Math.max(this.progress.bestCombo, combo.combo);
+    if (combo.combo >= 2) {
+      this.announcementText
+        .setText(t(this.language, 'kickfall.combo', { count: combo.multiplier }))
+        .setColor('#ffd166');
+      this.goBannerSeconds = 0.9;
+      for (let burst = 1; burst < combo.multiplier; burst += 1) {
+        this.spawnImpact(x, y - gate.height * 0.3 * burst, 0xffd166, 14 * burst);
+      }
+      this.cameras.main.shake(360, 0.016 + 0.004 * combo.multiplier);
+      arcadeAudio.powerUp();
+    }
+    if (this.gates.every((item) => !item.active)) this.slowMoSeconds = KICKFALL_SLOW_MO_SECONDS;
     return true;
   }
 
@@ -2318,24 +2504,29 @@ export class KickfallScene extends Phaser.Scene {
     this.prevGrounded = grounded;
     this.prevVelocityY = velocityY;
 
-    let frame = CHARACTER_FRAMES.idle;
+    const layout = this.playerLayout;
+    let frame = this.playerHasEnhancedSheet
+      ? idleVisualAt(layout, this.animationClock ?? 0).frame
+      : CHARACTER_FRAMES.idle;
     let pose = 'idle';
     let stage = 'idle';
     if (this.kickVisualTimer > 0) {
       // The visual timeline outlives the gameplay kick so the follow-through
       // can play out; the strike itself is applied immediately in startKick.
-      const kickVisual = kickVisualAt({ remaining: this.kickVisualTimer, duration: KICK_VISUAL_SECONDS });
+      const kickVisual = this.playerHasEnhancedSheet
+        ? layoutKickVisualAt(layout, { remaining: this.kickVisualTimer, duration: KICK_VISUAL_SECONDS })
+        : kickVisualAt({ remaining: this.kickVisualTimer, duration: KICK_VISUAL_SECONDS });
       frame = this.playerHasEnhancedSheet ? kickVisual.frame : CHARACTER_FRAMES.legacyKick;
       pose = `kick-${kickVisual.stage}`;
       stage = kickVisual.stage;
     } else if (this.tierTransfer) {
-      frame = CHARACTER_FRAMES.jump;
+      frame = layout.jump;
       pose = this.tierTransfer.direction < 0 ? 'tier-up' : 'tier-down';
     } else if (!grounded) {
-      frame = CHARACTER_FRAMES.jump;
+      frame = layout.jump;
       pose = 'jump';
     } else if (Math.abs(this.player.body.velocity.x) > 0.55) {
-      const runVisual = runVisualAt(this.runCycle);
+      const runVisual = layoutRunVisualAt(layout, this.runCycle);
       frame = this.playerHasEnhancedSheet ? runVisual.frame : CHARACTER_FRAMES.legacyRun;
       pose = runVisual.pose;
     }
@@ -2653,6 +2844,27 @@ export class KickfallScene extends Phaser.Scene {
       quota: this.level.ballQuota,
       gates: this.progress.gatesBroken,
     }));
+    this.matter.world.engine.timing.timeScale = 1;
+    this.slowMoSeconds = 0;
+    // The result panel replaces any combo banner still on screen.
+    this.announcementText.setText('');
+    this.goBannerSeconds = 0;
+    this.lastStars = resolveKickfallStars({
+      victory,
+      durationSeconds: this.levelDurationSeconds,
+      timeRemaining: this.levelTimeRemaining,
+      elapsedSeconds: this.simulationSeconds,
+      scheduleSeconds: this.level.ballQuota * this.level.spawnIntervalSeconds,
+      kicks: this.progress.kicks,
+      wastedKicks: this.progress.wastedKicks,
+      bestCombo: this.progress.bestCombo,
+    });
+    const previousBest = playerProfileStore.get().kickfall.stars[String(this.levelNumber)] ?? 0;
+    if (victory) playerProfileStore.recordKickfallStars(this.levelNumber, this.lastStars);
+    this.lastStarsNewBest = victory && this.lastStars > previousBest;
+    this.resultStars
+      .setText(victory ? formatKickfallStars(this.lastStars) : '')
+      .setColor('#ffd166');
     this.retryButton.setLabel(t(this.language, 'kickfall.retry'));
     this.continueButton.setLabel(t(this.language, 'kickfall.continue'));
     this.resultMenuButton.setLabel(t(this.language, 'kickfall.mainMenu'));
@@ -2735,51 +2947,54 @@ export class KickfallScene extends Phaser.Scene {
   }
 
   installDebugHelpers() {
-    window.__KICKFALL_DEBUG__ = {
-      startPlaying: () => {
-        this.phase = 'playing';
-        this.countdown = 0;
-        this.spawnTimer = this.level.spawnIntervalSeconds;
-        this.announcementText.setText('');
-        this.matter.world.resume();
-      },
-      clearBalls: () => {
-        this.clearBalls();
-      },
-      prepareFlowBall: (tierId = 'top') => this.prepareFlowBall(tierId),
-      prepareLandingGuideDrop: (tierId = 'top') => this.prepareLandingGuideDrop(tierId),
-      prepareLandingGuidePlayerDrop: (tierId = 'upper') => this.prepareLandingGuidePlayerDrop(tierId),
-      prepareReceiverPileEscape: (tierId = 'upper') => this.prepareReceiverPileEscape(tierId),
-      prepareReceiverGravityPile: (tierId = 'upper', count = 7) => (
-        this.prepareReceiverGravityPile(tierId, count)
-      ),
-      prepareBufferedJump: (tierId = 'upper') => this.prepareBufferedJump(tierId),
-      prepareObstacleKick: (obstacleId) => this.prepareObstacleKick(obstacleId),
-      prepareObstacleQueue: (obstacleId, count = 4) => (
-        this.prepareObstacleQueue(obstacleId, count)
-      ),
-      prepareGateKick: (gateId = 'gate-a') => this.prepareGateKick(gateId),
-      prepareGateQueue: (gateId = 'gate-a', count = 6) => this.prepareGateQueue(gateId, count),
-      prepareBossHit: () => this.prepareBossHit(),
-      prepareDrain: () => this.prepareDrain(),
-      forceBossDefeat: () => this.forceBossDefeat(),
-      forceVictory: () => {
-        this.gates.filter((gate) => gate.active).forEach((gate) => this.breakGate(gate));
-        this.forceBossDefeat();
-        this.clearBalls();
-        this.progress.spawned = this.level.ballQuota;
-        this.progress.drained = this.level.ballQuota;
-        this.finishRun('victory');
-      },
-      forceTimeout: () => {
-        if (this.level.timerSeconds === null) return false;
-        this.phase = 'playing';
-        this.levelTimeRemaining = FIXED_STEP;
-        this.matter.world.resume();
-        return true;
-      },
-      state: () => JSON.parse(this.serializeState()),
-    };
+    // Test and debug API: development builds only (audit I6).
+    if (import.meta.env.DEV) {
+      window.__KICKFALL_DEBUG__ = {
+        startPlaying: () => {
+          this.phase = 'playing';
+          this.countdown = 0;
+          this.spawnTimer = this.level.spawnIntervalSeconds;
+          this.announcementText.setText('');
+          this.matter.world.resume();
+        },
+        clearBalls: () => {
+          this.clearBalls();
+        },
+        prepareFlowBall: (tierId = 'top') => this.prepareFlowBall(tierId),
+        prepareLandingGuideDrop: (tierId = 'top') => this.prepareLandingGuideDrop(tierId),
+        prepareLandingGuidePlayerDrop: (tierId = 'upper') => this.prepareLandingGuidePlayerDrop(tierId),
+        prepareReceiverPileEscape: (tierId = 'upper') => this.prepareReceiverPileEscape(tierId),
+        prepareReceiverGravityPile: (tierId = 'upper', count = 7) => (
+          this.prepareReceiverGravityPile(tierId, count)
+        ),
+        prepareBufferedJump: (tierId = 'upper') => this.prepareBufferedJump(tierId),
+        prepareObstacleKick: (obstacleId) => this.prepareObstacleKick(obstacleId),
+        prepareObstacleQueue: (obstacleId, count = 4) => (
+          this.prepareObstacleQueue(obstacleId, count)
+        ),
+        prepareGateKick: (gateId = 'gate-a') => this.prepareGateKick(gateId),
+        prepareGateQueue: (gateId = 'gate-a', count = 6) => this.prepareGateQueue(gateId, count),
+        prepareBossHit: () => this.prepareBossHit(),
+        prepareDrain: () => this.prepareDrain(),
+        forceBossDefeat: () => this.forceBossDefeat(),
+        forceVictory: () => {
+          this.gates.filter((gate) => gate.active).forEach((gate) => this.breakGate(gate));
+          this.forceBossDefeat();
+          this.clearBalls();
+          this.progress.spawned = this.level.ballQuota;
+          this.progress.drained = this.level.ballQuota;
+          this.finishRun('victory');
+        },
+        forceTimeout: () => {
+          if (this.level.timerSeconds === null) return false;
+          this.phase = 'playing';
+          this.levelTimeRemaining = FIXED_STEP;
+          this.matter.world.resume();
+          return true;
+        },
+        state: () => JSON.parse(this.serializeState()),
+      };
+    }
   }
 
   clearBalls() {
@@ -3209,6 +3424,15 @@ export class KickfallScene extends Phaser.Scene {
           .map(({ tierId, guideId, receiverClear }) => ({ tierId, guideId, receiverClear })),
       },
       campaign: playerProfileStore.get().kickfall,
+      rating: {
+        kicks: this.progress.kicks,
+        wastedKicks: this.progress.wastedKicks,
+        combo: this.progress.combo,
+        bestCombo: this.progress.bestCombo,
+        slowMo: this.slowMoSeconds > 0,
+        stars: this.lastStars,
+        newBest: this.lastStarsNewBest,
+      },
       timer: {
         enabled: this.levelDurationSeconds !== null,
         totalSeconds: this.levelDurationSeconds,
@@ -3223,6 +3447,7 @@ export class KickfallScene extends Phaser.Scene {
         facing: this.facing,
         grounded: this.isPlayerGrounded(),
         tierId: this.currentTierId,
+        followAssist: this.followTarget ? { ...this.followTarget } : null,
         tierTransfer: this.tierTransfer ? {
           targetTierId: this.tierTransfer.targetTierId,
           direction: this.tierTransfer.direction < 0 ? 'up' : 'down',
@@ -3365,13 +3590,13 @@ export class KickfallScene extends Phaser.Scene {
           ? ['retry', 'main menu']
           : this.isPaused
             ? ['resume', 'restart level', 'leave Kickfall']
-            : ['move left', 'move right', 'jump + up one tier', 'jump + down one tier', 'jump', 'kick', 'pause', 'restart'],
+            : ['move left', 'move right', 'tap up one tier', 'tap down one tier', 'jump', 'kick', 'pause', 'restart'],
       pauseActions: this.isPaused ? ['resume', 'restart level', 'leave Kickfall'] : [],
       confirmationActions: this.abandonConfirmation ? ['stay', 'leave Kickfall'] : [],
       controls: this.isTouchLayout ? {
         move: '8-way virtual joystick',
-        tiers: 'hold joystick up/down + tap jump',
-        jump: 'tap jump without up/down',
+        tiers: 'flick joystick straight up/down (one tier per flick)',
+        jump: 'tap jump',
         kick: 'on-screen kick',
         pause: 'on-screen pause',
         joystick: this.movementJoystick?.diagnostics() ?? null,
@@ -3402,6 +3627,8 @@ export class KickfallScene extends Phaser.Scene {
       }
     }
     this.updateHud();
+    this.updateBallShadows();
+    this.updateFollowAssist();
     this.game.renderer.preRender();
     this.sys.render(this.game.renderer);
     this.game.renderer.postRender();

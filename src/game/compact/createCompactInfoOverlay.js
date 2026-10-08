@@ -3,6 +3,7 @@ import { getCharacter } from '../content/characters.js';
 import { t } from '../i18n.js';
 import { getFootballTouchMovementMode, FOOTBALL_TOUCH_MOVEMENT_MODES } from '../developerOptions.js';
 import { arcadeAudio } from '../services/ArcadeAudio.js';
+import { bakeTintedTexture } from '../effects/bakedTint.js';
 import { createControlIcon } from '../ui/createControlIcon.js';
 import { bindButtonInput } from '../ui/buttonInput.js';
 import {
@@ -14,8 +15,9 @@ import {
 
 export const COMPACT_ABOUT_LINKS = Object.freeze({
   youtube: 'https://www.youtube.com/@luisnomad',
-  privacy: 'https://notjustprompts.ai/joel-football/legal/',
-  support: 'https://notjustprompts.ai/joel-football/support/',
+  // Shared NJP games pages (the old /joel-football/legal and /support 301 here).
+  privacy: 'https://notjustprompts.ai/games/legal/',
+  support: 'https://notjustprompts.ai/games/support/?game=joel-football',
 });
 
 const setButtonDepth = (button, depth) => {
@@ -125,9 +127,8 @@ export const createCompactInfoOverlay = (scene, {
       accent: 0xffdc72,
     });
     const fieldArt = fieldTexture && scene.textures.exists(fieldTexture)
-      ? scene.add.image(640, 360, fieldTexture)
+      ? scene.add.image(640, 360, bakeTintedTexture(scene, fieldTexture, 0x7891a8))
         .setDisplaySize(1100, 630)
-        .setTint(0x7891a8)
         .setAlpha(0.72)
         .setDepth(depth + 0.145)
       : null;

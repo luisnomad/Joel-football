@@ -107,13 +107,18 @@ describe('explicit character collision profiles', () => {
   });
 
   it('extends every standard fixed head collider to the tallest authored idle silhouette', () => {
-    const joel = getCharacter('joel');
-    expect(joel.collisionProfile).toBeUndefined();
-    expect(getFootballCollisionGeometry(joel)).toMatchObject({
+    // Standard adults (Juan, still classic) keep the 222 px head top; the
+    // sprite-redo kids (Joel, Luna, Bob) use the 'kid' profile (193).
+    const juan = getCharacter('juan');
+    expect(juan.collisionProfile).toBeUndefined();
+    expect(getFootballCollisionGeometry(juan)).toMatchObject({
       bodyScale: 1,
       headTop: 222,
       headCapY: -112,
     });
+    const joel = getCharacter('joel');
+    expect(joel.collisionProfile).toBe('kid');
+    expect(getFootballCollisionGeometry(joel)).toMatchObject({ bodyScale: 1, headTop: 193 });
     expect(getKickfallCollisionGeometry(joel)).toMatchObject({
       bodyWidth: 44,
       bodyHeight: 82,

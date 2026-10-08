@@ -22,6 +22,14 @@ export const CHARACTER_COLLISION_PROFILES = Object.freeze({
     football: STANDARD_FOOTBALL,
     kickfall: STANDARD_KICKFALL,
   }),
+  // Sprite-redo kids (STYLE_BIBLE_SPRITES.md §3-4): the same footprint as an
+  // adult, but they stand 330 px tall in the cell (193 world px) instead of
+  // 380, so the head cap sits lower to match the drawing.
+  kid: Object.freeze({
+    id: 'kid',
+    football: Object.freeze({ bodyScale: 1, headTop: 193 }),
+    kickfall: STANDARD_KICKFALL,
+  }),
   'dad-large': Object.freeze({
     id: 'dad-large',
     football: Object.freeze({ bodyScale: 1.2, headTop: 284 }),

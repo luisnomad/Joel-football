@@ -1,3 +1,4 @@
+import { totalKickfallStars } from '../pure/profile.js';
 import Phaser from 'phaser';
 import { GAME_WIDTH } from '../constants.js';
 import {
@@ -67,12 +68,18 @@ export class MiniGamesScene extends Phaser.Scene {
       strokeThickness: 10,
       shadow: { color: '#9957ff', blur: 16, fill: true, offsetY: 5 },
     }).setOrigin(0.5);
-    this.add.text(GAME_WIDTH / 2, 111, t(this.language, 'miniGames.subtitle'), {
+    // The subtitle sits over the bright stands: give it a dark pill and a stroke.
+    const subtitle = this.add.text(GAME_WIDTH / 2, 113, t(this.language, 'miniGames.subtitle'), {
       fontFamily: 'Arial Rounded MT Bold, Trebuchet MS, sans-serif',
-      fontSize: '17px',
+      fontSize: '18px',
       fontStyle: 'bold',
-      color: '#d9e8ff',
-    }).setOrigin(0.5);
+      color: '#ffffff',
+      stroke: '#0b1530',
+      strokeThickness: 3,
+    }).setOrigin(0.5).setDepth(2);
+    this.add.rectangle(GAME_WIDTH / 2, 113, subtitle.width + 36, subtitle.height + 12, 0x0b1530, 0.82)
+      .setStrokeStyle(2, 0x9957ff, 0.6)
+      .setDepth(1);
 
     this.kickfallCard = createJourneyCard(this, {
       x: 345,
@@ -85,6 +92,8 @@ export class MiniGamesScene extends Phaser.Scene {
       meta: t(this.language, 'miniGames.kickfallMeta', {
         level: this.profile.kickfall.lastPlayedLevel,
         total: 20,
+        stars: totalKickfallStars(this.profile.kickfall),
+        maxStars: 60,
       }),
       icon: 'kickfall',
       color: 0x6634a7,

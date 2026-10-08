@@ -15,6 +15,17 @@ const PHONE_CHROME = Object.freeze({
   cyan: 0x20d9ff,
 });
 
+/**
+ * Call-to-action fills for primary buttons. The console chrome is dark navy, so
+ * a dark primary button read as a label; a bright fill marks the one tap that
+ * starts play. Violet matches the tablet "play" buttons; Disc Hockey keeps its
+ * coral accent.
+ */
+const PRIMARY_FILLS = Object.freeze({
+  default: Object.freeze({ top: 0x8b70ff, bottom: 0x5536e0, edge: 0xd6ccff }),
+  coral: Object.freeze({ top: 0xff8f62, bottom: 0xd8432a, edge: 0xffd2bd }),
+});
+
 const setObjectsVisible = (objects, visible) => objects.forEach((object) => object.setVisible(visible));
 
 const makeFittedText = (scene, x, y, label, {
@@ -147,28 +158,54 @@ export const createCompactPrimaryButton = (scene, {
     new Phaser.Geom.Point(x + width / 2 - inset + offsetX, y + height / 2 - inset + offsetY),
     new Phaser.Geom.Point(x - width / 2 + inset + offsetX, y + height / 2 - inset + offsetY),
   ];
+  const fill = accent === 0xff714f ? PRIMARY_FILLS.coral : PRIMARY_FILLS.default;
   const shadow = scene.add.graphics().fillStyle(0x020711, 0.64).fillPoints(points(0, 9), true);
+  // Solid fills only: fillGradientStyle is WebGL-only and the game renders with
+  // Canvas, where it drew these buttons dark (why they read as labels).
   const frame = scene.add.graphics()
-    .fillGradientStyle(PHONE_CHROME.metalLight, PHONE_CHROME.metalLight, PHONE_CHROME.metalDark, PHONE_CHROME.metalDark, 1)
+    .fillStyle(PHONE_CHROME.metalBase, 1)
     .fillPoints(points(), true);
+  const topBand = (inset) => {
+    const band = points(0, 0, inset);
+    const midY = y - height * 0.04;
+    const t = (midY - band[0].y) / (band[3].y - band[0].y);
+    return [
+      band[0],
+      band[1],
+      new Phaser.Geom.Point(band[1].x + (band[2].x - band[1].x) * t, midY),
+      new Phaser.Geom.Point(band[0].x + (band[3].x - band[0].x) * t, midY),
+    ];
+  };
   const background = scene.add.graphics()
-    .fillGradientStyle(0x304761, 0x304761, 0x152235, 0x152235, 1)
+    .fillStyle(fill.bottom, 1)
     .fillPoints(points(0, 0, 6), true)
-    .lineStyle(2, accent, 0.28)
+    .fillStyle(fill.top, 1)
+    .fillPoints(topBand(6), true)
+    .lineStyle(2, fill.edge, 0.6)
     .strokePoints(points(0, 0, 7), true);
-  const rail = scene.add.graphics().lineStyle(4, accent, 0.94)
+  const rail = scene.add.graphics().lineStyle(4, fill.edge, 0.95)
     .lineBetween(x - width / 2 + 36, y - height / 2 + 7, x + width / 2 - 36, y - height / 2 + 7);
-  const { text } = makeFittedText(scene, x, y + 2, label, { width: width - 55, height, size: Math.min(32, height * 0.42) });
+  const { text } = makeFittedText(scene, x + 14, y + 2, label, {
+    width: width - 90,
+    height,
+    size: Math.min(34, height * 0.48),
+  });
+  text.setStroke('#24125e', 5);
+  // Play glyph before the label: reads as "go" even before a child can read.
+  const glyphX = text.x - text.width / 2 - 26;
+  const glyph = scene.add.graphics()
+    .fillStyle(0xffffff, 1)
+    .fillTriangle(glyphX - 9, y - 12, glyphX - 9, y + 14, glyphX + 12, y + 1);
   const zone = scene.add.zone(x, y, width, Math.max(82, height)).setInteractive({ useHandCursor: true });
-  const objects = [shadow, frame, background, rail, text, zone];
+  const objects = [shadow, frame, background, rail, glyph, text, zone];
   bindButtonInput(scene, zone, {
     onOver: () => rail.setAlpha(1),
-    onOut: () => { rail.setAlpha(0.94); background.setAlpha(1); text.setY(y + 2); },
-    onPress: () => { background.setAlpha(0.76); text.setY(y + 5); },
-    onRelease: () => { background.setAlpha(1); text.setY(y + 2); },
+    onOut: () => { rail.setAlpha(0.95); background.setAlpha(1); text.setY(y + 2); glyph.setY(0); },
+    onPress: () => { background.setAlpha(0.8); text.setY(y + 5); glyph.setY(3); },
+    onRelease: () => { background.setAlpha(1); text.setY(y + 2); glyph.setY(0); },
     onActivate: () => onPress?.(),
   });
-  return { shadow, frame, background, rail, text, zone, objects };
+  return { shadow, frame, background, rail, glyph, text, zone, objects };
 };
 
 export const createCompactHeader = (scene, {

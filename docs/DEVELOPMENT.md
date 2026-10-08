@@ -21,6 +21,13 @@ Optional reading for architecture, opponent providers, or audio processing. Read
 
 ## Architecture
 
+- `src/vendor/`: the trimmed Phaser engine (Canvas renderer and Matter only;
+  no WebGL, Arcade physics, tilemaps, FX or Phaser sound). `vite.config.js`
+  serves it as `phaser` in both dev and build. Before using another Phaser
+  game object type or namespace, add it to `phaserGameObjects.js` /
+  `phaserCustom.js`. Then run `npm run build` and
+  `node scripts/smoke-production-scenes.mjs`.
+
 - `src/game/scenes/`: Phaser lifecycle and match orchestration.
 - `src/game/entities/`: focused Matter-backed ball, fighter, and reusable goal.
 - `src/game/ai/`: pluggable provider implementations.

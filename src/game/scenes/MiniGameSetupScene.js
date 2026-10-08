@@ -20,6 +20,7 @@ import { createButton } from '../ui/createButton.js';
 import { createControlIcon } from '../ui/createControlIcon.js';
 import { createIconButton } from '../ui/createIconButton.js';
 import { createInfoOverlay } from '../ui/createInfoOverlay.js';
+import { kickfallTotalStars } from '../pure/profile.js';
 
 const textStyle = (size, color = '#ffffff', extra = {}) => ({
   fontFamily: 'Arial Rounded MT Bold, Trebuchet MS, sans-serif',
@@ -48,6 +49,8 @@ export class MiniGameSetupScene extends Phaser.Scene {
     this.language = this.profile.language;
     this.isTouchLayout = isTouchLayout();
     this.infoOverlay = null;
+    this.levelSelect = null;
+    this.levelSelectLoading = false;
     this.stageLayout = getSceneStageLayout(this);
     arcadeAudio.setScene('menu');
     setActiveScene(this);
@@ -87,7 +90,7 @@ export class MiniGameSetupScene extends Phaser.Scene {
     this.onEscapeKey = (event) => {
       if (event.key !== 'Escape' || event.repeat) return;
       event.preventDefault();
-      if (!this.closeHelp()) this.back();
+      if (!this.closeLevelSelect() && !this.closeHelp()) this.back();
     };
     window.addEventListener('keydown', this.onEscapeKey);
   }
@@ -176,7 +179,46 @@ export class MiniGameSetupScene extends Phaser.Scene {
         color: 0x1d3c60,
         onPress: () => this.playKickfall(1),
       });
+      const stars = kickfallTotalStars(this.profile.kickfall);
+      createButton(this, {
+        x: 335,
+        y: 620 + this.stageLayout.bottomOffset,
+        width: 300,
+        height: 58,
+        label: t(this.language, 'kickfall.levels', { stars }),
+        color: 0x16406a,
+        onPress: () => this.openLevelSelect(),
+      });
     }
+  }
+
+  async openLevelSelect() {
+    if (this.levelSelect || this.levelSelectLoading) return;
+    arcadeAudio.click();
+    // Loaded on demand: Kickfall code must stay out of the opening payload.
+    this.levelSelectLoading = true;
+    let createKickfallLevelSelect;
+    try {
+      ({ createKickfallLevelSelect } = await import('../ui/createKickfallLevelSelect.js'));
+    } finally {
+      this.levelSelectLoading = false;
+    }
+    if (!this.sys.isActive()) return;
+    this.levelSelect = createKickfallLevelSelect(this, {
+      progress: this.profile.kickfall,
+      language: this.language,
+      stageWidth: this.stageLayout.width,
+      stageHeight: this.stageLayout.height,
+      onSelect: (level) => this.playKickfall(level),
+      onClose: () => this.closeLevelSelect(),
+    });
+  }
+
+  closeLevelSelect() {
+    if (!this.levelSelect) return false;
+    this.levelSelect.destroy();
+    this.levelSelect = null;
+    return true;
   }
 
   createDiscHockeySetup() {
@@ -535,7 +577,7 @@ export class MiniGameSetupScene extends Phaser.Scene {
   }
 
   handlePlatformBack() {
-    if (this.closeHelp()) return true;
+    if (this.closeLevelSelect() || this.closeHelp()) return true;
     this.back();
     return true;
   }
@@ -585,7 +627,7 @@ export class MiniGameSetupScene extends Phaser.Scene {
         `kickfallSetup.difficulty.${profile.difficultyByGame.kickfall}`,
       ),
       progress: profile.kickfall,
-      modal: this.infoOverlay?.kind ?? null,
+      modal: this.levelSelect ? 'levelSelect' : this.infoOverlay?.kind ?? null,
       coordinateSystem: `origin top-left; +x right; +y down; logical canvas ${this.stageLayout.width}x${this.stageLayout.height}`,
       actions: [
         'set difficulty Easy',
@@ -594,6 +636,7 @@ export class MiniGameSetupScene extends Phaser.Scene {
         'open instructions',
         'continue Kickfall',
         'start Kickfall from level 1',
+        'open level select (stars per level)',
         'back',
       ],
     };

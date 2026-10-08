@@ -1,3 +1,5 @@
+import { getCharacterLayout } from '../pure/characterAnimation.js';
+
 export const DEFAULT_PLAYER_CHARACTER_ID = 'joel';
 export const DEFAULT_OPPONENT_ID = 'bob';
 
@@ -18,11 +20,16 @@ export const CHARACTERS = Object.freeze([
     portraitTexture: 'joel',
     sheetTexture: 'joel-sheet',
     portraitAsset: 'player-joel-portrait.png',
-    sheetAsset: 'player-joel-sheet-v1.webp',
+    sheetAsset: 'player-joel-sheet-v2.webp',
+    // Sprite redo: 24-frame roster-v2 atlas, strict side view facing right.
+    atlasLayout: 'roster-v2',
     nativeFacing: 1,
     accent: 0x6ef4ff,
-    kickReach: 79,
-    stats: Object.freeze({ speed: 1.08, jump: 1.04, kick: 1, dash: 1, power: 1 }),
+    kickReach: 76,
+    chilenaContact: Object.freeze({ x: 237, y: 143 }),
+    collisionProfile: 'kid',
+    // Kids stand shorter (lower head reach); +0.03 jump keeps headers fair.
+    stats: Object.freeze({ speed: 1.08, jump: 1.07, kick: 1, dash: 1, power: 1 }),
   }),
   Object.freeze({
     id: 'bob',
@@ -33,11 +40,17 @@ export const CHARACTERS = Object.freeze([
     portraitTexture: 'bob',
     sheetTexture: 'bob-sheet',
     portraitAsset: 'player-bob-portrait.png',
-    sheetAsset: 'player-bob-sheet-v2.webp',
-    nativeFacing: -1,
+    sheetAsset: 'player-bob-sheet-v3.webp',
+    // Sprite-redo pilot: 24-frame roster-v2 atlas, strict side view facing right.
+    atlasLayout: 'roster-v2',
+    nativeFacing: 1,
     accent: 0xffad72,
-    kickReach: 79,
-    stats: Object.freeze({ speed: 1, jump: 1.08, kick: 1.04, dash: 1, power: 1.05 }),
+    kickReach: 73,
+    // Boot point on the chilena contact drawing (source px in the 336x480 cell).
+    chilenaContact: Object.freeze({ x: 210, y: 141 }),
+    collisionProfile: 'kid',
+    // Kids stand shorter (lower head reach); +0.03 jump keeps headers fair.
+    stats: Object.freeze({ speed: 1, jump: 1.11, kick: 1.04, dash: 1, power: 1.05 }),
   }),
   Object.freeze({
     id: 'lucia',
@@ -48,10 +61,12 @@ export const CHARACTERS = Object.freeze([
     portraitTexture: 'lucia',
     sheetTexture: 'lucia-sheet',
     portraitAsset: 'player-lucia-portrait.png',
-    sheetAsset: 'player-lucia-sheet-v2.webp',
-    nativeFacing: -1,
+    sheetAsset: 'player-lucia-sheet-v3.webp',
+    atlasLayout: 'roster-v2',
+    nativeFacing: 1,
     accent: 0x5ff3e2,
-    kickReach: 80,
+    kickReach: 93,
+    chilenaContact: Object.freeze({ x: 237, y: 95 }),
     stats: Object.freeze({ speed: 1.04, jump: 1.04, kick: 1.02, dash: 1.04, power: 1.04 }),
   }),
   Object.freeze({
@@ -63,11 +78,14 @@ export const CHARACTERS = Object.freeze([
     portraitTexture: 'luna',
     sheetTexture: 'luna-sheet',
     portraitAsset: 'player-luna-portrait.png',
-    sheetAsset: 'player-luna-sheet-v2.webp',
-    nativeFacing: -1,
+    sheetAsset: 'player-luna-sheet-v3.webp',
+    atlasLayout: 'roster-v2',
+    nativeFacing: 1,
     accent: 0xc79aff,
     kickReach: 80,
-    stats: Object.freeze({ speed: 1.05, jump: 1.06, kick: 1, dash: 1.04, power: 1.02 }),
+    chilenaContact: Object.freeze({ x: 227, y: 156 }),
+    collisionProfile: 'kid',
+    stats: Object.freeze({ speed: 1.05, jump: 1.09, kick: 1, dash: 1.04, power: 1.02 }),
   }),
   Object.freeze({
     id: 'juan',
@@ -177,6 +195,12 @@ export const getCharacterFrameScale = (character, frame) => {
 export const getCharacterKickReach = (character) => {
   const reach = Number(character?.kickReach);
   return Number.isFinite(reach) && reach > 0 ? reach : DEFAULT_KICK_REACH;
+};
+
+/** Phaser spritesheet frame size for the character's atlas layout. */
+export const getCharacterSheetFrameConfig = (character) => {
+  const layout = getCharacterLayout(character);
+  return { frameWidth: layout.frameWidth, frameHeight: layout.frameHeight };
 };
 
 export const normalizeCharacterId = (id) => LEGACY_CHARACTER_ID_ALIASES[id] ?? id;

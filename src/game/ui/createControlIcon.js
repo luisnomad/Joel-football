@@ -1,3 +1,5 @@
+import { bakeTintedTexture } from '../effects/bakedTint.js';
+
 const drawBall = (graphics, x, y, radius) => {
   graphics.lineStyle(Math.max(2, radius * 0.12), 0xffffff, 0.95);
   graphics.strokeCircle(x, y, radius);
@@ -25,14 +27,22 @@ export const createControlIcon = (scene, {
   size,
   icon,
   depth = 1,
-  color = 0xffffff,
+  color: requestedColor = 0xffffff,
   alpha = 1,
 }) => {
+  // Accept CSS hex strings too ('#b9cde5'), as some callers pass them.
+  const parsed = typeof requestedColor === 'string'
+    ? Number.parseInt(requestedColor.replace('#', ''), 16)
+    : Number(requestedColor);
+  const color = Number.isFinite(parsed) ? parsed : 0xffffff;
   const authoredTexture = AUTHORED_TEXTURES[icon];
   if (authoredTexture && scene.textures.exists(authoredTexture)) {
-    return scene.add.image(x, y, authoredTexture)
+    // Canvas ignores setTint: colour the authored art by baking a copy.
+    const texture = (color & 0xffffff) === 0xffffff
+      ? authoredTexture
+      : bakeTintedTexture(scene, authoredTexture, color, { mode: 'multiply' });
+    return scene.add.image(x, y, texture)
       .setDisplaySize(size, size)
-      .setTint(color)
       .setAlpha(alpha)
       .setDepth(depth);
   }

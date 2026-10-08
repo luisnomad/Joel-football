@@ -4,6 +4,7 @@ import {
   chooseMathOperation,
   generateAnswerChoices,
   generateMathProblem,
+  MATH_BREAK_MS,
   isCorrectAnswer,
 } from '../src/game/pure/mathChallenge.js';
 import {
@@ -27,6 +28,7 @@ import {
   setProfileOpponent,
   setProfilePlayerCharacter,
   setKickfallLastPlayed,
+  recordKickfallStars,
   unlockKickfallLevel,
 } from '../src/game/pure/profile.js';
 import { normalizeLanguage, t } from '../src/game/i18n.js';
@@ -52,6 +54,7 @@ import {
   CHARACTERS,
   cycleCharacter,
   getCharacter,
+  getCharacterSheetFrameConfig,
   getCharacterVisualScale,
   sanitizeLineup,
 } from '../src/game/content/characters.js';
@@ -224,35 +227,54 @@ describe('persistent power inventory rules', () => {
     expect(migrated.powers).not.toHaveProperty('warp');
   });
 
-  it('persists a global five-minute lock after an incorrect answer', () => {
+  // Owner-approved audit E3 (2026-10-08): no five-minute lock per miss; only a
+  // short break after several misses in a row (see recordMathAnswer tests).
+  it('persists the short math break', () => {
     const now = 1_000_000;
     const locked = lockMathPractice(createDefaultProfile(), now);
-    expect(locked.mathLockUntil).toBe(now + 5 * 60 * 1_000);
-    expect(getMathLockRemaining(locked, now)).toBe(5 * 60 * 1_000);
-    expect(getMathLockRemaining(locked, now + 299_000)).toBe(1_000);
-    expect(getMathLockRemaining(locked, now + 300_000)).toBe(0);
+    expect(locked.mathLockUntil).toBe(now + MATH_BREAK_MS);
+    expect(getMathLockRemaining(locked, now)).toBe(MATH_BREAK_MS);
+    expect(getMathLockRemaining(locked, now + MATH_BREAK_MS - 1_000)).toBe(1_000);
+    expect(getMathLockRemaining(locked, now + MATH_BREAK_MS)).toBe(0);
   });
 });
 
 describe('Kickfall progression persistence', () => {
   it('starts at level one and clamps corrupt saved progress to the twenty-level campaign', () => {
-    expect(createDefaultProfile().kickfall).toEqual({ highestUnlockedLevel: 1, lastPlayedLevel: 1 });
+    expect(createDefaultProfile().kickfall).toEqual({ highestUnlockedLevel: 1, lastPlayedLevel: 1, stars: {} });
     expect(sanitizeKickfallProgress({ highestUnlockedLevel: 999, lastPlayedLevel: -4 })).toEqual({
       highestUnlockedLevel: 20,
       lastPlayedLevel: 1,
+      stars: {},
     });
     expect(sanitizeKickfallProgress({ highestUnlockedLevel: 8, lastPlayedLevel: 14 })).toEqual({
       highestUnlockedLevel: 8,
       lastPlayedLevel: 8,
+      stars: {},
     });
+    // Stars: only authored levels, whole numbers clamped to 0..3, zeros dropped.
+    expect(sanitizeKickfallProgress({
+      highestUnlockedLevel: 3,
+      stars: { 1: 3, 2: 7.6, 3: -1, 21: 2, nope: 1, 0: 2, 4: '2' },
+    }).stars).toEqual({ 1: 3, 2: 3, 4: 2 });
+    expect(sanitizeKickfallProgress({ stars: 'garbage' }).stars).toEqual({});
   });
 
   it('unlocks only forward and remembers a playable last level', () => {
     const levelEight = unlockKickfallLevel(createDefaultProfile(), 8);
-    expect(levelEight.kickfall).toEqual({ highestUnlockedLevel: 8, lastPlayedLevel: 8 });
+    expect(levelEight.kickfall).toEqual({ highestUnlockedLevel: 8, lastPlayedLevel: 8, stars: {} });
     expect(unlockKickfallLevel(levelEight, 4).kickfall).toEqual(levelEight.kickfall);
-    expect(setKickfallLastPlayed(levelEight, 3).kickfall).toEqual({ highestUnlockedLevel: 8, lastPlayedLevel: 3 });
+    expect(setKickfallLastPlayed(levelEight, 3).kickfall).toEqual({ highestUnlockedLevel: 8, lastPlayedLevel: 3, stars: {} });
     expect(setKickfallLastPlayed(levelEight, 12).kickfall.lastPlayedLevel).toBe(8);
+  });
+
+  it('keeps the best stars per level, and unlocking a level keeps earned stars', () => {
+    const twoStars = recordKickfallStars(createDefaultProfile(), 1, 2);
+    expect(twoStars.kickfall.stars).toEqual({ 1: 2 });
+    expect(recordKickfallStars(twoStars, 1, 1).kickfall.stars).toEqual({ 1: 2 });
+    expect(recordKickfallStars(twoStars, 1, 3).kickfall.stars).toEqual({ 1: 3 });
+    expect(recordKickfallStars(twoStars, 1, 9).kickfall.stars).toEqual({ 1: 3 });
+    expect(unlockKickfallLevel(twoStars, 2).kickfall).toEqual({ highestUnlockedLevel: 2, lastPlayedLevel: 2, stars: { 1: 2 } });
   });
 });
 
@@ -265,7 +287,7 @@ describe('opponent selection', () => {
     expect(getCharacter('unknown').id).toBe('joel');
     expect(getCharacter('joel')).toMatchObject({
       portraitAsset: 'player-joel-portrait.png',
-      sheetAsset: 'player-joel-sheet-v1.webp',
+      sheetAsset: 'player-joel-sheet-v2.webp',
       nativeFacing: 1,
     });
     expect(getCharacter('dad')).toMatchObject({
@@ -293,14 +315,49 @@ describe('opponent selection', () => {
       visualScale: 1.2,
       stats: { speed: 1.02, jump: 1.04, kick: 1.02, dash: 1.04, power: 1.04 },
     });
+    expect(getCharacter('bob')).toMatchObject({
+      sheetAsset: 'player-bob-sheet-v3.webp',
+      atlasLayout: 'roster-v2',
+      collisionProfile: 'kid',
+      kickReach: 73,
+      chilenaContact: { x: 210, y: 141 },
+    });
+    expect(getCharacterSheetFrameConfig(getCharacter('bob'))).toEqual({ frameWidth: 336, frameHeight: 480 });
+    expect(getCharacter('joel')).toMatchObject({
+      sheetAsset: 'player-joel-sheet-v2.webp',
+      atlasLayout: 'roster-v2',
+      collisionProfile: 'kid',
+      kickReach: 76,
+      chilenaContact: { x: 237, y: 143 },
+    });
+    expect(getCharacter('luna')).toMatchObject({
+      sheetAsset: 'player-luna-sheet-v3.webp',
+      atlasLayout: 'roster-v2',
+      collisionProfile: 'kid',
+      kickReach: 80,
+      chilenaContact: { x: 227, y: 156 },
+    });
+    // Lucia is an adult: standard collider (382 px idle fits the 222 px head top).
+    expect(getCharacter('lucia')).toMatchObject({
+      sheetAsset: 'player-lucia-sheet-v3.webp',
+      atlasLayout: 'roster-v2',
+      kickReach: 93,
+      chilenaContact: { x: 237, y: 95 },
+    });
+    expect(getCharacter('lucia').collisionProfile).toBeUndefined();
+    expect(getCharacterSheetFrameConfig(getCharacter('joel'))).toEqual({ frameWidth: 336, frameHeight: 480 });
+    // Characters not yet redrawn keep the classic 320 px cells.
+    expect(getCharacterSheetFrameConfig(getCharacter('juan'))).toEqual({ frameWidth: 320, frameHeight: 480 });
     expect(getCharacterVisualScale(getCharacter('joel'))).toBe(1);
     expect(getCharacterVisualScale({ visualScale: 99 })).toBe(1.2);
     expect(getCharacterVisualScale({ visualScale: 0.1 })).toBe(0.85);
     expect(CHARACTERS.map(({ id, nativeFacing }) => [id, nativeFacing])).toEqual([
       ['joel', 1],
-      ['bob', -1],
-      ['lucia', -1],
-      ['luna', -1],
+      // Sprite-redo pilot: Bob is redrawn in strict side view facing right.
+      ['bob', 1],
+      // Sprite redo: Joel, Lucia and Luna are redrawn in strict side view facing right.
+      ['lucia', 1],
+      ['luna', 1],
       ['juan', 1],
       ['dad', 1],
       ['mum', 1],
@@ -588,8 +645,8 @@ describe('local player profile storage', () => {
     expect(restored.powers.hyper).toBe(2);
     expect(restored.equippedPowerId).toBe('hyper');
     expect(restored.audio).toMatchObject({ musicVolume: 0.35, effectsMuted: true });
-    expect(restored.kickfall).toEqual({ highestUnlockedLevel: 8, lastPlayedLevel: 6 });
-    expect(refreshedSession.getMathLockRemaining(50_000)).toBe(5 * 60 * 1_000);
+    expect(restored.kickfall).toEqual({ highestUnlockedLevel: 8, lastPlayedLevel: 6, stars: {} });
+    expect(refreshedSession.getMathLockRemaining(50_000)).toBe(MATH_BREAK_MS);
   });
 
   it('consumes and persists one equipped charge only on explicit use', () => {

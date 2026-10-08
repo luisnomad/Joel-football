@@ -5,7 +5,8 @@ import { chromium } from 'playwright';
 
 const root = new URL('..', import.meta.url).pathname;
 const output = new URL('../output/responsive-layout/', import.meta.url).pathname;
-const port = 4177;
+// E2E_PORT lets parallel runs use separate dev servers.
+const port = Number(process.env.E2E_PORT) || 4177;
 const url = `http://127.0.0.1:${port}`;
 
 const devices = [

@@ -18,6 +18,10 @@ import {
   resolveKickfallBossCounterWave,
   resolveKickfallMagnetPull,
   getKickfallLandingGuideContact,
+  KICKFALL_COMBO_WINDOW_SECONDS,
+  formatKickfallStars,
+  resolveKickfallStars,
+  stepKickfallCombo,
   resolveKickfallVerticalIntent,
   resolveKickfallOutcome,
   stepKickfallFallVelocity,
@@ -455,23 +459,45 @@ describe('Kickfall rules', () => {
     expect(resolveKickfallOutcome({ timeRemaining: 0.01 })).toBe(null);
   });
 
-  it('requires jump plus a vertical direction to request a lane transfer', () => {
-    expect(resolveKickfallVerticalIntent({ downHeld: true })).toEqual({
-      tierDirection: 0,
-      jump: false,
-    });
-    expect(resolveKickfallVerticalIntent({ jumpPressed: true, downHeld: true })).toEqual({
-      tierDirection: 1,
-      jump: false,
-    });
-    expect(resolveKickfallVerticalIntent({ jumpPressed: true, upHeld: true })).toEqual({
-      tierDirection: -1,
-      jump: false,
-    });
-    expect(resolveKickfallVerticalIntent({ jumpPressed: true })).toEqual({
-      tierDirection: 0,
-      jump: true,
-    });
+  it('rates a level with 1-3 stars: clear, fast, then skilled', () => {
+    const base = { victory: true, durationSeconds: 90, kicks: 20, wastedKicks: 10, bestCombo: 1 };
+    expect(resolveKickfallStars({ ...base, victory: false, timeRemaining: 80 })).toBe(0);
+    expect(resolveKickfallStars({ ...base, timeRemaining: 20 })).toBe(1);
+    // Fast = at least 35% of the clock left (31.5 s of 90).
+    expect(resolveKickfallStars({ ...base, timeRemaining: 31.5 })).toBe(2);
+    expect(resolveKickfallStars({ ...base, timeRemaining: 31.4 })).toBe(1);
+    // Skilled = a gate combo of 2+, or at most 30% wasted kicks.
+    expect(resolveKickfallStars({ ...base, timeRemaining: 40, bestCombo: 2 })).toBe(3);
+    expect(resolveKickfallStars({ ...base, timeRemaining: 40, wastedKicks: 6 })).toBe(3);
+    expect(resolveKickfallStars({ ...base, timeRemaining: 40, wastedKicks: 7 })).toBe(2);
+    expect(resolveKickfallStars({ ...base, timeRemaining: 40, kicks: 0, wastedKicks: 0 })).toBe(2);
+    // Untimed levels judge speed against the spawn schedule instead.
+    expect(resolveKickfallStars({ ...base, durationSeconds: null, elapsedSeconds: 30, scheduleSeconds: 24, bestCombo: 2 })).toBe(3);
+    expect(resolveKickfallStars({ ...base, durationSeconds: null, elapsedSeconds: 40, scheduleSeconds: 24 })).toBe(1);
+    expect(formatKickfallStars(2)).toBe('★★☆');
+    expect(formatKickfallStars(9)).toBe('★★★');
+  });
+
+  it('chains gate breaks inside the combo window and caps the multiplier at 3', () => {
+    let state = stepKickfallCombo({ now: 10 });
+    expect(state).toEqual({ combo: 1, multiplier: 1, lastBreakAt: 10 });
+    state = stepKickfallCombo({ ...state, now: 10 + KICKFALL_COMBO_WINDOW_SECONDS });
+    expect(state.combo).toBe(2);
+    state = stepKickfallCombo({ ...state, now: state.lastBreakAt + 1 });
+    state = stepKickfallCombo({ ...state, now: state.lastBreakAt + 1 });
+    expect(state).toMatchObject({ combo: 4, multiplier: 3 });
+    // A slow break restarts the chain.
+    expect(stepKickfallCombo({ ...state, now: state.lastBreakAt + KICKFALL_COMBO_WINDOW_SECONDS + 0.1 }).combo).toBe(1);
+  });
+
+  it('changes lane on a single Up/Down press and keeps Jump a plain jump', () => {
+    expect(resolveKickfallVerticalIntent({ downPressed: true })).toEqual({ tierDirection: 1, jump: false });
+    expect(resolveKickfallVerticalIntent({ upPressed: true })).toEqual({ tierDirection: -1, jump: false });
+    expect(resolveKickfallVerticalIntent({ jumpPressed: true })).toEqual({ tierDirection: 0, jump: true });
+    expect(resolveKickfallVerticalIntent({ jumpPressed: true, downPressed: true })).toEqual({ tierDirection: 1, jump: true });
+    // Pressing both cancels out; nothing pressed does nothing.
+    expect(resolveKickfallVerticalIntent({ upPressed: true, downPressed: true })).toEqual({ tierDirection: 0, jump: false });
+    expect(resolveKickfallVerticalIntent()).toEqual({ tierDirection: 0, jump: false });
   });
 
   it('accelerates a falling player decisively instead of gliding at terminal speed', () => {
@@ -511,6 +537,12 @@ describe('Kickfall rules', () => {
       drained: 0,
       gatesBroken: 0,
       obstacleClears: 0,
+      kicks: 0,
+      wastedKicks: 0,
+      combo: 0,
+      bestCombo: 0,
+      lastGateBreakAt: null,
     });
+    expect(first.drained).toBe(1);
   });
 });

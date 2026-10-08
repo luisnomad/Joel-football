@@ -605,6 +605,9 @@ describe('chilena contract', () => {
     expect(shouldRedirectLobChilena({ ballY: 190, velocityY: -4 })).toBe(false);
     expect(shouldRedirectLobChilena({ ballY: CHILENA_LOB_APEX_Y, velocityY: -2 })).toBe(true);
     expect(shouldRedirectLobChilena({ ballY: 165, velocityY: 0.1 })).toBe(true);
+    // Look-ahead: a fast-rising lob that would cross the apex next tick turns now.
+    expect(shouldRedirectLobChilena({ ballY: 160, velocityY: -17 })).toBe(true);
+    expect(shouldRedirectLobChilena({ ballY: 170, velocityY: -17 })).toBe(false);
   });
 
   it('mirrors one backward turn toward the attacked goal', () => {
@@ -667,6 +670,31 @@ describe('provider boundary', () => {
     expect(intent.move).toBeLessThanOrEqual(1);
     expect(intent.kick || intent.power).toBe(true);
     expect(Object.isFrozen(snapshot.players.right)).toBe(true);
+  });
+
+  it('never kicks toward its own goal from close range, and steps goal-side to clear instead', () => {
+    // The right-side AI has run past the human (AI x < human x), so it faces its
+    // movement. Retreating to the ball near its own goal (x 1154) it would face
+    // that goal: no kick, no lob, no power — it steps goal-side of the ball.
+    const retreating = createWorldSnapshot({
+      score: createScoreState(),
+      ball: { x: 1000, y: 547, vx: 1, vy: 0 },
+      left: { x: 1120, y: 547, grounded: true, meter: 0, dashCooldown: 0 },
+      right: { x: 930, y: 547, grounded: true, meter: 100, dashCooldown: 1 },
+      powerBall: { active: false, owner: null },
+    });
+    const intent = decideHeuristicIntent(retreating, 'right');
+    expect(intent).toMatchObject({ kick: false, lob: false, power: false });
+    expect(intent.move).toBe(1);
+    // Goal-side of the ball, moving back toward it faces the attack: it clears.
+    const goalSide = createWorldSnapshot({
+      score: createScoreState(),
+      ball: { x: 1000, y: 547, vx: 0, vy: 0 },
+      left: { x: 1120, y: 547, grounded: true, meter: 0, dashCooldown: 0 },
+      right: { x: 1075, y: 547, grounded: true, meter: 20, dashCooldown: 1 },
+      powerBall: { active: false, owner: null },
+    });
+    expect(decideHeuristicIntent(goalSide, 'right').kick || decideHeuristicIntent(goalSide, 'right').lob).toBe(true);
   });
 
   it('tries to counter an incoming power ball at close range', () => {
