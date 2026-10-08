@@ -1,0 +1,26 @@
+{
+ "joel_idle": [
+  "joel",
+  "idle",
+  "loop",
+  8,
+  8,
+  ""
+ ],
+ "joel_run": [
+  "joel",
+  "run",
+  "loop",
+  8,
+  12,
+  ""
+ ],
+ "joel_kick": [
+  "joel",
+  "kick",
+  "once",
+  8,
+  14,
+  ""
+ ]
+}

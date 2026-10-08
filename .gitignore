@@ -8,3 +8,14 @@ tmp/
 npm-debug.log*
 __pycache__/
 *.pyc
+
+# Sprite pipeline (tools/sprite-pipeline): large work files live on the NAS (scripts/backup_sprite_sources.sh)
+tools/sprite-pipeline/manifest.json.lock
+source-assets/sprite-pipeline/**/*.mp4
+source-assets/sprite-pipeline/**/*.mov
+source-assets/sprite-pipeline/**/*.webm
+source-assets/sprite-pipeline/**/*.png
+source-assets/sprite-pipeline/**/*.webp
+source-assets/sprite-pipeline/**/*.gif
+source-assets/sprite-pipeline/**/studio/
+

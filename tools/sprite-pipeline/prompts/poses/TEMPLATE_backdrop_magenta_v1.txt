@@ -1,0 +1,1 @@
+Edit <image1>: replace ONLY the flat background with one flat, perfectly uniform magenta colour (#FF00FF) everywhere around the character. Keep the character completely unchanged: exact same pose, design, colours (keep every green of the character green), proportions, size, position and style. No shadow, no floor, no other changes.

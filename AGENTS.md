@@ -36,6 +36,7 @@
 - [Responsive layout](docs/RESPONSIVE_LAYOUT_GUIDE.md): UI, scenes, scaling, art geometry.
 - [Character workflow](docs/characters/WORKFLOW.md) and
   [skill](.agents/skills/create-game-character/SKILL.md): character work.
+- [Sprite pipeline](docs/SPRITE_PIPELINE.md) and [skill](.agents/skills/sprite-pipeline/SKILL.md): video-generated animation frames.
 - [Android](docs/ANDROID.md) and [release checklist](docs/PLAY_STORE_RELEASE_CHECKLIST.md): native/release work.
 - [Web publishing](docs/WEB_PUBLISHING.md): authorized website publication.
 - [Open work](docs/OPEN_WORK.md): pending work; [archive](docs/archive/README.md): historical investigation only.

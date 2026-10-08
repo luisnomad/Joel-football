@@ -1,0 +1,22 @@
+{
+ "queue": [
+  {
+   "id": "joel_idle",
+   "char": "joel",
+   "start": "/home/luisnomad/apps/maestro-eval/app/uploads/<from maestro.py upload>.png",
+   "prompt": "joel_idle_v1"
+  },
+  {
+   "id": "joel_run",
+   "char": "joel",
+   "start": "/home/luisnomad/apps/maestro-eval/app/uploads/<from maestro.py upload>.png",
+   "prompt": "joel_run_v1"
+  },
+  {
+   "id": "joel_kick",
+   "char": "joel",
+   "start": "/home/luisnomad/apps/maestro-eval/app/uploads/<from maestro.py upload>.png",
+   "prompt": "joel_kick_v1"
+  }
+ ]
+}

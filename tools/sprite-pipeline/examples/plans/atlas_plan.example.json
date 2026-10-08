@@ -1,0 +1,55 @@
+{
+ "char": "joel",
+ "scale": 1.0,
+ "frames": [
+  [
+   "idle",
+   0
+  ],
+  [
+   "run",
+   2
+  ],
+  [
+   "jump",
+   0
+  ],
+  [
+   "chilena",
+   0
+  ],
+  [
+   "dash",
+   0
+  ],
+  [
+   "stun",
+   0
+  ],
+  [
+   "run",
+   0
+  ],
+  [
+   "run",
+   2
+  ],
+  [
+   "run",
+   4
+  ],
+  [
+   "kick",
+   2
+  ],
+  [
+   "kick",
+   4
+  ],
+  [
+   "kick",
+   7
+  ]
+ ],
+ "_comment": "Runtime order: idle, legacyRun, jump, chilena, dash, stun, runA, runPassing, runB, kickAnticipation, kickContact, kickRecovery. Pick indices by looking at each sheet's preview GIF."
+}

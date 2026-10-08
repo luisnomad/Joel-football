@@ -1,0 +1,4 @@
+interface:
+  display_name: "Sprite Pipeline"
+  short_description: "Re-author character frames from generated animation"
+  default_prompt: "Use $sprite-pipeline to rebuild the selected Joel Football character's animation frames with the video-to-sprite pipeline, following docs/SPRITE_PIPELINE.md."

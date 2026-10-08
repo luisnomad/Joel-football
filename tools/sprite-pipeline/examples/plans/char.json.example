@@ -1,0 +1,7 @@
+{
+ "height": 380,
+ "colors": 48,
+ "bg": "green",
+ "color_space": "24bit",
+ "_comment": "Copy to source-assets/sprite-pipeline/<char>/char.json. ref_height is written by the first make_action run; check it (specks inflate it). Dad: height 405."
+}

@@ -20,6 +20,7 @@ requirements when using them.
 | Character creation or replacement | [Skill](../.agents/skills/create-game-character/SKILL.md), [workflow](characters/WORKFLOW.md) |
 | Character atlas/runtime integration | [Project contract](characters/PROJECT_CONTRACT.md) |
 | Character art generation | [Image generation](characters/IMAGE_GENERATION.md) |
+| Video-generated animation frames | [Sprite pipeline](SPRITE_PIPELINE.md), [skill](../.agents/skills/sprite-pipeline/SKILL.md) |
 | Character collider changes | [Collision guide](CHARACTER_COLLISION_GUIDE.md) |
 | Performance changes | [Benchmark procedure](PERFORMANCE_BENCHMARK.md) |
 | Android build, signing, device validation | [Android](ANDROID.md) |

@@ -1,0 +1,8 @@
+# Sprite pipeline (tools/sprite-pipeline). Python 3.11+.
+# Verified with: numpy 2.5.3, pillow 12.3.0, opencv-python 5.0.0, scipy 1.18.1
+# (the Kick or Treat venv: /Volumes/SSD_Storage2TB/Users/luisnomad/Projects/kickortreat/.venv).
+numpy>=2.0
+pillow>=11.0        # WEBP lossless output needs Pillow built with libwebp (the wheels are)
+opencv-python>=4.9  # find_loop, green_mask, key_green, keyframes, make_action
+scipy>=1.12         # clean_specks, make_left_sheet
+# External binaries (not pip): ffmpeg (Homebrew), dreamina-canvas (~/.local/bin), ssh access to `atom`.

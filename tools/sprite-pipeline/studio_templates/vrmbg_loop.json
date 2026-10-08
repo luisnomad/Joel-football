@@ -1,0 +1,21 @@
+{
+  "do_matte": true,
+  "do_key": true,
+  "key_color": "#00DD01",
+  "key_tol": 64,
+  "key_also_connected": false,
+  "start": 1,
+  "end": 0,
+  "frame_step": 1,
+  "cell_mode": "subject",
+  "pad": 4,
+  "anchor": "bottom-center",
+  "fps": 24,
+  "play_mode": "loop",
+  "want_sheet": true,
+  "want_sidecar": true,
+  "want_preview": true,
+  "want_gif": true,
+  "gif_scale": 0.5,
+  "do_verify": true
+}

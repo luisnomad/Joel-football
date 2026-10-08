@@ -1,0 +1,130 @@
+{
+ "queue": [
+  {
+   "id": "joel_idle",
+   "char": "joel",
+   "start": "/home/luisnomad/apps/maestro-eval/app/uploads/d9678aa6.png",
+   "prompt": "joel_idle_v1"
+  },
+  {
+   "id": "joel_kick",
+   "char": "joel",
+   "start": "/home/luisnomad/apps/maestro-eval/app/uploads/d9678aa6.png",
+   "prompt": "joel_kick_v1"
+  },
+  {
+   "id": "joel_celebrate",
+   "char": "joel",
+   "start": "/home/luisnomad/apps/maestro-eval/app/uploads/d9678aa6.png",
+   "prompt": "joel_celebrate_v1"
+  },
+  {
+   "id": "luna_idle",
+   "char": "luna",
+   "start": "/home/luisnomad/apps/maestro-eval/app/uploads/24390047.png",
+   "prompt": "luna_idle_v1"
+  },
+  {
+   "id": "luna_kick",
+   "char": "luna",
+   "start": "/home/luisnomad/apps/maestro-eval/app/uploads/24390047.png",
+   "prompt": "luna_kick_v1"
+  },
+  {
+   "id": "luna_celebrate",
+   "char": "luna",
+   "start": "/home/luisnomad/apps/maestro-eval/app/uploads/24390047.png",
+   "prompt": "luna_celebrate_v1"
+  },
+  {
+   "id": "lucia_idle",
+   "char": "lucia",
+   "start": "/home/luisnomad/apps/maestro-eval/app/uploads/3fa46f6f.png",
+   "prompt": "lucia_idle_v1"
+  },
+  {
+   "id": "lucia_kick",
+   "char": "lucia",
+   "start": "/home/luisnomad/apps/maestro-eval/app/uploads/3fa46f6f.png",
+   "prompt": "lucia_kick_v1"
+  },
+  {
+   "id": "lucia_celebrate",
+   "char": "lucia",
+   "start": "/home/luisnomad/apps/maestro-eval/app/uploads/3fa46f6f.png",
+   "prompt": "lucia_celebrate_v1"
+  },
+  {
+   "id": "juan_idle",
+   "char": "juan",
+   "start": "/home/luisnomad/apps/maestro-eval/app/uploads/1d0dc988.png",
+   "prompt": "juan_idle_v1"
+  },
+  {
+   "id": "juan_kick",
+   "char": "juan",
+   "start": "/home/luisnomad/apps/maestro-eval/app/uploads/1d0dc988.png",
+   "prompt": "juan_kick_v1"
+  },
+  {
+   "id": "juan_celebrate",
+   "char": "juan",
+   "start": "/home/luisnomad/apps/maestro-eval/app/uploads/1d0dc988.png",
+   "prompt": "juan_celebrate_v1"
+  },
+  {
+   "id": "juanjo_idle",
+   "char": "juanjo",
+   "start": "/home/luisnomad/apps/maestro-eval/app/uploads/c7811abc.png",
+   "prompt": "juanjo_idle_v1"
+  },
+  {
+   "id": "juanjo_kick",
+   "char": "juanjo",
+   "start": "/home/luisnomad/apps/maestro-eval/app/uploads/c7811abc.png",
+   "prompt": "juanjo_kick_v1"
+  },
+  {
+   "id": "juanjo_celebrate",
+   "char": "juanjo",
+   "start": "/home/luisnomad/apps/maestro-eval/app/uploads/c7811abc.png",
+   "prompt": "juanjo_celebrate_v1"
+  },
+  {
+   "id": "dad_idle",
+   "char": "dad",
+   "start": "/home/luisnomad/apps/maestro-eval/app/uploads/f53c8803.png",
+   "prompt": "dad_idle_v1"
+  },
+  {
+   "id": "dad_kick",
+   "char": "dad",
+   "start": "/home/luisnomad/apps/maestro-eval/app/uploads/f53c8803.png",
+   "prompt": "dad_kick_v1"
+  },
+  {
+   "id": "dad_celebrate",
+   "char": "dad",
+   "start": "/home/luisnomad/apps/maestro-eval/app/uploads/f53c8803.png",
+   "prompt": "dad_celebrate_v1"
+  },
+  {
+   "id": "mum_idle",
+   "char": "mum",
+   "start": "/home/luisnomad/apps/maestro-eval/app/uploads/6a9526e6.png",
+   "prompt": "mum_idle_v1"
+  },
+  {
+   "id": "mum_kick",
+   "char": "mum",
+   "start": "/home/luisnomad/apps/maestro-eval/app/uploads/6a9526e6.png",
+   "prompt": "mum_kick_v1"
+  },
+  {
+   "id": "mum_celebrate",
+   "char": "mum",
+   "start": "/home/luisnomad/apps/maestro-eval/app/uploads/6a9526e6.png",
+   "prompt": "mum_celebrate_v1"
+  }
+ ]
+}

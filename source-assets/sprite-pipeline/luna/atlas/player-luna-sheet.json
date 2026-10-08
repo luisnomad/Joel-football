@@ -1,0 +1,12 @@
+{
+ "layout": "roster-v2",
+ "cellWidth": 336,
+ "cellHeight": 480,
+ "groundY": 418,
+ "kickReach": 80,
+ "chilenaContact": {
+  "x": 227,
+  "y": 156
+ },
+ "idleHeight": 330
+}
