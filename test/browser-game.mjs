@@ -1851,8 +1851,8 @@ try {
   });
   assert.deepEqual(state.modalExternalLinks, {
     youtube: 'https://www.youtube.com/@luisnomad',
-    privacy: 'https://notjustprompts.ai/joel-football/legal/',
-    support: 'https://notjustprompts.ai/joel-football/support/',
+    privacy: 'https://arkdbox.com/legal/',
+    support: 'https://arkdbox.com/support/?game=joel-football',
   });
   await capture(page, `${output}/01-about.png`);
   const youtubePopupPromise = page.waitForEvent('popup');
@@ -1867,12 +1867,12 @@ try {
   const privacyPopupPromise = page.waitForEvent('popup');
   await touchControl(page, 614, 565, 30);
   const privacyPopup = await privacyPopupPromise;
-  assert.match(privacyPopup.url(), /^https:\/\/notjustprompts\.ai\/joel-football\/legal\/?/);
+  assert.match(privacyPopup.url(), /^https:\/\/arkdbox\.com\/legal\/?/);
   await privacyPopup.close();
   const supportPopupPromise = page.waitForEvent('popup');
   await touchControl(page, 824, 565, 30);
   const supportPopup = await supportPopupPromise;
-  assert.match(supportPopup.url(), /^https:\/\/notjustprompts\.ai\/joel-football\/support\/?/);
+  assert.match(supportPopup.url(), /^https:\/\/arkdbox\.com\/support\/?\?game=joel-football/);
   await supportPopup.close();
   await page.evaluate(() => window.__SKYHEAD_PLATFORM_DEBUG__.backForTesting());
   await page.waitForFunction(() => JSON.parse(window.render_game_to_text()).modal === null);

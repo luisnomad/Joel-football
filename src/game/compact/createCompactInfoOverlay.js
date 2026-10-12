@@ -14,8 +14,9 @@ import {
 
 export const COMPACT_ABOUT_LINKS = Object.freeze({
   youtube: 'https://www.youtube.com/@luisnomad',
-  privacy: 'https://notjustprompts.ai/joel-football/legal/',
-  support: 'https://notjustprompts.ai/joel-football/support/',
+  // Shared ARKD BOX pages (arkdbox.com, the home of the game).
+  privacy: 'https://arkdbox.com/legal/',
+  support: 'https://arkdbox.com/support/?game=joel-football',
 });
 
 const setButtonDepth = (button, depth) => {
