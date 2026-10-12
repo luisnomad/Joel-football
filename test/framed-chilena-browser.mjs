@@ -2,7 +2,9 @@
  * Browser checks for the sprite-redo roster-v2 atlas (Bob pilot): the framed
  * chilena meets the ball with the boot of its contact drawing before the shot
  * is applied, unreachable low balls stay ordinary kicks, the authored loops
- * play, and the scorer celebrates. Run: node test/framed-chilena-browser.mjs
+ * play, and the scorer celebrates. The framed chilena is then repeated for
+ * adults with much higher contact boots (Dad, Juanjo and Mum, whose boot is
+ * the highest in the roster). Run: node test/framed-chilena-browser.mjs
  */
 import assert from 'node:assert/strict';
 import { spawn } from 'node:child_process';
@@ -15,9 +17,15 @@ const output = new URL('../output/e2e-roster-v2/', import.meta.url).pathname;
 const port = Number(process.env.E2E_PORT) || 4176;
 const url = `http://127.0.0.1:${port}`;
 
-// Bob's chilena contact boot (source px in the 336x480 cell) and the shared
-// contact tolerance (src/game/pure/chilena.js CHILENA_FORGIVE_RADIUS).
-const BOB_CONTACT_BOOT = { x: 210, y: 141 };
+// Measured chilena contact boots (source px in the 336x480 cell, from each
+// atlas's player-<id>-sheet.json) and the shared contact tolerance
+// (src/game/pure/chilena.js CHILENA_FORGIVE_RADIUS).
+const CONTACT_BOOTS = {
+  bob: { x: 210, y: 141 },
+  dad: { x: 221, y: 103 },
+  juanjo: { x: 202, y: 87 },
+  mum: { x: 220, y: 70 },
+};
 const FORGIVE_RADIUS = 32;
 const ROSTER_V2 = {
   takeoff: 17,
@@ -70,7 +78,7 @@ const waitForServer = async () => {
 };
 
 /** World position of the drawn contact boot and the ball, read from the live sprites. */
-const readContactGeometry = (page) => page.evaluate((boot) => {
+const readContactGeometry = (page, boot) => page.evaluate((boot) => {
   const scene = window.__SKYHEAD_GAME__.scene.getScene('Match');
   const fighter = scene.leftPlayer;
   const visual = fighter.visual;
@@ -90,11 +98,12 @@ const readContactGeometry = (page) => page.evaluate((boot) => {
     modelBoot,
     drawnToModel: Math.hypot(drawnBoot.x - modelBoot.x, drawnBoot.y - modelBoot.y),
     ball,
+    catalogBoot: fighter.chilenaContactPoint,
   };
-}, BOB_CONTACT_BOOT);
+}, boot);
 
 /** Second kick press on an overhead ball, then step until the boot meets it. */
-const runChilena = async (page, { ball, label }) => {
+const runChilena = async (page, { ball, label, boot = CONTACT_BOOTS.bob }) => {
   await page.evaluate((setup) => {
     window.__SKYHEAD_DEBUG__.resumePlay();
     window.__SKYHEAD_DEBUG__.setHumanPosition(600);
@@ -113,7 +122,7 @@ const runChilena = async (page, { ball, label }) => {
     // The shot waits for the boot: nothing has been struck on the press.
     assert.notEqual(state.powerBall.superpowerId, 'chilena', `${label}: the ball must not be struck on the button press`);
     assert.equal(state.players.left.visualFrame, ROSTER_V2.takeoff, `${label}: takeoff drawing before contact`);
-    assert.ok(state.players.left.vy < 0, `${label}: the chilena should lift Bob off the ground`);
+    assert.ok(state.players.left.vy < 0, `${label}: the chilena should lift the player off the ground`);
   }
   let geometry = null;
   for (let step = 0; step < 40 && !state.players.left.lastChilenaContact; step += 1) {
@@ -127,7 +136,8 @@ const runChilena = async (page, { ball, label }) => {
   // Same tick as the contact: the drawing on screen is the contact drawing and
   // its boot is on the ball; the strike has been applied now.
   await page.evaluate(() => window.__SKYHEAD_GAME__.scene.getScene('Match').leftPlayer.updatePose());
-  geometry = await readContactGeometry(page);
+  geometry = await readContactGeometry(page, boot);
+  assert.deepEqual(geometry.catalogBoot, boot, `${label}: catalog chilenaContact must match the measured boot`);
   assert.equal(geometry.frame, ROSTER_V2.contact, `${label}: contact drawing at contact`);
   assert.equal(state.powerBall.superpowerId, 'chilena', `${label}: the shot is applied at contact`);
   assert.equal(state.lastChilenaStrike?.side, 'left');
@@ -139,6 +149,36 @@ const runChilena = async (page, { ball, label }) => {
     `${label}: the chilena must drive down toward the rival goal; v=(${state.ball.vx}, ${state.ball.vy})`,
   );
   return { contact, geometry };
+};
+
+/** A fresh 1280x720 page with a saved `<playerId>` vs Joel lineup, in a running match. */
+const openMatchAs = async (browser, playerId) => {
+  const context = await browser.newContext({ viewport: { width: 1280, height: 720 }, deviceScaleFactor: 1 });
+  await context.addInitScript((id) => {
+    window.localStorage.setItem('skyhead-showdown.player-profile.v2', JSON.stringify({
+      playerCharacterId: id,
+      opponentId: 'joel',
+    }));
+  }, playerId);
+  const page = await context.newPage();
+  const errors = [];
+  page.on('pageerror', (error) => errors.push(error.stack ?? error.message));
+  page.on('console', (message) => {
+    if (message.type() === 'error') errors.push(`console: ${message.text()}`);
+  });
+  await page.goto(url, { waitUntil: 'domcontentloaded' });
+  await page.waitForFunction(() => typeof window.render_game_to_text === 'function' && typeof window.advanceTime === 'function');
+  for (let attempt = 0; attempt < 20 && (await readState(page)).mode === 'splash'; attempt += 1) {
+    await advance(page, 500);
+  }
+  await page.waitForFunction(() => JSON.parse(window.render_game_to_text()).mode === 'intro');
+  await touchControl(page, 640, 252, 35);
+  await page.waitForFunction(() => JSON.parse(window.render_game_to_text()).mode === 'football-setup');
+  assert.equal((await readState(page)).playerCharacter.id, playerId);
+  await touchControl(page, 785, 660, 40);
+  await page.waitForFunction(() => JSON.parse(window.render_game_to_text()).mode === 'countdown');
+  await advance(page, 3100);
+  return { context, page, errors };
 };
 
 await mkdir(output, { recursive: true });
@@ -297,6 +337,48 @@ try {
   await capture(page, `${output}/03-bob-celebrate.png`);
 
   assert.deepEqual(errors, [], `browser emitted errors:\n${errors.join('\n')}`);
+  await context.close();
+
+  // Adults: standard size (Dad and Mum are no longer scaled up) and much higher
+  // contact boots than Bob's. Every still ball at or above the standing boot
+  // connects (test/sprite-redo.test.js); check the live game agrees for a still
+  // and a moving overhead ball, and that the drawn boot is the gameplay boot.
+  const adultResults = [];
+  for (const id of ['dad', 'juanjo', 'mum']) {
+    const adult = await openMatchAs(browser, id);
+    let adultState = await readState(adult.page);
+    assert.equal(adultState.players.left.atlasLayout, 'roster-v2', `${id} atlas`);
+    assert.equal(adultState.players.left.collisionProfile, 'standard', `${id} collision profile`);
+    assert.equal(adultState.players.left.visualScale, 1, `${id} visual scale`);
+    assert.equal(adultState.players.left.displayHeight, 280, `${id} display height`);
+    assert.ok(Math.abs(adultState.players.left.visualGroundAnchorY - 636) < 0.2, `${id} stands on the pitch`);
+    const adultStill = await runChilena(adult.page, {
+      ball: { x: 610, y: 380, vx: 0, vy: 0 },
+      label: `${id} still high ball`,
+      boot: CONTACT_BOOTS[id],
+    });
+    await capture(adult.page, `${output}/10-${id}-chilena-contact.png`);
+    assert.ok(adultStill.geometry.drawnToModel < 2, `${id}: drawn vs model boot ${JSON.stringify(adultStill.geometry)}`);
+    for (let attempt = 0; attempt < 40; attempt += 1) {
+      await advance(adult.page, 50);
+      adultState = await readState(adult.page);
+      if (!adultState.players.left.chilenaActive && adultState.players.left.grounded) break;
+    }
+    assert.equal(adultState.players.left.chilenaActive, false, `${id} should land after the chilena`);
+    assert.ok(Math.abs(adultState.players.left.visualGroundAnchorY - 636) < 0.2, `${id}: landing returns to the foot baseline`);
+    await advance(adult.page, 600);
+    const adultMoving = await runChilena(adult.page, {
+      ball: { x: 560, y: 350, vx: 2, vy: -3 },
+      label: `${id} moving ball`,
+      boot: CONTACT_BOOTS[id],
+    });
+    assert.ok(adultMoving.geometry.drawnToModel < 2, `${id} moving: drawn vs model boot ${JSON.stringify(adultMoving.geometry)}`);
+    assert.deepEqual(adult.errors, [], `${id} browser emitted errors:\n${adult.errors.join('\n')}`);
+    adultResults.push(`${id} ${adultStill.contact.surfaceDistance}/${adultMoving.contact.surfaceDistance} px`);
+    await adult.context.close();
+  }
+
+  console.log(`Adult framed chilenas connected (still/moving contact gap): ${adultResults.join(', ')}.`);
   console.log(`Roster-v2 checks passed: still contact gap ${still.contact.surfaceDistance} px at ${still.contact.seconds}s, `
     + `moving contact gap ${moving.contact.surfaceDistance} px at ${moving.contact.seconds}s, drawn-vs-model boot `
     + `${still.geometry.drawnToModel.toFixed(2)} / ${moving.geometry.drawnToModel.toFixed(2)} px, sprint ${sprintFrames} `

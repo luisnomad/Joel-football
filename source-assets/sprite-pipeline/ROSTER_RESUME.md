@@ -1,4 +1,25 @@
-# Roster sprite batch: resume note (paused 2026-10-08)
+# Roster sprite batch: status (COMPLETE, all 7 staged, 2026-10-10)
+
+**Final update 2026-10-10:**
+
+- Juan, Juanjo, Dad and Mum are staged; the ATOM is released.
+- `tools/sheet_snap.py` now re-grids sheets that would exceed 4096 px (Juan's kick).
+- `tools/green_mask.py` no longer fills large enclosed backdrop regions
+  (`--min-hole`, default 120 px). That filling had baked an opaque grey patch
+  between legs and arms into the hit-reaction poses.
+- All pose sheets were rebuilt. Atlases restaged: `bob`, `joel`, `luna`, `lucia`,
+  `juan`, `juanjo`, `dad` and `mum` under `<id>/atlas/`.
+- ~~The installed public atlases of Bob, Joel, Luna and Lucia still contain the
+  patch and need reinstalling from staging.~~ **Installed 2026-10-11** with the
+  four new characters: bob v4, joel v3, luna v4, lucia v4, juan v4, juanjo v2,
+  dad v2, mum v2 (`public/assets`, masters in `source-assets/animation/final/`).
+- Line-up: `review/roster_v2_lineup.png`.
+
+---
+
+(Original pause note follows.)
+
+## Paused 2026-10-08
 
 Paused on the owner's request so another session can use the ATOM (Maestro). **Do
 not resume ATOM work (Sprite Studio or Maestro) until told.**

@@ -18,7 +18,7 @@
   bottom row of the subject), plus "action", "fps", "play_mode" and "hit_frame".
 Writes OUT_PREFIX.png, OUT_PREFIX.json and OUT_PREFIX.gif (preview).
 """
-import argparse, json, os
+import argparse, json, math, os
 import numpy as np
 from PIL import Image
 
@@ -91,6 +91,12 @@ for rgb, m in small:
 
 rows = (n + cols - 1) // cols if n >= cols else 1
 cols = min(cols, n)
+if cols * cw > 4096 or rows * ch > 4096:
+    # Studio's column count can leave a single tall column (12 kick frames of
+    # ~340 px exceed 4096). Re-grid near-square; readers use the sidecar's
+    # columns/rows, so the layout is free.
+    cols = max(1, min(n, 4096 // cw, math.ceil(math.sqrt(n))))
+    rows = (n + cols - 1) // cols
 out = Image.new("RGBA", (cols * cw, rows * ch), (0, 0, 0, 0))
 for i, c in enumerate(out_cells):
     out.paste(c, ((i % cols) * cw, (i // cols) * ch))

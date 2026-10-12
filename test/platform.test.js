@@ -119,7 +119,7 @@ describe('WebPlatformServices', () => {
 
     await service.registerServiceWorker();
 
-    expect(register).toHaveBeenCalledWith('/sw.js?v=11', {
+    expect(register).toHaveBeenCalledWith('/sw.js?v=12', {
       scope: '/',
       updateViaCache: 'none',
     });

@@ -1,7 +1,8 @@
 const STANDARD_FOOTBALL = Object.freeze({
   bodyScale: 1,
-  // The tallest standard idle silhouettes (Joel, Juan, and Juanjo) occupy
-  // 222 world pixels from the shared foot anchor to the top hair pixel.
+  // Every roster-v2 adult (Lucia, Juan, Juanjo, Dad, Mum) stands 382-383 px
+  // tall in the cell, 222-223 world pixels from the shared foot anchor to
+  // the top hair pixel.
   headTop: 222,
 });
 
@@ -12,7 +13,8 @@ const STANDARD_KICKFALL = Object.freeze({
 
 /**
  * Gameplay geometry is explicit and intentionally independent from artwork
- * scaling. Dad and Mum are larger competitors by design; future characters
+ * scaling. All adults share the standard profile and the kids share `kid`
+ * (STYLE_BIBLE_SPRITES.md: one adult size and one kid size); a character
  * must opt into a profile instead of inheriting collision changes from a
  * visual transform.
  */
@@ -30,16 +32,6 @@ export const CHARACTER_COLLISION_PROFILES = Object.freeze({
     football: Object.freeze({ bodyScale: 1, headTop: 193 }),
     kickfall: STANDARD_KICKFALL,
   }),
-  'dad-large': Object.freeze({
-    id: 'dad-large',
-    football: Object.freeze({ bodyScale: 1.2, headTop: 284 }),
-    kickfall: Object.freeze({ bodyScale: 1.2, strikeScale: 1.2 }),
-  }),
-  'mum-large': Object.freeze({
-    id: 'mum-large',
-    football: Object.freeze({ bodyScale: 1.2, headTop: 266 }),
-    kickfall: Object.freeze({ bodyScale: 1.2, strikeScale: 1.2 }),
-  }),
 });
 
 export const DEFAULT_CHARACTER_COLLISION_PROFILE_ID = 'standard';
@@ -56,7 +48,7 @@ export const getFootballCollisionGeometry = (character) => {
   const headCapRadius = 40;
   // The compound's actual unscaled lower bound is y=70. The old calculation
   // used the sprite-position offset (89), which is not a body bound and left a
-  // 19px blind strip at standard scale (22.8px for the large profiles).
+  // 19px blind strip at standard scale.
   const unscaledBodyBottomY = 70;
   const headCapY = headTop > 0
     ? Math.min(-76, unscaledBodyBottomY + headCapRadius - headTop / bodyScale)

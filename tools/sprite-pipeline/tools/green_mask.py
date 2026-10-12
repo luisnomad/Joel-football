@@ -6,7 +6,8 @@
 A pixel is background when green dominates both other channels by --margin,
 whatever its brightness -- so dark green-tinted contact shadows that video
 models paint under a subject count as backdrop too. Small specks are removed
-and holes inside the subject are filled.
+and small holes inside the subject are filled; enclosed backdrop regions of at least
+--min-hole px (the gap between legs, an arm on a hip) stay transparent.
 """
 import argparse
 import cv2
@@ -17,6 +18,8 @@ ap.add_argument("inp"); ap.add_argument("out")
 ap.add_argument("--margin", type=int, default=40)
 ap.add_argument("--report", action="store_true")
 ap.add_argument("--bg", choices=["green", "magenta"], default="green")
+ap.add_argument("--min-hole", dest="min_hole", type=int, default=120,
+                help="enclosed backdrop regions at least this many px stay transparent")
 a = ap.parse_args()
 
 def is_bg(r, g, b, bg, margin):
@@ -45,6 +48,14 @@ while True:
     m = np.zeros_like(m)
     if cnt:
         cv2.drawContours(m, [max(cnt, key=cv2.contourArea)], -1, 255, cv2.FILLED)
+    # ...but re-open large enclosed backdrop regions (the gap between legs, an
+    # arm resting on a hip). Filling those turned clean chroma into an opaque
+    # grey patch after despill. Small interior specks stay filled.
+    holes = ((m > 0) & bg).astype(np.uint8)
+    count, labels, stats, _ = cv2.connectedComponentsWithStats(holes, connectivity=8)
+    for label in range(1, count):
+        if stats[label, cv2.CC_STAT_AREA] >= a.min_hole:
+            m[labels == label] = 0
     vw.write(m)
     if a.report and n % 10 == 0:
         ys, xs = np.nonzero(m)

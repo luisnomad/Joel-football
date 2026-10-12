@@ -287,36 +287,63 @@ describe('opponent selection', () => {
     expect(getCharacter('unknown').id).toBe('joel');
     expect(getCharacter('joel')).toMatchObject({
       portraitAsset: 'player-joel-portrait.png',
-      sheetAsset: 'player-joel-sheet-v2.webp',
+      sheetAsset: 'player-joel-sheet-v3.webp',
       nativeFacing: 1,
     });
+    // Dad and Mum are normalised to the standard adult size (owner decision,
+    // SPRITE_REDO_PLAN.md §9): no visual scale-up, no per-frame boosts and
+    // the standard collider.
     expect(getCharacter('dad')).toMatchObject({
       name: 'Dad',
       label: 'DAD',
       names: { en: 'Dad', es: 'Papá' },
       labels: { en: 'DAD', es: 'PAPÁ' },
       portraitAsset: 'player-dad-portrait.png',
-      sheetAsset: 'player-dad-sheet-v1.webp',
+      sheetAsset: 'player-dad-sheet-v2.webp',
+      atlasLayout: 'roster-v2',
       nativeFacing: 1,
       accent: 0xffc43d,
-      visualScale: 1.2,
+      kickReach: 93,
+      chilenaContact: { x: 221, y: 103 },
       stats: { speed: 0.98, jump: 0.98, kick: 1.04, dash: 0.98, power: 1.08 },
     });
-    expect(getCharacterVisualScale(getCharacter('dad'))).toBe(1.2);
     expect(getCharacter('mum')).toMatchObject({
       name: 'Mum',
       label: 'MUM',
       names: { en: 'Mum', es: 'Mamá' },
       labels: { en: 'MUM', es: 'MAMÁ' },
       portraitAsset: 'player-mum-portrait.png',
-      sheetAsset: 'player-mum-sheet-v1.webp',
+      sheetAsset: 'player-mum-sheet-v2.webp',
+      atlasLayout: 'roster-v2',
       nativeFacing: 1,
       accent: 0x6ca8ff,
-      visualScale: 1.2,
+      kickReach: 93,
+      chilenaContact: { x: 220, y: 70 },
       stats: { speed: 1.02, jump: 1.04, kick: 1.02, dash: 1.04, power: 1.04 },
     });
+    for (const id of ['dad', 'mum']) {
+      const character = getCharacter(id);
+      expect(character.visualScale).toBeUndefined();
+      expect(character.frameScales).toBeUndefined();
+      expect(character.collisionProfile).toBeUndefined();
+      expect(getCharacterVisualScale(character)).toBe(1);
+    }
+    expect(getCharacter('juan')).toMatchObject({
+      sheetAsset: 'player-juan-sheet-v4.webp',
+      atlasLayout: 'roster-v2',
+      kickReach: 93,
+      chilenaContact: { x: 237, y: 112 },
+      stats: { speed: 0.98, jump: 1, kick: 1.06, dash: 0.98, power: 1.08 },
+    });
+    expect(getCharacter('juanjo')).toMatchObject({
+      sheetAsset: 'player-juanjo-sheet-v2.webp',
+      atlasLayout: 'roster-v2',
+      kickReach: 93,
+      chilenaContact: { x: 202, y: 87 },
+      stats: { speed: 1.02, jump: 0.98, kick: 1.04, dash: 1.04, power: 1.06 },
+    });
     expect(getCharacter('bob')).toMatchObject({
-      sheetAsset: 'player-bob-sheet-v3.webp',
+      sheetAsset: 'player-bob-sheet-v4.webp',
       atlasLayout: 'roster-v2',
       collisionProfile: 'kid',
       kickReach: 73,
@@ -324,14 +351,14 @@ describe('opponent selection', () => {
     });
     expect(getCharacterSheetFrameConfig(getCharacter('bob'))).toEqual({ frameWidth: 336, frameHeight: 480 });
     expect(getCharacter('joel')).toMatchObject({
-      sheetAsset: 'player-joel-sheet-v2.webp',
+      sheetAsset: 'player-joel-sheet-v3.webp',
       atlasLayout: 'roster-v2',
       collisionProfile: 'kid',
       kickReach: 76,
       chilenaContact: { x: 237, y: 143 },
     });
     expect(getCharacter('luna')).toMatchObject({
-      sheetAsset: 'player-luna-sheet-v3.webp',
+      sheetAsset: 'player-luna-sheet-v4.webp',
       atlasLayout: 'roster-v2',
       collisionProfile: 'kid',
       kickReach: 80,
@@ -339,15 +366,17 @@ describe('opponent selection', () => {
     });
     // Lucia is an adult: standard collider (382 px idle fits the 222 px head top).
     expect(getCharacter('lucia')).toMatchObject({
-      sheetAsset: 'player-lucia-sheet-v3.webp',
+      sheetAsset: 'player-lucia-sheet-v4.webp',
       atlasLayout: 'roster-v2',
       kickReach: 93,
       chilenaContact: { x: 237, y: 95 },
     });
     expect(getCharacter('lucia').collisionProfile).toBeUndefined();
-    expect(getCharacterSheetFrameConfig(getCharacter('joel'))).toEqual({ frameWidth: 336, frameHeight: 480 });
-    // Characters not yet redrawn keep the classic 320 px cells.
-    expect(getCharacterSheetFrameConfig(getCharacter('juan'))).toEqual({ frameWidth: 320, frameHeight: 480 });
+    // The whole roster is on the 24-cell roster-v2 atlas (336 px cells).
+    for (const character of CHARACTERS) {
+      expect(character.atlasLayout, character.id).toBe('roster-v2');
+      expect(getCharacterSheetFrameConfig(character), character.id).toEqual({ frameWidth: 336, frameHeight: 480 });
+    }
     expect(getCharacterVisualScale(getCharacter('joel'))).toBe(1);
     expect(getCharacterVisualScale({ visualScale: 99 })).toBe(1.2);
     expect(getCharacterVisualScale({ visualScale: 0.1 })).toBe(0.85);

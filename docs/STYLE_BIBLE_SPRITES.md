@@ -73,9 +73,11 @@ Locked prompt phrases (`{PROPORTIONS}`):
 
 ## 4. Size, colliders and the width budget (proposal)
 
-Today, `standard` collision uses `headTop: 222`, and Dad and Mum use `dad-large` and
-`mum-large` (`bodyScale` 1.2, `headTop` 284 and 266, plus `visualScale` 1.2 and
-`frameScales` hacks).
+Before the redo, `standard` collision used `headTop: 222`, and Dad and Mum used
+`dad-large` and `mum-large` (`bodyScale` 1.2, `headTop` 284 and 266, plus
+`visualScale` 1.2 and `frameScales` hacks). **Implemented 2026-10-11:** all five
+adults are on `standard` (idle 382-383 px), the kids on `kid`, and the large
+profiles, Dad's and Mum's `visualScale` and their `frameScales` are gone.
 
 Proposal:
 

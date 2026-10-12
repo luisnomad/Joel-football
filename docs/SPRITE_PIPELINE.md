@@ -37,6 +37,11 @@ photo-derived likenesses of real people and need guardian or person approval. Bo
 fictional and is the default opponent. `player-nova-sheet-v2.webp` is a retained
 legacy sheet that the catalog does not use.
 
+> **Superseded (2026-10-11):** the whole roster now ships roster-v2 atlases
+> (6×4 cells of 336×480, `nativeFacing` 1, `visualScale` 1): joel v3, bob v4,
+> lucia v4, luna v4, juan v4, dad v2, mum v2, juanjo v2. Dad and Mum use the
+> standard collider; the table below is the pre-redo state, kept for context.
+
 | id | runtime sheet | nativeFacing | visualScale | special |
 | --- | --- | :---: | :---: | --- |
 | joel | `player-joel-sheet-v1.webp` | 1 | 1 | title character, child |
@@ -44,8 +49,8 @@ legacy sheet that the catalog does not use.
 | lucia | `player-lucia-sheet-v2.webp` | -1 | 1 | prebuilt; not in the current builder |
 | luna | `player-luna-sheet-v2.webp` | -1 | 1 | prebuilt; not in the current builder |
 | juan | `player-juan-sheet-v3.webp` | 1 | 1 | contact-sheet source |
-| dad | `player-dad-sheet-v1.webp` | 1 | 1.2 | idle 405 px, `dad-large` collider, `frameScales` hack |
-| mum | `player-mum-sheet-v1.webp` | 1 | 1.2 | `mum-large` collider, per-frame packing scales + `frameScales` hack |
+| dad | `player-dad-sheet-v1.webp` | 1 | 1.2 | idle 405 px, `dad-large` collider (retired), `frameScales` hack |
+| mum | `player-mum-sheet-v1.webp` | 1 | 1.2 | `mum-large` collider (retired), per-frame packing scales + `frameScales` hack |
 | juanjo | `player-juanjo-sheet-v1.webp` | 1 | 1 | contact-sheet source |
 
 Each character also has `public/assets/player-<id>-portrait.png` (512×512). The portrait
@@ -695,8 +700,8 @@ fighters load at a time, so check this against PERFORMANCE_BENCHMARK.
    whether to update it.
 3. **Lucia and Luna.** Their sources are not in the builder today. Confirm their
    identity anchors with the owner.
-4. **Dad and Mum.** Remove `frameScales`, keep the 1.2 `visualScale`, keep Dad's
-   405 px idle, and keep the explicit colliders.
+4. **Dad and Mum.** Remove `frameScales`. (Superseded by SPRITE_REDO_PLAN.md §9:
+   both were normalised to the standard adult size and collider instead.)
 5. **Juan and Juanjo.**
 
 Rebuild one character per change set, and keep unrelated atlas hashes identical.

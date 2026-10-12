@@ -36,7 +36,9 @@ import {
   planFramedChilena,
   resolveChilenaContact,
 } from '../src/game/pure/chilena.js';
-import { getCharacter } from '../src/game/content/characters.js';
+import { readFileSync, existsSync } from 'node:fs';
+import { fileURLToPath } from 'node:url';
+import { CHARACTERS, getCharacter } from '../src/game/content/characters.js';
 import {
   getCharacterCollisionProfile,
   getFootballCollisionGeometry,
@@ -47,8 +49,9 @@ const v2 = CHARACTER_LAYOUTS['roster-v2'];
 
 describe('character atlas layouts', () => {
   it('keeps the classic layout frame-for-frame identical to the original runtime', () => {
-    // Juan is still on the classic atlas (the sprite redo is rolling out per character).
-    expect(getCharacterLayout(getCharacter('juan'))).toBe(classic);
+    // No catalog character uses the classic atlas any more (the whole roster
+    // is roster-v2); the layout stays the fallback for a sheet without one.
+    expect(CHARACTERS.filter((character) => getCharacterLayout(character) === classic)).toEqual([]);
     expect(getCharacterLayout(null)).toBe(classic);
     expect(layoutDisplayWidth(classic)).toBeCloseTo(280 * 320 / 480);
     expect(idleVisualAt(classic, 3.7).frame).toBe(CHARACTER_FRAMES.idle);
@@ -67,7 +70,7 @@ describe('character atlas layouts', () => {
   });
 
   it('describes the roster-v2 atlas: 24 cells of 336x480 with one drawing scale', () => {
-    expect(getCharacterLayout(getCharacter('bob'))).toBe(v2);
+    for (const character of CHARACTERS) expect(getCharacterLayout(character), character.id).toBe(v2);
     expect(v2.frameWidth).toBe(336);
     expect(v2.frameHeight).toBe(480);
     expect(v2.frameCount).toBe(24);
@@ -168,7 +171,7 @@ describe('kid collision profile', () => {
     const bob = getCharacter('bob');
     expect(getCharacterCollisionProfile(bob).id).toBe('kid');
     const kid = getFootballCollisionGeometry(bob);
-    const adult = getFootballCollisionGeometry(getCharacter('juan'));
+    const adult = getFootballCollisionGeometry(getCharacter('dad'));
     expect(kid.bodyScale).toBe(adult.bodyScale);
     // 330 px idle in the 480 px cell is 192.5 world px.
     expect(kid.headTop).toBe(193);
@@ -207,12 +210,15 @@ describe('framed chilena guidance', () => {
       .toBe('missed');
   });
 
-  // Bob's measured contact boot relative to (body x, body bottom), world px.
-  const bootOffset = (facing) => ({
-    x: (210 - 168) * (280 / 480) * facing,
-    y: (141 - CHARACTER_GROUND_ANCHOR_Y) * (280 / 480),
+  // A character's measured contact boot relative to (body x, body bottom),
+  // world px. The sweeps run for every roster character: the boot height
+  // differs a lot (Mum y=70 .. Luna y=156 in the 480 px cell).
+  const contactOf = (id) => getCharacter(id).chilenaContact;
+  const bootOffset = (facing, contact = contactOf('bob')) => ({
+    x: (contact.x - v2.frameWidth / 2) * (280 / 480) * facing,
+    y: (contact.y - CHARACTER_GROUND_ANCHOR_Y) * (280 / 480),
   });
-  const plan = ({ ballDx, ballUp, ballVx = 0, ballVy = 0, facing = -1 }) => {
+  const plan = ({ ballDx, ballUp, ballVx = 0, ballVy = 0, facing = -1, contact }) => {
     const fighter = { x: 640, y: 566, bodyBottomOffset: 70 };
     const ball = { x: fighter.x + ballDx, y: fighter.y - ballUp, vx: ballVx, vy: ballVy, radius: 22 };
     const eligibility = evaluateChilenaEligibility({
@@ -224,7 +230,7 @@ describe('framed chilena guidance', () => {
     return planFramedChilena({
       fighter,
       ball,
-      bootOffset: bootOffset(facing),
+      bootOffset: bootOffset(facing, contact),
       groundY: 636,
       targetSeconds: chilenaContactTargetSeconds({
         upwardDistance: eligibility.upwardDistance,
@@ -236,10 +242,11 @@ describe('framed chilena guidance', () => {
   it('meets every still ball above head height with the boot of the contact drawing', () => {
     // Eligibility starts at 43 px above the body centre (chest height); balls
     // that low cannot be met by an overhead boot and stay ordinary kicks.
+    const contact = contactOf('bob');
     for (let ballUp = 76; ballUp <= 236; ballUp += 16) {
       for (let ballDx = -108; ballDx <= 108; ballDx += 12) {
         for (const facing of [-1, 1]) {
-          const result = plan({ ballDx, ballUp, facing });
+          const result = plan({ ballDx, ballUp, facing, contact });
           if (!result) continue;
           expect(result, JSON.stringify({ ballDx, ballUp, facing })).toMatchObject({ reachable: true });
           expect(result.surfaceDistance).toBeLessThanOrEqual(CHILENA_FORGIVE_RADIUS);
@@ -250,13 +257,14 @@ describe('framed chilena guidance', () => {
   });
 
   it('keeps most of the eligible zone reachable and only starts chilenas that connect', () => {
+    const contact = contactOf('bob');
     let eligible = 0;
     let reachable = 0;
     for (let ballUp = 44; ballUp <= 240; ballUp += 8) {
       for (let ballDx = -108; ballDx <= 108; ballDx += 12) {
         for (const [ballVx, ballVy] of [[0, 0], [3, -2], [-3, 4], [0, 6], [4, 0], [-4, 0]]) {
           for (const facing of [-1, 1]) {
-            const result = plan({ ballDx, ballUp, ballVx, ballVy, facing });
+            const result = plan({ ballDx, ballUp, ballVx, ballVy, facing, contact });
             if (!result) continue;
             eligible += 1;
             if (!result.reachable) continue;
@@ -277,6 +285,7 @@ describe('framed chilena guidance', () => {
   });
 
   it('starts a framed chilena only where every still ball is reachable (B2)', () => {
+    const contact = contactOf('bob');
     const minimum = CHARACTER_GAMEPLAY_HEIGHT * CHILENA_FRAMED_MIN_UPWARD_RATIO;
     expect(minimum).toBeGreaterThanOrEqual(76);
     let eligible = 0;
@@ -300,7 +309,7 @@ describe('framed chilena guidance', () => {
           const result = planFramedChilena({
             fighter,
             ball,
-            bootOffset: bootOffset(facing),
+            bootOffset: bootOffset(facing, contact),
             groundY: 636,
             targetSeconds: chilenaContactTargetSeconds({
               upwardDistance: gate.upwardDistance,
@@ -312,5 +321,84 @@ describe('framed chilena guidance', () => {
       }
     }
     expect(eligible).toBeGreaterThan(400);
+  });
+
+  it.each(CHARACTERS.map(({ id }) => id))('meets every still ball at or above %s\'s standing contact boot', (id) => {
+    // Each character's contact drawing holds the boot at a different height
+    // (Mum's boot is 41 px higher than Bob's). Any still ball in the trigger
+    // window that is level with or above that boot, as drawn on a standing
+    // player, must connect; lower balls are left to the planner, which turns
+    // an unreachable press into an ordinary kick.
+    const contact = contactOf(id);
+    // Boot height above the body centre (the body bottom is 70 px below it).
+    const standingBootUp = -bootOffset(1, contact).y - 70;
+    let eligible = 0;
+    for (let ballUp = Math.ceil(standingBootUp); ballUp <= 240; ballUp += 2) {
+      for (let ballDx = -108; ballDx <= 108; ballDx += 6) {
+        for (const facing of [-1, 1]) {
+          const result = plan({ ballDx, ballUp, facing, contact });
+          if (!result) continue;
+          eligible += 1;
+          expect(result, JSON.stringify({ id, ballDx, ballUp, facing })).toMatchObject({ reachable: true });
+          expect(result.surfaceDistance).toBeLessThanOrEqual(CHILENA_FORGIVE_RADIUS);
+          expect(result.contactSeconds).toBeLessThanOrEqual(CHILENA_GUIDE_MAX_SECONDS);
+        }
+      }
+    }
+    expect(eligible, id).toBeGreaterThan(400);
+  });
+});
+
+describe('installed roster atlases', () => {
+  const root = fileURLToPath(new URL('..', import.meta.url));
+  const readMeasures = (id) => JSON.parse(readFileSync(
+    `${root}source-assets/sprite-pipeline/${id}/atlas/player-${id}-sheet.json`,
+    'utf8',
+  ));
+  // Lossless WebP (VP8L): 14-bit width-1 and height-1 after the 0x2f signature.
+  const webpSize = (file) => {
+    const bytes = readFileSync(file);
+    expect(bytes.toString('ascii', 0, 4)).toBe('RIFF');
+    expect(bytes.toString('ascii', 8, 16)).toBe('WEBPVP8L');
+    expect(bytes[20]).toBe(0x2f);
+    const bits = bytes.readUInt32LE(21);
+    return { width: (bits & 0x3fff) + 1, height: ((bits >> 14) & 0x3fff) + 1 };
+  };
+  const pngSize = (file) => {
+    const bytes = readFileSync(file);
+    expect(bytes.toString('ascii', 12, 16)).toBe('IHDR');
+    return { width: bytes.readUInt32BE(16), height: bytes.readUInt32BE(20) };
+  };
+
+  it.each(CHARACTERS.map(({ id }) => id))('ships %s\'s versioned sheet, master and portrait', (id) => {
+    const character = getCharacter(id);
+    expect(character.sheetAsset).toMatch(new RegExp(`^player-${id}-sheet-v\\d+\\.webp$`));
+    const sheet = `${root}public/assets/${character.sheetAsset}`;
+    expect(existsSync(sheet), sheet).toBe(true);
+    // 6 x 4 cells of the roster-v2 layout.
+    expect(webpSize(sheet)).toEqual({ width: v2.frameWidth * 6, height: v2.frameHeight * 4 });
+    const master = `${root}source-assets/animation/final/${character.sheetAsset.replace(/\.webp$/, '.png')}`;
+    expect(existsSync(master), master).toBe(true);
+    expect(pngSize(master)).toEqual({ width: v2.frameWidth * 6, height: v2.frameHeight * 4 });
+    const portrait = `${root}public/assets/${character.portraitAsset}`;
+    expect(existsSync(portrait), portrait).toBe(true);
+    expect(pngSize(portrait)).toEqual({ width: 512, height: 512 });
+  });
+
+  it.each(CHARACTERS.map(({ id }) => id))('uses %s\'s measured kickReach, chilena boot and idle height', (id) => {
+    const character = getCharacter(id);
+    const measures = readMeasures(id);
+    expect(measures).toMatchObject({
+      layout: character.atlasLayout,
+      cellWidth: v2.frameWidth,
+      cellHeight: v2.frameHeight,
+      groundY: CHARACTER_GROUND_ANCHOR_Y,
+    });
+    expect(character.kickReach).toBe(measures.kickReach);
+    expect(character.chilenaContact).toEqual(measures.chilenaContact);
+    // The fixed head collider must sit within 4 world px of the idle drawing's
+    // top (the collision-coverage audit tolerance).
+    const idleTopWorld = measures.idleHeight * (280 / v2.frameHeight);
+    expect(Math.abs(getFootballCollisionGeometry(character).headTop - idleTopWorld), id).toBeLessThanOrEqual(4);
   });
 });

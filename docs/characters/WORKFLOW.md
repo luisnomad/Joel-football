@@ -154,7 +154,9 @@ If `visualScale` differs from `1`, prove it is independent from physics:
 - Hockey retains the regulation pusher diameter.
 
 Any non-standard gameplay size requires an explicit, documented
-`collisionProfile`; never derive collision geometry from `visualScale`.
+`collisionProfile`; never derive collision geometry from `visualScale`. Today
+the only profiles are `standard` (adults) and `kid`; the old Dad/Mum
+`*-large` profiles were retired when they moved to the standard adult size.
 Do not copy a sprite-position or display-origin offset into collision math.
 Measure against the actual Matter compound bounds after the body is assembled
 and foot-anchored. A stable main body plus temporary action sensors is the

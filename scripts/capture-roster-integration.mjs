@@ -1,8 +1,10 @@
 /*
  * Review captures for installed roster-v2 characters: each listed character vs
- * Bob at kickoff on tablet and phone, its chilena at the moment of boot contact,
- * the Power Lab with painted icons, and the goal frame close-up.
+ * Bob (or the opponent given as `id:opponent`) at kickoff on tablet and phone,
+ * its chilena at the moment of boot contact, the Power Lab with painted icons,
+ * and the goal frame close-up. CAPTURE_BALLS=0 skips the ball captures.
  *   node scripts/capture-roster-integration.mjs [outDir] [ids=joel,luna,lucia]
+ *   node scripts/capture-roster-integration.mjs out dad:mum,juan:juanjo
  */
 import { spawn } from 'node:child_process';
 import { mkdir } from 'node:fs/promises';
@@ -10,7 +12,11 @@ import { chromium } from 'playwright';
 
 const root = new URL('..', import.meta.url).pathname;
 const outDir = process.argv[2] ?? new URL('../output/integration-roster3/', import.meta.url).pathname;
-const ids = (process.argv[3] ?? 'joel,luna,lucia').split(',');
+const lineups = (process.argv[3] ?? 'joel,luna,lucia').split(',').map((entry) => {
+  const [id, opponent] = entry.split(':');
+  return { id, opponent: opponent ?? (id === 'bob' ? 'joel' : 'bob') };
+});
+const ids = lineups.map(({ id }) => id);
 const port = 4202;
 const url = `http://127.0.0.1:${port}`;
 const devices = [
@@ -25,22 +31,22 @@ const shot = async (page, path, clip) => {
   await page.screenshot({ path, ...(clip ? { clip } : {}) });
 };
 
-const openMatch = async (browser, device, playerId, ballTypeId = 'classic') => {
+const openMatch = async (browser, device, playerId, ballTypeId = 'classic', opponentId = playerId === 'bob' ? 'joel' : 'bob') => {
   const context = await browser.newContext({
     viewport: { width: device.width, height: device.height },
     screen: { width: device.width, height: device.height },
     hasTouch: true,
     isMobile: device.compact,
   });
-  await context.addInitScript(({ id, ball }) => {
+  await context.addInitScript(({ id, opponent, ball }) => {
     window.localStorage.setItem('skyhead-showdown.player-profile.v2', JSON.stringify({
       playerCharacterId: id,
-      opponentId: id === 'bob' ? 'joel' : 'bob',
+      opponentId: opponent,
       ballTypeId: ball,
       equippedPowerId: 'fireball',
       powers: { fireball: 2, ice: 0, big: 0, shield: 0, hyper: 0 },
     }));
-  }, { id: playerId, ball: ballTypeId });
+  }, { id: playerId, opponent: opponentId, ball: ballTypeId });
   const page = await context.newPage();
   await page.goto(url, { waitUntil: 'domcontentloaded' });
   await page.waitForFunction(() => typeof window.render_game_to_text === 'function' && typeof window.advanceTime === 'function');
@@ -59,8 +65,8 @@ try {
   }
   browser = await chromium.launch({ headless: true });
   for (const device of devices) {
-    for (const id of ids) {
-      const { context, page } = await openMatch(browser, device, id);
+    for (const { id, opponent } of lineups) {
+      const { context, page } = await openMatch(browser, device, id, 'classic', opponent);
       await page.evaluate(() => window.__SKYHEAD_GAME__.scene.start('Match'));
       await page.waitForFunction(() => JSON.parse(window.render_game_to_text()).mode === 'countdown');
       await advance(page, 3100);
@@ -73,7 +79,7 @@ try {
         window.__SKYHEAD_DEBUG__.setBall({ x: 640, y: 200 });
       });
       await advance(page, 200);
-      await shot(page, `${outDir}/${device.name}-${id}-vs-bob.png`);
+      await shot(page, `${outDir}/${device.name}-${id}-vs-${opponent}.png`);
       // Chilena: second kick press on an overhead ball, then step to boot contact.
       await page.evaluate(() => {
         window.__SKYHEAD_DEBUG__.setHumanPosition(600);

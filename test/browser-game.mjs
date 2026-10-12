@@ -61,14 +61,14 @@ const readAnimationAtlasMetrics = (page) => page.evaluate(async () => {
     return { width: image.naturalWidth, height: image.naturalHeight, frames, layout };
   };
   return {
-    joel: await analyze('player-joel-sheet-v2.webp', ROSTER_V2),
-    dad: await analyze('player-dad-sheet-v1.webp'),
-    mum: await analyze('player-mum-sheet-v1.webp'),
-    bob: await analyze('player-bob-sheet-v3.webp', ROSTER_V2),
-    lucia: await analyze('player-lucia-sheet-v3.webp', ROSTER_V2),
-    luna: await analyze('player-luna-sheet-v3.webp', ROSTER_V2),
-    juan: await analyze('player-juan-sheet-v3.webp'),
-    juanjo: await analyze('player-juanjo-sheet-v1.webp'),
+    joel: await analyze('player-joel-sheet-v3.webp', ROSTER_V2),
+    dad: await analyze('player-dad-sheet-v2.webp', ROSTER_V2),
+    mum: await analyze('player-mum-sheet-v2.webp', ROSTER_V2),
+    bob: await analyze('player-bob-sheet-v4.webp', ROSTER_V2),
+    lucia: await analyze('player-lucia-sheet-v4.webp', ROSTER_V2),
+    luna: await analyze('player-luna-sheet-v4.webp', ROSTER_V2),
+    juan: await analyze('player-juan-sheet-v4.webp', ROSTER_V2),
+    juanjo: await analyze('player-juanjo-sheet-v2.webp', ROSTER_V2),
   };
 });
 
@@ -417,27 +417,48 @@ try {
       }
     }
   }
-  assert.ok(atlasMetrics.lucia.frames[8].top >= 8, 'Lucia run-contact-B hair must have visible top padding');
-  assert.ok(atlasMetrics.luna.frames.every((frame) => frame.top >= 8), 'every Luna pose must keep her curls below the frame edge');
-  assert.ok(atlasMetrics.juan.frames.every((frame) => frame.top >= 8), 'every Uncle Juan pose must keep his head below the frame edge');
-  assert.ok(atlasMetrics.dad.frames.every((frame) => frame.top >= 8), 'every Dad pose must keep his dark hair below the frame edge');
-  assert.ok(atlasMetrics.mum.frames.every((frame) => frame.top >= 8), 'every Mum pose must keep her curls below the frame edge');
-  assert.ok(atlasMetrics.juanjo.frames.every((frame) => frame.top >= 8), 'every Uncle Juanjo pose must keep his hair and glasses below the frame edge');
+  // The whole roster is on roster-v2. Gameplay cells (0-19) keep 8 px of top
+  // padding so no head or hair touches the cell edge; the celebrate cells
+  // (20-23) raise the arms higher but must never touch the top row either.
+  for (const [player, atlas] of Object.entries(atlasMetrics)) {
+    assert.equal(atlas.layout.columns, 6, `${player} must ship the roster-v2 atlas`);
+    for (const frame of atlas.frames) {
+      const minimumTop = frame.frame < 20 ? 8 : 1;
+      assert.ok(
+        frame.top >= minimumTop,
+        `${player} frame ${frame.frame} must keep ${minimumTop} px of top padding; got ${JSON.stringify(frame)}`,
+      );
+    }
+  }
   const visibleHeight = (frame) => frame.bottom - frame.top;
+  // One adult size and one kid size (SPRITE_REDO_PLAN.md §3 and §9): Dad and
+  // Mum are normalised to the other adults; kids stand 85-90% of adult height.
+  const adults = ['lucia', 'juan', 'dad', 'mum', 'juanjo'];
+  const kids = ['joel', 'bob', 'luna'];
+  for (const player of adults) {
+    const height = visibleHeight(atlasMetrics[player].frames[0]);
+    assert.ok(height >= 380 && height <= 385, `${player} idle must be the adult height (380-385 px); got ${height}`);
+  }
+  for (const player of kids) {
+    const height = visibleHeight(atlasMetrics[player].frames[0]);
+    assert.ok(height >= 326 && height <= 334, `${player} idle must be the kid height (326-334 px); got ${height}`);
+  }
   assert.ok(
     visibleHeight(atlasMetrics.dad.frames[0]) >= visibleHeight(atlasMetrics.joel.frames[0]) * 1.05,
     '6-foot-7 Dad must retain a visibly taller idle silhouette than Joel',
   );
-  for (const player of ['juan', 'dad', 'juanjo']) {
-    assert.ok(
-      visibleHeight(atlasMetrics[player].frames[2]) >= visibleHeight(atlasMetrics[player].frames[0]) * 0.9,
-      `${player} jump must retain at least 90% of its idle silhouette height`,
-    );
+  for (const kid of kids) {
+    for (const adult of adults) {
+      const ratio = visibleHeight(atlasMetrics[kid].frames[0]) / visibleHeight(atlasMetrics[adult].frames[0]);
+      assert.ok(ratio >= 0.85 && ratio <= 0.9, `${kid}/${adult} idle height ratio must be 0.85-0.90; got ${ratio}`);
+    }
   }
+  // Mum's old atlas needed per-frame packing scales; the new one is drawn at
+  // one scale, so every pose keeps adult-relative motion scale.
   const visibleArea = (frame) => (frame.right - frame.left) * visibleHeight(frame);
   const adultMotionReferences = ['juan', 'dad', 'juanjo'];
   const mumIdleArea = visibleArea(atlasMetrics.mum.frames[0]);
-  for (let frame = 1; frame < 12; frame += 1) {
+  for (let frame = 1; frame < 24; frame += 1) {
     const referenceRatios = adultMotionReferences
       .map((player) => (
         visibleArea(atlasMetrics[player].frames[frame])
@@ -451,10 +472,6 @@ try {
       `Mum frame ${frame} must keep adult-relative motion scale; got ${mumRatio / adultMedianRatio}`,
     );
   }
-  assert.ok(
-    [9, 11].every((frame) => visibleHeight(atlasMetrics.juanjo.frames[frame]) >= 330),
-    'Uncle Juanjo anticipation and recovery must recover the hair pixels above their source-sheet cells',
-  );
   await capture(page, `${output}/01-intro.png`);
 
   const kickfallBeforeEntry = await page.evaluate(() => performance.getEntriesByType('resource')
@@ -3237,7 +3254,9 @@ try {
   await hold(juanPage, 'Space', 34);
   await advance(juanPage, 50);
   juanState = await readState(juanPage);
-  assert.equal(juanState.players.left.visualFrame, 2, 'Juan should use the size-corrected jump frame while airborne');
+  // Uncle Juan is on the roster-v2 atlas: the airborne drawing is cell 13.
+  assert.equal(juanState.players.left.atlasLayout, 'roster-v2');
+  assert.equal(juanState.players.left.visualFrame, 13, 'Juan should use the roster-v2 jump drawing while airborne');
   assert.equal(juanState.players.left.pose, 'jump');
   await capture(juanPage, `${output}/04-juan-jump.png`);
   assert.deepEqual(juanErrors, [], `Uncle Juan browser emitted errors:\n${juanErrors.join('\n')}`);
@@ -3280,14 +3299,23 @@ try {
   assert.equal(dadState.mode, 'playing');
   assert.equal(dadState.players.left.name, 'Dad');
   assert.deepEqual([dadState.players.left.nativeFacing, dadState.players.left.visualFlipped], [1, false]);
-  assert.equal(dadState.players.left.visualScale, 1.2);
-  assert.equal(dadState.players.left.collisionProfile, 'dad-large');
-  assert.equal(dadState.players.left.collisionScale, 1.2);
-  assert.equal(dadState.players.left.displayHeight, 336);
+  // Owner decision (SPRITE_REDO_PLAN.md §9): Dad is normalised to the
+  // standard adult size; the old 1.2 artwork and dad-large collider are gone.
+  assert.equal(dadState.players.left.atlasLayout, 'roster-v2');
+  assert.equal(dadState.players.left.visualScale, 1);
+  assert.equal(dadState.players.left.collisionProfile, 'standard');
+  assert.equal(dadState.players.left.collisionScale, 1);
+  assert.equal(dadState.players.left.displayHeight, 280);
   assert.equal(dadState.players.right.displayHeight, 280);
   assert.ok(
-    Math.abs(dadState.players.left.collisionArea / dadState.players.right.collisionArea - 1.44) < 0.01,
-    `Dad’s 120% artwork must use a 120% collider so the ball cannot pass through his head; ${JSON.stringify({ dad: dadState.players.left.collisionArea, rival: dadState.players.right.collisionArea })}`,
+    Math.abs(dadState.players.left.collisionArea / dadState.players.right.collisionArea - 1) < 0.01,
+    `Dad must share the standard collider footprint with Joel; ${JSON.stringify({ dad: dadState.players.left.collisionArea, rival: dadState.players.right.collisionArea })}`,
+  );
+  // His 383 px idle drawing tops out at 636 - 383 * 280 / 480 ≈ 412.6; the
+  // standard head cap (headTop 222) must reach that hairline.
+  assert.ok(
+    dadState.players.left.collisionTopY <= 416,
+    `Dad's fixed head collider must reach his idle hairline; got ${dadState.players.left.collisionTopY}`,
   );
   assert.ok(Math.abs(dadState.players.left.visualGroundAnchorY - 636) < 0.2);
   await capture(dadPage, `${output}/04-dad-idle.png`);
@@ -3306,7 +3334,7 @@ try {
     match.scene.pause();
   });
   dadState = await readState(dadPage);
-  assert.ok([6, 7, 8].includes(dadState.players.left.visualFrame), 'Dad should use his complete enhanced run cycle');
+  assert.ok([3, 4, 5, 6, 7, 8].includes(dadState.players.left.visualFrame), 'Dad should use his roster-v2 run cycle');
   await capture(dadPage, `${output}/04-dad-run.png`);
   await dadPage.evaluate(() => window.__SKYHEAD_GAME__.scene.getScene('Match').scene.resume());
 
@@ -3316,7 +3344,7 @@ try {
     fighter.updatePose();
   });
   dadState = await readState(dadPage);
-  assert.equal(dadState.players.left.visualFrame, 2, 'Dad should use the size-corrected jump frame while airborne');
+  assert.equal(dadState.players.left.visualFrame, 13, 'Dad should use the roster-v2 jump drawing while airborne');
   assert.equal(dadState.players.left.pose, 'jump');
   await capture(dadPage, `${output}/04-dad-jump.png`);
   await advance(dadPage, 1100);
@@ -3355,7 +3383,7 @@ try {
     fighter.updatePose();
   });
   dadState = await readState(dadPage);
-  assert.deepEqual([dadState.players.left.visualFrame, dadState.players.left.animationStage], [11, 'recovery']);
+  assert.deepEqual([dadState.players.left.visualFrame, dadState.players.left.animationStage], [12, 'recovery']);
   assert.ok(
     Math.abs(dadState.players.left.visualGroundAnchorY - 636) < 0.2,
     `Dad recovery art must stay on the pitch; ${JSON.stringify(dadState.players.left)}`,
@@ -3378,11 +3406,11 @@ try {
   await advance(dadPage, 120);
   dadState = await readState(dadPage);
   assert.equal(dadState.selectedCharacter.id, 'dad');
-  assert.equal(dadState.player.visualScale, 1.2);
-  assert.equal(dadState.player.collisionProfile, 'dad-large');
-  assert.equal(dadState.player.displayHeight, 151.2);
-  assert.ok(Math.abs(dadState.player.collisionWidth - 52.8) < 0.01);
-  assert.ok(Math.abs(dadState.player.collisionHeight - 98.4) < 0.01);
+  assert.equal(dadState.player.visualScale, 1);
+  assert.equal(dadState.player.collisionProfile, 'standard');
+  assert.equal(dadState.player.displayHeight, 126);
+  assert.ok(Math.abs(dadState.player.collisionWidth - 44) < 0.01);
+  assert.ok(Math.abs(dadState.player.collisionHeight - 82) < 0.01);
   assert.ok(
     Math.abs(dadState.player.platformSurfaceY - dadState.player.visualGroundAnchorY) < 3,
     'Dad must share Kickfall’s platform foot line',
@@ -3391,11 +3419,11 @@ try {
   await advance(dadPage, 360);
   await dadPage.keyboard.up('d');
   dadState = await readState(dadPage);
-  assert.ok([6, 7, 8].includes(dadState.player.visualFrame));
+  assert.ok([3, 4, 5, 6, 7, 8].includes(dadState.player.visualFrame));
   await dadPage.evaluate(() => window.__SKYHEAD_GAME__.scene.getScene('Kickfall').startKick());
   await advance(dadPage, 70);
   dadState = await readState(dadPage);
-  assert.ok([9, 10, 11].includes(dadState.player.visualFrame));
+  assert.ok([9, 10, 11, 12].includes(dadState.player.visualFrame));
   assert.ok(Math.abs(dadState.player.platformSurfaceY - dadState.player.visualGroundAnchorY) < 0.2);
   await capture(dadPage, `${output}/04-dad-kickfall.png`);
   assert.deepEqual(dadErrors, [], `Dad browser emitted errors:\n${dadErrors.join('\n')}`);
@@ -3439,14 +3467,21 @@ try {
   assert.equal(mumState.mode, 'playing');
   assert.equal(mumState.players.left.name, 'Mum');
   assert.deepEqual([mumState.players.left.nativeFacing, mumState.players.left.visualFlipped], [1, false]);
-  assert.equal(mumState.players.left.visualScale, 1.2);
-  assert.equal(mumState.players.left.collisionProfile, 'mum-large');
-  assert.equal(mumState.players.left.collisionScale, 1.2);
-  assert.equal(mumState.players.left.displayHeight, 336);
+  // Owner decision (SPRITE_REDO_PLAN.md §9): Mum is normalised to the
+  // standard adult size; the old 1.2 artwork and mum-large collider are gone.
+  assert.equal(mumState.players.left.atlasLayout, 'roster-v2');
+  assert.equal(mumState.players.left.visualScale, 1);
+  assert.equal(mumState.players.left.collisionProfile, 'standard');
+  assert.equal(mumState.players.left.collisionScale, 1);
+  assert.equal(mumState.players.left.displayHeight, 280);
   const mumBaseCollisionArea = mumState.players.left.collisionArea;
   assert.ok(
-    Math.abs(mumBaseCollisionArea / mumState.players.right.collisionArea - 1.44) < 0.01,
-    `Mum's 120% artwork must use a 120% collider so the ball cannot pass through her head; ${JSON.stringify({ mum: mumBaseCollisionArea, rival: mumState.players.right.collisionArea })}`,
+    Math.abs(mumBaseCollisionArea / mumState.players.right.collisionArea - 1) < 0.01,
+    `Mum must share the standard collider footprint with Joel; ${JSON.stringify({ mum: mumBaseCollisionArea, rival: mumState.players.right.collisionArea })}`,
+  );
+  assert.ok(
+    mumState.players.left.collisionTopY <= 416,
+    `Mum's fixed head collider must reach her idle hairline; got ${mumState.players.left.collisionTopY}`,
   );
   assert.ok(Math.abs(mumState.players.left.visualGroundAnchorY - 636) < 0.2);
   await capture(mumPage, `${output}/04-mum-idle-right.png`);
@@ -3480,8 +3515,8 @@ try {
   });
   mumState = await readState(mumPage);
   assert.ok(
-    [6, 7, 8].includes(mumState.players.left.visualFrame),
-    `Mum should use her complete enhanced run cycle; ${JSON.stringify(mumState.players.left)}`,
+    [3, 4, 5, 6, 7, 8].includes(mumState.players.left.visualFrame),
+    `Mum should use her roster-v2 run cycle; ${JSON.stringify(mumState.players.left)}`,
   );
   await capture(mumPage, `${output}/04-mum-run.png`);
   await mumPage.evaluate(() => {
@@ -3506,7 +3541,7 @@ try {
     fighter.updatePose();
   });
   mumState = await readState(mumPage);
-  assert.equal(mumState.players.left.visualFrame, 2);
+  assert.equal(mumState.players.left.visualFrame, 13);
   assert.equal(mumState.players.left.pose, 'jump');
   await capture(mumPage, `${output}/04-mum-jump.png`);
   await advance(mumPage, 1100);
@@ -3548,7 +3583,7 @@ try {
   });
   assert.deepEqual(
     [(await readState(mumPage)).players.left.visualFrame, (await readState(mumPage)).players.left.animationStage],
-    [11, 'recovery'],
+    [12, 'recovery'],
   );
   assert.ok(Math.abs((await readState(mumPage)).players.left.visualGroundAnchorY - 636) < 0.2);
   await capture(mumPage, `${output}/04-mum-kick-recovery.png`);
@@ -3561,7 +3596,8 @@ try {
     fighter.updatePose();
   });
   mumState = await readState(mumPage);
-  assert.equal(mumState.players.left.visualFrame, 4);
+  // roster-v2 sprint: the run's two opposite full strides (cells 3 and 6).
+  assert.ok([3, 6].includes(mumState.players.left.visualFrame), `Mum dash frame ${mumState.players.left.visualFrame}`);
   assert.equal(mumState.players.left.pose, 'dash');
   await capture(mumPage, `${output}/04-mum-dash.png`);
 
@@ -3572,7 +3608,8 @@ try {
     fighter.updatePose();
   });
   mumState = await readState(mumPage);
-  assert.equal(mumState.players.left.visualFrame, 5);
+  // roster-v2 hit reaction: impact 14, stagger 15, recover 16.
+  assert.ok([14, 15, 16].includes(mumState.players.left.visualFrame), `Mum stun frame ${mumState.players.left.visualFrame}`);
   assert.equal(mumState.players.left.pose, 'stun');
   await capture(mumPage, `${output}/04-mum-stun.png`);
 
@@ -3583,12 +3620,15 @@ try {
     fighter.chilenaElapsed = 0.16;
     fighter.setFacing(-fighter.baseFacing);
     fighter.updatePose();
-    fighter.syncChilenaVisual(95);
   });
   mumState = await readState(mumPage);
   assert.equal(mumState.players.left.chilenaActive, true);
   assert.equal(mumState.players.left.pose, 'chilena');
-  assert.ok(mumState.players.left.chilenaRotation > 90);
+  // Framed chilena (roster-v2): the drawings (cells 17-19) carry the body
+  // orientation, so the artwork is not spun.
+  assert.equal(mumState.players.left.chilenaFramed, true);
+  assert.ok([17, 18, 19].includes(mumState.players.left.visualFrame), `Mum chilena frame ${mumState.players.left.visualFrame}`);
+  assert.equal(mumState.players.left.chilenaRotation, 0);
   await capture(mumPage, `${output}/04-mum-chilena.png`);
 
   await mumPage.evaluate(() => {
@@ -3626,32 +3666,32 @@ try {
   await advance(mumPage, 120);
   mumState = await readState(mumPage);
   assert.equal(mumState.selectedCharacter.id, 'mum');
-  assert.equal(mumState.player.visualScale, 1.2);
-  assert.equal(mumState.player.collisionProfile, 'mum-large');
-  assert.equal(mumState.player.displayHeight, 151.2);
-  assert.ok(Math.abs(mumState.player.collisionWidth - 52.8) < 0.01);
-  assert.ok(Math.abs(mumState.player.collisionHeight - 98.4) < 0.01);
+  assert.equal(mumState.player.visualScale, 1);
+  assert.equal(mumState.player.collisionProfile, 'standard');
+  assert.equal(mumState.player.displayHeight, 126);
+  assert.ok(Math.abs(mumState.player.collisionWidth - 44) < 0.01);
+  assert.ok(Math.abs(mumState.player.collisionHeight - 82) < 0.01);
   assert.ok(Math.abs(mumState.player.platformSurfaceY - mumState.player.visualGroundAnchorY) < 3);
   await capture(mumPage, `${output}/04-mum-kickfall-idle.png`);
   await mumPage.keyboard.down('d');
   await advance(mumPage, 360);
   await mumPage.keyboard.up('d');
   mumState = await readState(mumPage);
-  assert.ok([6, 7, 8].includes(mumState.player.visualFrame));
+  assert.ok([3, 4, 5, 6, 7, 8].includes(mumState.player.visualFrame));
   await capture(mumPage, `${output}/04-mum-kickfall-run.png`);
   await mumPage.keyboard.down('Space');
   await advance(mumPage, 34);
   await mumPage.keyboard.up('Space');
   await advance(mumPage, 70);
   mumState = await readState(mumPage);
-  assert.equal(mumState.player.visualFrame, 2);
+  assert.equal(mumState.player.visualFrame, 13);
   assert.equal(mumState.player.animationPose, 'jump');
   await capture(mumPage, `${output}/04-mum-kickfall-jump.png`);
   await advance(mumPage, 900);
   await mumPage.evaluate(() => window.__SKYHEAD_GAME__.scene.getScene('Kickfall').startKick());
   await advance(mumPage, 70);
   mumState = await readState(mumPage);
-  assert.ok([9, 10, 11].includes(mumState.player.visualFrame));
+  assert.ok([9, 10, 11, 12].includes(mumState.player.visualFrame));
   assert.ok(Math.abs(mumState.player.platformSurfaceY - mumState.player.visualGroundAnchorY) < 0.2);
   await capture(mumPage, `${output}/04-mum-kickfall-kick.png`);
   assert.deepEqual(mumErrors, [], `Mum browser emitted errors:\n${mumErrors.join('\n')}`);
@@ -3704,7 +3744,7 @@ try {
     fighter.updatePose();
   });
   juanjoState = await readState(juanjoPage);
-  assert.ok([6, 7, 8].includes(juanjoState.players.left.visualFrame), 'backpedaling should use a complete enhanced run frame');
+  assert.ok([3, 4, 5, 6, 7, 8].includes(juanjoState.players.left.visualFrame), 'backpedaling should use a roster-v2 run frame');
   assert.equal(juanjoState.players.left.visualFlipped, false, 'Juanjo should keep facing the opponent while retreating');
   await capture(juanjoPage, `${output}/04-juanjo-retreat.png`);
   await juanjoPage.evaluate(() => window.__SKYHEAD_GAME__.scene.getScene('Match').scene.resume());
@@ -3716,7 +3756,7 @@ try {
     fighter.updatePose();
   });
   juanjoState = await readState(juanjoPage);
-  assert.equal(juanjoState.players.left.visualFrame, 2, 'Juanjo should use the size-corrected jump frame while airborne');
+  assert.equal(juanjoState.players.left.visualFrame, 13, 'Juanjo should use the roster-v2 jump drawing while airborne');
   assert.equal(juanjoState.players.left.pose, 'jump');
   await capture(juanjoPage, `${output}/04-juanjo-jump.png`);
   await juanjoPage.evaluate(() => window.__SKYHEAD_GAME__.scene.getScene('Match').scene.pause());
@@ -3749,7 +3789,7 @@ try {
     fighter.updatePose();
   });
   juanjoState = await readState(juanjoPage);
-  assert.deepEqual([juanjoState.players.left.visualFrame, juanjoState.players.left.animationStage], [11, 'recovery']);
+  assert.deepEqual([juanjoState.players.left.visualFrame, juanjoState.players.left.animationStage], [12, 'recovery']);
   await capture(juanjoPage, `${output}/04-juanjo-kick-recovery.png`);
   assert.deepEqual(juanjoErrors, [], `Uncle Juanjo browser emitted errors:\n${juanjoErrors.join('\n')}`);
   await juanjoContext.close();

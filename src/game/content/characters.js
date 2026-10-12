@@ -20,7 +20,7 @@ export const CHARACTERS = Object.freeze([
     portraitTexture: 'joel',
     sheetTexture: 'joel-sheet',
     portraitAsset: 'player-joel-portrait.png',
-    sheetAsset: 'player-joel-sheet-v2.webp',
+    sheetAsset: 'player-joel-sheet-v3.webp',
     // Sprite redo: 24-frame roster-v2 atlas, strict side view facing right.
     atlasLayout: 'roster-v2',
     nativeFacing: 1,
@@ -40,7 +40,7 @@ export const CHARACTERS = Object.freeze([
     portraitTexture: 'bob',
     sheetTexture: 'bob-sheet',
     portraitAsset: 'player-bob-portrait.png',
-    sheetAsset: 'player-bob-sheet-v3.webp',
+    sheetAsset: 'player-bob-sheet-v4.webp',
     // Sprite-redo pilot: 24-frame roster-v2 atlas, strict side view facing right.
     atlasLayout: 'roster-v2',
     nativeFacing: 1,
@@ -61,7 +61,7 @@ export const CHARACTERS = Object.freeze([
     portraitTexture: 'lucia',
     sheetTexture: 'lucia-sheet',
     portraitAsset: 'player-lucia-portrait.png',
-    sheetAsset: 'player-lucia-sheet-v3.webp',
+    sheetAsset: 'player-lucia-sheet-v4.webp',
     atlasLayout: 'roster-v2',
     nativeFacing: 1,
     accent: 0x5ff3e2,
@@ -78,7 +78,7 @@ export const CHARACTERS = Object.freeze([
     portraitTexture: 'luna',
     sheetTexture: 'luna-sheet',
     portraitAsset: 'player-luna-portrait.png',
-    sheetAsset: 'player-luna-sheet-v3.webp',
+    sheetAsset: 'player-luna-sheet-v4.webp',
     atlasLayout: 'roster-v2',
     nativeFacing: 1,
     accent: 0xc79aff,
@@ -96,10 +96,12 @@ export const CHARACTERS = Object.freeze([
     portraitTexture: 'juan',
     sheetTexture: 'juan-sheet',
     portraitAsset: 'player-juan-portrait.png',
-    sheetAsset: 'player-juan-sheet-v3.webp',
+    sheetAsset: 'player-juan-sheet-v4.webp',
+    atlasLayout: 'roster-v2',
     nativeFacing: 1,
     accent: 0x55e0d0,
-    kickReach: 83,
+    kickReach: 93,
+    chilenaContact: Object.freeze({ x: 237, y: 112 }),
     stats: Object.freeze({ speed: 0.98, jump: 1, kick: 1.06, dash: 0.98, power: 1.08 }),
   }),
   Object.freeze({
@@ -111,17 +113,13 @@ export const CHARACTERS = Object.freeze([
     portraitTexture: 'dad',
     sheetTexture: 'dad-sheet',
     portraitAsset: 'player-dad-portrait.png',
-    sheetAsset: 'player-dad-sheet-v1.webp',
+    sheetAsset: 'player-dad-sheet-v2.webp',
+    // Standard adult size (owner decision 2026-10-08): no visual scale-up.
+    atlasLayout: 'roster-v2',
     nativeFacing: 1,
     accent: 0xffc43d,
-    kickReach: 106,
-    visualScale: 1.2,
-    collisionProfile: 'dad-large',
-    // The wide action poses were shrunk by the atlas margin enforcer (heads
-    // read ~20% small); restore their presence at display time. Kick frames
-    // and the chilena drawing (3) are the worst. The jump drawing (2) is
-    // oversized instead, so it is pulled down the other way.
-    frameScales: Object.freeze({ 2: 0.92, 3: 1.12, 9: 1.1, 10: 1.15, 11: 1.18 }),
+    kickReach: 93,
+    chilenaContact: Object.freeze({ x: 221, y: 103 }),
     stats: Object.freeze({ speed: 0.98, jump: 0.98, kick: 1.04, dash: 0.98, power: 1.08 }),
   }),
   Object.freeze({
@@ -133,14 +131,13 @@ export const CHARACTERS = Object.freeze([
     portraitTexture: 'mum',
     sheetTexture: 'mum-sheet',
     portraitAsset: 'player-mum-portrait.png',
-    sheetAsset: 'player-mum-sheet-v1.webp',
+    sheetAsset: 'player-mum-sheet-v2.webp',
+    // Standard adult size (owner decision 2026-10-08): no visual scale-up.
+    atlasLayout: 'roster-v2',
     nativeFacing: 1,
     accent: 0x6ca8ff,
-    kickReach: 100,
-    visualScale: 1.2,
-    collisionProfile: 'mum-large',
-    // Milder version of Dad's issue: kick and jump frames read slightly small.
-    frameScales: Object.freeze({ 2: 1.08, 3: 1.1, 9: 1.08, 10: 1.08, 11: 1.1 }),
+    kickReach: 93,
+    chilenaContact: Object.freeze({ x: 220, y: 70 }),
     stats: Object.freeze({ speed: 1.02, jump: 1.04, kick: 1.02, dash: 1.04, power: 1.04 }),
   }),
   Object.freeze({
@@ -152,10 +149,12 @@ export const CHARACTERS = Object.freeze([
     portraitTexture: 'juanjo',
     sheetTexture: 'juanjo-sheet',
     portraitAsset: 'player-juanjo-portrait.png',
-    sheetAsset: 'player-juanjo-sheet-v1.webp',
+    sheetAsset: 'player-juanjo-sheet-v2.webp',
+    atlasLayout: 'roster-v2',
     nativeFacing: 1,
     accent: 0xff8298,
-    kickReach: 88,
+    kickReach: 93,
+    chilenaContact: Object.freeze({ x: 202, y: 87 }),
     stats: Object.freeze({ speed: 1.02, jump: 0.98, kick: 1.04, dash: 1.04, power: 1.06 }),
   }),
 ]);

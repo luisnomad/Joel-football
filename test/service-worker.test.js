@@ -16,7 +16,7 @@ describe('service worker caching', () => {
       delete: vi.fn(async () => true),
     };
     const self = {
-      location: { origin: 'https://game.test', href: 'https://game.test/sw.js?v=11' },
+      location: { origin: 'https://game.test', href: 'https://game.test/sw.js?v=12' },
       addEventListener: (name, listener) => listeners.set(name, listener),
       skipWaiting: vi.fn(),
       clients: { claim: vi.fn(async () => {}) },
@@ -54,7 +54,7 @@ describe('service worker caching', () => {
       delete: vi.fn(async () => true),
     };
     const self = {
-      location: { origin: 'https://game.test', href: 'https://game.test/sw.js?v=11' },
+      location: { origin: 'https://game.test', href: 'https://game.test/sw.js?v=12' },
       addEventListener: (name, listener) => listeners.set(name, listener),
       skipWaiting: vi.fn(),
       clients: { claim: vi.fn(async () => {}) },

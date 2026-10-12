@@ -2719,19 +2719,19 @@
         "mask_video": "/app/sprite_studio/uploads/masks/bob_jump_mask.mp4",
         "prefix": "bob_jump"
       },
-      "job_id": "8ebfbd59c4ee",
+      "job_id": "e06aa4e6d3ad",
       "verify": {
         "ok": false,
         "lines": [
           "grid      : 1 cells (1x1 of 182x378) sheet 182x378",
           "I1 straight alpha      failed cells: 0",
           "I2 no backdrop leak    failed cells: 0  (0 px opaque reachable-black)",
-          "I4 subject intact      failed cells: 1  (32333 of 67674 bright px lost, largest hole 32333 px; tolerance 24 px / 0.50%)",
-          "I5 key spill on the rim   failed cells: 1  (298 px whose G channel dominates within 6 px of the edge or at partial alpha, 298 of them opaque)",
+          "I4 subject intact      failed cells: 1  (32564 of 67674 bright px lost, largest hole 32333 px; tolerance 24 px / 0.50%)",
+          "I5 key spill on the rim   failed cells: 1  (326 px whose G channel dominates within 6 px of the edge or at partial alpha, 326 of them opaque)",
           "faint fringe (informational, alpha<200): 0 px",
           "",
-          "SPILL  cell 0: 298 px of the key's own channel left on the rim within 6 px of the edge, e.g. (4,126)",
-          "ERODED  cell 0: 32333 bright px lost alpha (largest hole 32333 px, 47.778% of the subject)"
+          "SPILL  cell 0: 326 px of the key's own channel left on the rim within 6 px of the edge, e.g. (4,126)",
+          "ERODED  cell 0: 32564 bright px lost alpha (largest hole 32333 px, 48.119% of the subject)"
         ]
       },
       "files": [
@@ -2751,7 +2751,7 @@
           "file": "source-assets/sprite-pipeline/bob/jump/studio/frames"
         }
       ],
-      "generated": "2026-10-08T15:24:24+02:00"
+      "generated": "2026-10-10T21:56:16+02:00"
     },
     "bob_dash": {
       "id": "bob_dash",
@@ -2917,7 +2917,7 @@
         "mask_video": "/app/sprite_studio/uploads/masks/bob_chilena_mask.mp4",
         "prefix": "bob_chilena"
       },
-      "job_id": "7ef778fcd3eb",
+      "job_id": "03fec540124b",
       "verify": {
         "ok": false,
         "lines": [
@@ -2953,7 +2953,7 @@
           "file": "source-assets/sprite-pipeline/bob/chilena/studio/frames"
         }
       ],
-      "generated": "2026-10-08T15:24:37+02:00"
+      "generated": "2026-10-10T21:56:25+02:00"
     },
     "bob_pose_sprint_b_gpt_v1": {
       "id": "bob_pose_sprint_b_gpt_v1",
@@ -3314,23 +3314,23 @@
         "mask_video": "/app/sprite_studio/uploads/masks/bob_hit_mask.mp4",
         "prefix": "bob_hit"
       },
-      "job_id": "08833081823c",
+      "job_id": "18aa29d3de96",
       "verify": {
         "ok": false,
         "lines": [
           "grid      : 3 cells (3x1 of 264x442) sheet 792x442",
           "I1 straight alpha      failed cells: 0",
           "I2 no backdrop leak    failed cells: 0  (0 px opaque reachable-black)",
-          "I4 subject intact      failed cells: 3  (225058 of 346286 bright px lost, largest hole 75625 px; tolerance 24 px / 0.50%)",
-          "I5 key spill on the rim   failed cells: 3  (1199 px whose G channel dominates within 6 px of the edge or at partial alpha, 1199 of them opaque)",
+          "I4 subject intact      failed cells: 3  (226530 of 346286 bright px lost, largest hole 75625 px; tolerance 24 px / 0.50%)",
+          "I5 key spill on the rim   failed cells: 3  (1324 px whose G channel dominates within 6 px of the edge or at partial alpha, 1324 of them opaque)",
           "faint fringe (informational, alpha<200): 0 px",
           "",
-          "SPILL  cell 0: 416 px of the key's own channel left on the rim within 6 px of the edge, e.g. (20,100)",
-          "ERODED  cell 0: 75063 bright px lost alpha (largest hole 75063 px, 64.988% of the subject)",
-          "SPILL  cell 1: 419 px of the key's own channel left on the rim within 6 px of the edge, e.g. (4,154)",
-          "ERODED  cell 1: 74370 bright px lost alpha (largest hole 74370 px, 64.460% of the subject)",
-          "SPILL  cell 2: 364 px of the key's own channel left on the rim within 6 px of the edge, e.g. (18,193)",
-          "ERODED  cell 2: 75625 bright px lost alpha (largest hole 75625 px, 65.528% of the subject)"
+          "SPILL  cell 0: 456 px of the key's own channel left on the rim within 6 px of the edge, e.g. (20,100)",
+          "ERODED  cell 0: 75300 bright px lost alpha (largest hole 75063 px, 65.193% of the subject)",
+          "SPILL  cell 1: 456 px of the key's own channel left on the rim within 6 px of the edge, e.g. (4,154)",
+          "ERODED  cell 1: 74593 bright px lost alpha (largest hole 74370 px, 64.653% of the subject)",
+          "SPILL  cell 2: 412 px of the key's own channel left on the rim within 6 px of the edge, e.g. (18,193)",
+          "ERODED  cell 2: 76637 bright px lost alpha (largest hole 75625 px, 66.405% of the subject)"
         ]
       },
       "files": [
@@ -3350,7 +3350,7 @@
           "file": "source-assets/sprite-pipeline/bob/hit/studio/frames"
         }
       ],
-      "generated": "2026-10-08T16:26:34+02:00"
+      "generated": "2026-10-10T21:56:20+02:00"
     },
     "pv_joel_run_h3cloud": {
       "id": "pv_joel_run_h3cloud",
@@ -4339,7 +4339,7 @@
         "mask_video": "/app/sprite_studio/uploads/masks/joel_jump_mask.mp4",
         "prefix": "joel_jump"
       },
-      "job_id": "ee09dd1c8832",
+      "job_id": "0f7cb1a8ccee",
       "verify": {
         "ok": false,
         "lines": [
@@ -4371,7 +4371,7 @@
           "file": "source-assets/sprite-pipeline/joel/jump/studio/joel_jump_sheet.png"
         }
       ],
-      "generated": "2026-10-08T17:48:58+02:00"
+      "generated": "2026-10-10T21:56:29+02:00"
     },
     "joel_hit": {
       "id": "joel_hit",
@@ -4405,21 +4405,21 @@
         "mask_video": "/app/sprite_studio/uploads/masks/joel_hit_mask.mp4",
         "prefix": "joel_hit"
       },
-      "job_id": "6230b4fbba09",
+      "job_id": "e08de82dc57c",
       "verify": {
         "ok": false,
         "lines": [
           "grid      : 3 cells (3x1 of 252x418) sheet 756x418",
           "I1 straight alpha      failed cells: 0",
           "I2 no backdrop leak    failed cells: 0  (0 px opaque reachable-black)",
-          "I4 subject intact      failed cells: 3  (206515 of 311793 bright px lost, largest hole 69404 px; tolerance 24 px / 0.50%)",
-          "I5 key spill on the rim   failed cells: 3  (2745 px whose G channel dominates within 6 px of the edge or at partial alpha, 2745 of them opaque)",
+          "I4 subject intact      failed cells: 3  (206663 of 311793 bright px lost, largest hole 69404 px; tolerance 24 px / 0.50%)",
+          "I5 key spill on the rim   failed cells: 3  (2763 px whose G channel dominates within 6 px of the edge or at partial alpha, 2763 of them opaque)",
           "faint fringe (informational, alpha<200): 0 px",
           "",
           "SPILL  cell 0: 883 px of the key's own channel left on the rim within 6 px of the edge, e.g. (27,78)",
           "ERODED  cell 0: 68508 bright px lost alpha (largest hole 68508 px, 65.667% of the subject)",
-          "SPILL  cell 1: 965 px of the key's own channel left on the rim within 6 px of the edge, e.g. (18,128)",
-          "ERODED  cell 1: 68603 bright px lost alpha (largest hole 68603 px, 66.072% of the subject)",
+          "SPILL  cell 1: 983 px of the key's own channel left on the rim within 6 px of the edge, e.g. (18,128)",
+          "ERODED  cell 1: 68751 bright px lost alpha (largest hole 68603 px, 66.215% of the subject)",
           "SPILL  cell 2: 897 px of the key's own channel left on the rim within 6 px of the edge, e.g. (4,125)",
           "ERODED  cell 2: 69404 bright px lost alpha (largest hole 69404 px, 66.968% of the subject)"
         ]
@@ -4441,7 +4441,7 @@
           "file": "source-assets/sprite-pipeline/joel/hit/studio/joel_hit_sheet.png"
         }
       ],
-      "generated": "2026-10-08T17:49:03+02:00"
+      "generated": "2026-10-10T21:56:34+02:00"
     },
     "joel_chilena": {
       "id": "joel_chilena",
@@ -4475,7 +4475,7 @@
         "mask_video": "/app/sprite_studio/uploads/masks/joel_chilena_mask.mp4",
         "prefix": "joel_chilena"
       },
-      "job_id": "4293334d71d1",
+      "job_id": "ad43010e3d62",
       "verify": {
         "ok": false,
         "lines": [
@@ -4511,7 +4511,7 @@
           "file": "source-assets/sprite-pipeline/joel/chilena/studio/joel_chilena_sheet.png"
         }
       ],
-      "generated": "2026-10-08T17:49:08+02:00"
+      "generated": "2026-10-10T21:56:38+02:00"
     },
     "luna_pose_chilena_c3_gpt_v1": {
       "id": "luna_pose_chilena_c3_gpt_v1",
@@ -5479,7 +5479,7 @@
         "mask_video": "/app/sprite_studio/uploads/masks/luna_jump_mask.mp4",
         "prefix": "luna_jump"
       },
-      "job_id": "2ec440d35f3d",
+      "job_id": "9176a215874b",
       "verify": {
         "ok": false,
         "lines": [
@@ -5510,7 +5510,7 @@
           "file": "source-assets/sprite-pipeline/luna/jump/studio/luna_jump_sheet.png"
         }
       ],
-      "generated": "2026-10-08T18:01:03+02:00"
+      "generated": "2026-10-10T21:56:43+02:00"
     },
     "p4_lucia_idle_h3": {
       "id": "p4_lucia_idle_h3",
@@ -5570,19 +5570,19 @@
         "mask_video": "/app/sprite_studio/uploads/masks/luna_hit_mask.mp4",
         "prefix": "luna_hit"
       },
-      "job_id": "f062c12ee841",
+      "job_id": "1a80ab87d2a6",
       "verify": {
         "ok": false,
         "lines": [
           "grid      : 3 cells (3x1 of 266x424) sheet 798x424",
           "I1 straight alpha      failed cells: 0",
           "I2 no backdrop leak    failed cells: 0  (0 px opaque reachable-black)",
-          "I4 subject intact      failed cells: 3  (213045 of 329182 bright px lost, largest hole 71777 px; tolerance 24 px / 0.50%)",
+          "I4 subject intact      failed cells: 3  (213971 of 329171 bright px lost, largest hole 71777 px; tolerance 24 px / 0.50%)",
           "I5 key spill on the rim   failed cells: 0  (0 px whose G channel dominates within 6 px of the edge or at partial alpha, 0 of them opaque)",
           "faint fringe (informational, alpha<200): 0 px",
           "",
-          "ERODED  cell 0: 71777 bright px lost alpha (largest hole 71777 px, 65.105% of the subject)",
-          "ERODED  cell 1: 69961 bright px lost alpha (largest hole 69961 px, 63.916% of the subject)",
+          "ERODED  cell 0: 71932 bright px lost alpha (largest hole 71777 px, 65.250% of the subject)",
+          "ERODED  cell 1: 70732 bright px lost alpha (largest hole 69961 px, 64.622% of the subject)",
           "ERODED  cell 2: 71307 bright px lost alpha (largest hole 71307 px, 65.135% of the subject)"
         ]
       },
@@ -5603,7 +5603,7 @@
           "file": "source-assets/sprite-pipeline/luna/hit/studio/luna_hit_sheet.png"
         }
       ],
-      "generated": "2026-10-08T18:01:07+02:00"
+      "generated": "2026-10-10T21:56:47+02:00"
     },
     "luna_chilena": {
       "id": "luna_chilena",
@@ -5637,7 +5637,7 @@
         "mask_video": "/app/sprite_studio/uploads/masks/luna_chilena_mask.mp4",
         "prefix": "luna_chilena"
       },
-      "job_id": "50f49fbf0383",
+      "job_id": "0f83a8739f9b",
       "verify": {
         "ok": false,
         "lines": [
@@ -5670,7 +5670,7 @@
           "file": "source-assets/sprite-pipeline/luna/chilena/studio/luna_chilena_sheet.png"
         }
       ],
-      "generated": "2026-10-08T18:01:12+02:00"
+      "generated": "2026-10-10T21:56:52+02:00"
     },
     "juan_pose_stun_gpt_v1": {
       "id": "juan_pose_stun_gpt_v1",
@@ -6408,7 +6408,7 @@
         "mask_video": "/app/sprite_studio/uploads/masks/lucia_jump_mask.mp4",
         "prefix": "lucia_jump"
       },
-      "job_id": "981f49cd4a5a",
+      "job_id": "48313b5f2ea3",
       "verify": {
         "ok": false,
         "lines": [
@@ -6440,7 +6440,7 @@
           "file": "source-assets/sprite-pipeline/lucia/jump/studio/lucia_jump_sheet.png"
         }
       ],
-      "generated": "2026-10-08T18:08:05+02:00"
+      "generated": "2026-10-10T21:56:57+02:00"
     },
     "lucia_hit": {
       "id": "lucia_hit",
@@ -6474,22 +6474,22 @@
         "mask_video": "/app/sprite_studio/uploads/masks/lucia_hit_mask.mp4",
         "prefix": "lucia_hit"
       },
-      "job_id": "720ac6a47d81",
+      "job_id": "1a202d533315",
       "verify": {
         "ok": false,
         "lines": [
           "grid      : 3 cells (3x1 of 242x456) sheet 726x456",
           "I1 straight alpha      failed cells: 0",
           "I2 no backdrop leak    failed cells: 0  (0 px opaque reachable-black)",
-          "I4 subject intact      failed cells: 3  (199349 of 313759 bright px lost, largest hole 67466 px; tolerance 24 px / 0.50%)",
-          "I5 key spill on the rim   failed cells: 2  (2640 px whose G channel dominates within 6 px of the edge or at partial alpha, 2640 of them opaque)",
+          "I4 subject intact      failed cells: 3  (201880 of 313747 bright px lost, largest hole 67466 px; tolerance 24 px / 0.50%)",
+          "I5 key spill on the rim   failed cells: 2  (3173 px whose G channel dominates within 6 px of the edge or at partial alpha, 3173 of them opaque)",
           "faint fringe (informational, alpha<200): 0 px",
           "",
-          "ERODED  cell 0: 65152 bright px lost alpha (largest hole 65148 px, 62.731% of the subject)",
-          "SPILL  cell 1: 1588 px of the key's own channel left on the rim within 6 px of the edge, e.g. (28,109)",
-          "ERODED  cell 1: 67467 bright px lost alpha (largest hole 67466 px, 64.759% of the subject)",
-          "SPILL  cell 2: 1052 px of the key's own channel left on the rim within 6 px of the edge, e.g. (4,109)",
-          "ERODED  cell 2: 66730 bright px lost alpha (largest hole 66730 px, 63.121% of the subject)"
+          "ERODED  cell 0: 66006 bright px lost alpha (largest hole 65148 px, 63.561% of the subject)",
+          "SPILL  cell 1: 1910 px of the key's own channel left on the rim within 6 px of the edge, e.g. (28,109)",
+          "ERODED  cell 1: 68033 bright px lost alpha (largest hole 67466 px, 65.302% of the subject)",
+          "SPILL  cell 2: 1263 px of the key's own channel left on the rim within 6 px of the edge, e.g. (4,109)",
+          "ERODED  cell 2: 67841 bright px lost alpha (largest hole 66730 px, 64.172% of the subject)"
         ]
       },
       "files": [
@@ -6509,7 +6509,7 @@
           "file": "source-assets/sprite-pipeline/lucia/hit/studio/lucia_hit_sheet.png"
         }
       ],
-      "generated": "2026-10-08T18:08:10+02:00"
+      "generated": "2026-10-10T21:57:01+02:00"
     },
     "lucia_chilena": {
       "id": "lucia_chilena",
@@ -6543,7 +6543,7 @@
         "mask_video": "/app/sprite_studio/uploads/masks/lucia_chilena_mask.mp4",
         "prefix": "lucia_chilena"
       },
-      "job_id": "8a9b93848906",
+      "job_id": "0a0f01f3605f",
       "verify": {
         "ok": false,
         "lines": [
@@ -6579,7 +6579,7 @@
           "file": "source-assets/sprite-pipeline/lucia/chilena/studio/lucia_chilena_sheet.png"
         }
       ],
-      "generated": "2026-10-08T18:08:14+02:00"
+      "generated": "2026-10-10T21:57:06+02:00"
     },
     "juanjo_pose_stun_gpt_v1": {
       "id": "juanjo_pose_stun_gpt_v1",
@@ -7046,20 +7046,20 @@
         "do_verify": true,
         "prefix": "juan_kick"
       },
-      "job_id": "1a7d6605547d",
+      "job_id": "8af6231318f9",
       "verify": {
         "ok": false,
         "lines": [
           "grid      : 43 cells (1x43 of 580x574) sheet 580x24682",
           "I1 straight alpha      failed cells: 0",
           "I2 no backdrop leak    failed cells: 0  (0 px opaque reachable-black)",
-          "I4 subject intact      failed cells: 43  (11175015 of 13682154 bright px lost, largest hole 269992 px; tolerance 24 px / 0.50%)",
+          "I4 subject intact      failed cells: 43  (11175027 of 13682164 bright px lost, largest hole 269996 px; tolerance 24 px / 0.50%)",
           "I5 key spill on the rim   failed cells: 0  (0 px whose G channel dominates within 6 px of the edge or at partial alpha, 0 of them opaque)",
           "faint fringe (informational, alpha<200): 0 px",
           "",
-          "ERODED  cell 0: 264371 bright px lost alpha (largest hole 262571 px, 82.525% of the subject)",
-          "ERODED  cell 1: 264964 bright px lost alpha (largest hole 263211 px, 82.788% of the subject)",
-          "ERODED  cell 2: 265264 bright px lost alpha (largest hole 262718 px, 82.933% of the subject)",
+          "ERODED  cell 0: 264370 bright px lost alpha (largest hole 262570 px, 82.525% of the subject)",
+          "ERODED  cell 1: 264962 bright px lost alpha (largest hole 263209 px, 82.788% of the subject)",
+          "ERODED  cell 2: 265265 bright px lost alpha (largest hole 262720 px, 82.933% of the subject)",
           "ERODED  cell 3: 264827 bright px lost alpha (largest hole 264827 px, 82.881% of the subject)",
           "ERODED  cell 4: 264153 bright px lost alpha (largest hole 264153 px, 82.744% of the subject)"
         ]
@@ -7081,7 +7081,7 @@
           "file": "source-assets/sprite-pipeline/juan/kick/studio/juan_kick_sheet.png"
         }
       ],
-      "generated": "2026-10-08T18:13:46+02:00"
+      "generated": "2026-10-10T21:51:08+02:00"
     },
     "dad_pose_jump_gpt_v1": {
       "id": "dad_pose_jump_gpt_v1",
@@ -8714,6 +8714,1754 @@
         }
       ],
       "generated": "2026-10-08T22:19:46+02:00"
+    },
+    "juan_celebrate": {
+      "id": "juan_celebrate",
+      "phase": "4",
+      "status": "presented",
+      "tool": "tostai-sprite-studio",
+      "source_clip": "source-assets/sprite-pipeline/juan/celebrate/celebrate_trim.mp4",
+      "mask": null,
+      "cfg": {
+        "do_matte": true,
+        "do_key": true,
+        "key_color": "#00DD01",
+        "key_tol": 64,
+        "key_also_connected": false,
+        "start": 1,
+        "end": 0,
+        "frame_step": 1,
+        "cell_mode": "subject",
+        "pad": 4,
+        "anchor": "bottom-center",
+        "fps": 24,
+        "play_mode": "loop",
+        "want_sheet": true,
+        "want_sidecar": true,
+        "want_preview": true,
+        "want_gif": true,
+        "gif_scale": 0.5,
+        "do_verify": true,
+        "prefix": "juan_celebrate"
+      },
+      "job_id": "38da446670e1",
+      "verify": {
+        "ok": false,
+        "lines": [
+          "grid      : 12 cells (6x2 of 268x644) sheet 1608x1288",
+          "I1 straight alpha      failed cells: 0",
+          "I2 no backdrop leak    failed cells: 0  (0 px opaque reachable-black)",
+          "I4 subject intact      failed cells: 12  (1129887 of 1868789 bright px lost, largest hole 96608 px; tolerance 24 px / 0.50%)",
+          "I5 key spill on the rim   failed cells: 0  (0 px whose G channel dominates within 6 px of the edge or at partial alpha, 0 of them opaque)",
+          "faint fringe (informational, alpha<200): 0 px",
+          "",
+          "ERODED  cell 0: 94737 bright px lost alpha (largest hole 94340 px, 60.968% of the subject)",
+          "ERODED  cell 1: 95148 bright px lost alpha (largest hole 94773 px, 61.247% of the subject)",
+          "ERODED  cell 2: 94736 bright px lost alpha (largest hole 94394 px, 60.859% of the subject)",
+          "ERODED  cell 3: 93093 bright px lost alpha (largest hole 92515 px, 59.978% of the subject)",
+          "ERODED  cell 4: 94139 bright px lost alpha (largest hole 94130 px, 60.049% of the subject)"
+        ]
+      },
+      "files": [
+        {
+          "file": "source-assets/sprite-pipeline/juan/celebrate/studio/frames"
+        },
+        {
+          "file": "source-assets/sprite-pipeline/juan/celebrate/studio/juan_celebrate.json"
+        },
+        {
+          "file": "source-assets/sprite-pipeline/juan/celebrate/studio/juan_celebrate_preview.gif"
+        },
+        {
+          "file": "source-assets/sprite-pipeline/juan/celebrate/studio/juan_celebrate_preview.html"
+        },
+        {
+          "file": "source-assets/sprite-pipeline/juan/celebrate/studio/juan_celebrate_sheet.png"
+        }
+      ],
+      "generated": "2026-10-10T21:49:51+02:00"
+    },
+    "juan_run": {
+      "id": "juan_run",
+      "phase": "4",
+      "status": "presented",
+      "tool": "tostai-sprite-studio",
+      "source_clip": "source-assets/sprite-pipeline/juan/run/run_trim.mp4",
+      "mask": null,
+      "cfg": {
+        "do_matte": true,
+        "do_key": true,
+        "key_color": "#00DD01",
+        "key_tol": 64,
+        "key_also_connected": false,
+        "start": 1,
+        "end": 0,
+        "frame_step": 1,
+        "cell_mode": "subject",
+        "pad": 4,
+        "anchor": "bottom-center",
+        "fps": 24,
+        "play_mode": "loop",
+        "want_sheet": true,
+        "want_sidecar": true,
+        "want_preview": true,
+        "want_gif": true,
+        "gif_scale": 0.5,
+        "do_verify": true,
+        "prefix": "juan_run"
+      },
+      "job_id": "64fc8846b570",
+      "verify": {
+        "ok": false,
+        "lines": [
+          "grid      : 21 cells (7x3 of 458x636) sheet 3206x1908",
+          "I1 straight alpha      failed cells: 0",
+          "I2 no backdrop leak    failed cells: 0  (0 px opaque reachable-black)",
+          "I4 subject intact      failed cells: 21  (4206850 of 5752572 bright px lost, largest hole 212326 px; tolerance 24 px / 0.50%)",
+          "I5 key spill on the rim   failed cells: 0  (0 px whose G channel dominates within 6 px of the edge or at partial alpha, 0 of them opaque)",
+          "faint fringe (informational, alpha<200): 0 px",
+          "",
+          "ERODED  cell 0: 191339 bright px lost alpha (largest hole 191339 px, 70.617% of the subject)",
+          "ERODED  cell 1: 196758 bright px lost alpha (largest hole 195927 px, 72.262% of the subject)",
+          "ERODED  cell 2: 209032 bright px lost alpha (largest hole 209032 px, 75.875% of the subject)",
+          "ERODED  cell 3: 211956 bright px lost alpha (largest hole 211956 px, 76.500% of the subject)",
+          "ERODED  cell 4: 203033 bright px lost alpha (largest hole 202840 px, 73.926% of the subject)"
+        ]
+      },
+      "files": [
+        {
+          "file": "source-assets/sprite-pipeline/juan/run/studio/frames"
+        },
+        {
+          "file": "source-assets/sprite-pipeline/juan/run/studio/juan_run.json"
+        },
+        {
+          "file": "source-assets/sprite-pipeline/juan/run/studio/juan_run_preview.gif"
+        },
+        {
+          "file": "source-assets/sprite-pipeline/juan/run/studio/juan_run_preview.html"
+        },
+        {
+          "file": "source-assets/sprite-pipeline/juan/run/studio/juan_run_sheet.png"
+        }
+      ],
+      "generated": "2026-10-10T21:50:06+02:00"
+    },
+    "juan_jump": {
+      "id": "juan_jump",
+      "phase": "4",
+      "status": "presented",
+      "tool": "tostai-sprite-studio",
+      "source_clip": "source-assets/sprite-pipeline/juan/jump/jump_trim.mp4",
+      "mask": "source-assets/sprite-pipeline/juan/jump/jump_trim_mask.mp4",
+      "cfg": {
+        "do_matte": false,
+        "mask_binary": true,
+        "mask_threshold": 128,
+        "do_key": true,
+        "key_color": "#00DD01",
+        "key_tol": 64,
+        "key_also_connected": false,
+        "start": 1,
+        "end": 0,
+        "frame_step": 1,
+        "cell_mode": "subject",
+        "pad": 4,
+        "anchor": "bottom-center",
+        "fps": 24,
+        "play_mode": "once",
+        "want_sheet": true,
+        "want_sidecar": true,
+        "want_preview": true,
+        "want_gif": true,
+        "gif_scale": 0.5,
+        "do_verify": true,
+        "mask_video": "/app/sprite_studio/uploads/masks/juan_jump_mask.mp4",
+        "prefix": "juan_jump"
+      },
+      "job_id": "61e0e6d9f4a2",
+      "verify": {
+        "ok": false,
+        "lines": [
+          "grid      : 1 cells (1x1 of 208x390) sheet 208x390",
+          "I1 straight alpha      failed cells: 0",
+          "I2 no backdrop leak    failed cells: 0  (0 px opaque reachable-black)",
+          "I4 subject intact      failed cells: 1  (44045 of 78090 bright px lost, largest hole 44045 px; tolerance 24 px / 0.50%)",
+          "I5 key spill on the rim   failed cells: 1  (738 px whose G channel dominates within 6 px of the edge or at partial alpha, 738 of them opaque)",
+          "faint fringe (informational, alpha<200): 0 px",
+          "",
+          "SPILL  cell 0: 738 px of the key's own channel left on the rim within 6 px of the edge, e.g. (4,89)",
+          "ERODED  cell 0: 44045 bright px lost alpha (largest hole 44045 px, 56.403% of the subject)"
+        ]
+      },
+      "files": [
+        {
+          "file": "source-assets/sprite-pipeline/juan/jump/studio/frames"
+        },
+        {
+          "file": "source-assets/sprite-pipeline/juan/jump/studio/juan_jump.json"
+        },
+        {
+          "file": "source-assets/sprite-pipeline/juan/jump/studio/juan_jump_preview.gif"
+        },
+        {
+          "file": "source-assets/sprite-pipeline/juan/jump/studio/juan_jump_preview.html"
+        },
+        {
+          "file": "source-assets/sprite-pipeline/juan/jump/studio/juan_jump_sheet.png"
+        }
+      ],
+      "generated": "2026-10-10T21:57:11+02:00"
+    },
+    "juan_hit": {
+      "id": "juan_hit",
+      "phase": "4",
+      "status": "presented",
+      "tool": "tostai-sprite-studio",
+      "source_clip": "source-assets/sprite-pipeline/juan/hit/hit_trim.mp4",
+      "mask": "source-assets/sprite-pipeline/juan/hit/hit_trim_mask.mp4",
+      "cfg": {
+        "do_matte": false,
+        "mask_binary": true,
+        "mask_threshold": 128,
+        "do_key": true,
+        "key_color": "#00DD01",
+        "key_tol": 64,
+        "key_also_connected": false,
+        "start": 1,
+        "end": 0,
+        "frame_step": 1,
+        "cell_mode": "subject",
+        "pad": 4,
+        "anchor": "bottom-center",
+        "fps": 24,
+        "play_mode": "once",
+        "want_sheet": true,
+        "want_sidecar": true,
+        "want_preview": true,
+        "want_gif": true,
+        "gif_scale": 0.5,
+        "do_verify": true,
+        "mask_video": "/app/sprite_studio/uploads/masks/juan_hit_mask.mp4",
+        "prefix": "juan_hit"
+      },
+      "job_id": "ea5fa1d7bcab",
+      "verify": {
+        "ok": false,
+        "lines": [
+          "grid      : 3 cells (3x1 of 244x436) sheet 732x436",
+          "I1 straight alpha      failed cells: 0",
+          "I2 no backdrop leak    failed cells: 0  (0 px opaque reachable-black)",
+          "I4 subject intact      failed cells: 3  (200646 of 310498 bright px lost, largest hole 66466 px; tolerance 24 px / 0.50%)",
+          "I5 key spill on the rim   failed cells: 3  (3364 px whose G channel dominates within 6 px of the edge or at partial alpha, 3364 of them opaque)",
+          "faint fringe (informational, alpha<200): 0 px",
+          "",
+          "SPILL  cell 0: 1095 px of the key's own channel left on the rim within 6 px of the edge, e.g. (26,73)",
+          "ERODED  cell 0: 67353 bright px lost alpha (largest hole 66429 px, 64.879% of the subject)",
+          "SPILL  cell 1: 1009 px of the key's own channel left on the rim within 6 px of the edge, e.g. (22,105)",
+          "ERODED  cell 1: 66827 bright px lost alpha (largest hole 66106 px, 64.778% of the subject)",
+          "SPILL  cell 2: 1260 px of the key's own channel left on the rim within 6 px of the edge, e.g. (4,131)",
+          "ERODED  cell 2: 66466 bright px lost alpha (largest hole 66466 px, 64.205% of the subject)"
+        ]
+      },
+      "files": [
+        {
+          "file": "source-assets/sprite-pipeline/juan/hit/studio/frames"
+        },
+        {
+          "file": "source-assets/sprite-pipeline/juan/hit/studio/juan_hit.json"
+        },
+        {
+          "file": "source-assets/sprite-pipeline/juan/hit/studio/juan_hit_preview.gif"
+        },
+        {
+          "file": "source-assets/sprite-pipeline/juan/hit/studio/juan_hit_preview.html"
+        },
+        {
+          "file": "source-assets/sprite-pipeline/juan/hit/studio/juan_hit_sheet.png"
+        }
+      ],
+      "generated": "2026-10-10T21:57:15+02:00"
+    },
+    "juan_chilena": {
+      "id": "juan_chilena",
+      "phase": "4",
+      "status": "presented",
+      "tool": "tostai-sprite-studio",
+      "source_clip": "source-assets/sprite-pipeline/juan/chilena/chilena_trim.mp4",
+      "mask": "source-assets/sprite-pipeline/juan/chilena/chilena_trim_mask.mp4",
+      "cfg": {
+        "do_matte": false,
+        "mask_binary": true,
+        "mask_threshold": 128,
+        "do_key": true,
+        "key_color": "#00DD01",
+        "key_tol": 64,
+        "key_also_connected": false,
+        "start": 1,
+        "end": 0,
+        "frame_step": 1,
+        "cell_mode": "subject",
+        "pad": 4,
+        "anchor": "bottom-center",
+        "fps": 24,
+        "play_mode": "once",
+        "want_sheet": true,
+        "want_sidecar": true,
+        "want_preview": true,
+        "want_gif": true,
+        "gif_scale": 0.5,
+        "do_verify": true,
+        "mask_video": "/app/sprite_studio/uploads/masks/juan_chilena_mask.mp4",
+        "prefix": "juan_chilena"
+      },
+      "job_id": "e4454602b498",
+      "verify": {
+        "ok": false,
+        "lines": [
+          "grid      : 3 cells (3x1 of 350x366) sheet 1050x366",
+          "I1 straight alpha      failed cells: 0",
+          "I2 no backdrop leak    failed cells: 0  (0 px opaque reachable-black)",
+          "I4 subject intact      failed cells: 3  (280056 of 376308 bright px lost, largest hole 95436 px; tolerance 24 px / 0.50%)",
+          "I5 key spill on the rim   failed cells: 3  (3194 px whose G channel dominates within 6 px of the edge or at partial alpha, 3194 of them opaque)",
+          "faint fringe (informational, alpha<200): 0 px",
+          "",
+          "SPILL  cell 0: 991 px of the key's own channel left on the rim within 6 px of the edge, e.g. (66,59)",
+          "ERODED  cell 0: 92150 bright px lost alpha (largest hole 92150 px, 73.424% of the subject)",
+          "SPILL  cell 1: 895 px of the key's own channel left on the rim within 6 px of the edge, e.g. (6,247)",
+          "ERODED  cell 1: 92469 bright px lost alpha (largest hole 92469 px, 73.988% of the subject)",
+          "SPILL  cell 2: 1308 px of the key's own channel left on the rim within 6 px of the edge, e.g. (38,103)",
+          "ERODED  cell 2: 95437 bright px lost alpha (largest hole 95436 px, 75.849% of the subject)"
+        ]
+      },
+      "files": [
+        {
+          "file": "source-assets/sprite-pipeline/juan/chilena/studio/frames"
+        },
+        {
+          "file": "source-assets/sprite-pipeline/juan/chilena/studio/juan_chilena.json"
+        },
+        {
+          "file": "source-assets/sprite-pipeline/juan/chilena/studio/juan_chilena_preview.gif"
+        },
+        {
+          "file": "source-assets/sprite-pipeline/juan/chilena/studio/juan_chilena_preview.html"
+        },
+        {
+          "file": "source-assets/sprite-pipeline/juan/chilena/studio/juan_chilena_sheet.png"
+        }
+      ],
+      "generated": "2026-10-10T21:57:20+02:00"
+    },
+    "juanjo_idle": {
+      "id": "juanjo_idle",
+      "phase": "4",
+      "status": "presented",
+      "tool": "tostai-sprite-studio",
+      "source_clip": "source-assets/sprite-pipeline/juanjo/idle/idle_trim.mp4",
+      "mask": null,
+      "cfg": {
+        "do_matte": true,
+        "do_key": true,
+        "key_color": "#00DD01",
+        "key_tol": 64,
+        "key_also_connected": false,
+        "start": 1,
+        "end": 0,
+        "frame_step": 1,
+        "cell_mode": "subject",
+        "pad": 4,
+        "anchor": "bottom-center",
+        "fps": 24,
+        "play_mode": "loop",
+        "want_sheet": true,
+        "want_sidecar": true,
+        "want_preview": true,
+        "want_gif": true,
+        "gif_scale": 0.5,
+        "do_verify": true,
+        "prefix": "juanjo_idle"
+      },
+      "job_id": "1dea1d9403ca",
+      "verify": {
+        "ok": false,
+        "lines": [
+          "grid      : 13 cells (13x1 of 246x594) sheet 3198x594",
+          "I1 straight alpha      failed cells: 0",
+          "I2 no backdrop leak    failed cells: 0  (0 px opaque reachable-black)",
+          "I4 subject intact      failed cells: 13  (829089 of 1379969 bright px lost, largest hole 64948 px; tolerance 24 px / 0.50%)",
+          "I5 key spill on the rim   failed cells: 0  (0 px whose G channel dominates within 6 px of the edge or at partial alpha, 0 of them opaque)",
+          "faint fringe (informational, alpha<200): 0 px",
+          "",
+          "ERODED  cell 0: 64710 bright px lost alpha (largest hole 64696 px, 60.933% of the subject)",
+          "ERODED  cell 1: 64672 bright px lost alpha (largest hole 64664 px, 60.891% of the subject)",
+          "ERODED  cell 2: 64018 bright px lost alpha (largest hole 64018 px, 60.279% of the subject)",
+          "ERODED  cell 3: 63462 bright px lost alpha (largest hole 63462 px, 59.664% of the subject)",
+          "ERODED  cell 4: 63248 bright px lost alpha (largest hole 63248 px, 59.812% of the subject)"
+        ]
+      },
+      "files": [
+        {
+          "file": "source-assets/sprite-pipeline/juanjo/idle/studio/frames"
+        },
+        {
+          "file": "source-assets/sprite-pipeline/juanjo/idle/studio/juanjo_idle.json"
+        },
+        {
+          "file": "source-assets/sprite-pipeline/juanjo/idle/studio/juanjo_idle_preview.gif"
+        },
+        {
+          "file": "source-assets/sprite-pipeline/juanjo/idle/studio/juanjo_idle_preview.html"
+        },
+        {
+          "file": "source-assets/sprite-pipeline/juanjo/idle/studio/juanjo_idle_sheet.png"
+        }
+      ],
+      "generated": "2026-10-10T21:52:01+02:00"
+    },
+    "juanjo_kick": {
+      "id": "juanjo_kick",
+      "phase": "4",
+      "status": "presented",
+      "tool": "tostai-sprite-studio",
+      "source_clip": "source-assets/sprite-pipeline/juanjo/kick/kick_trim.mp4",
+      "mask": null,
+      "cfg": {
+        "do_matte": true,
+        "do_key": true,
+        "key_color": "#00DD01",
+        "key_tol": 64,
+        "key_also_connected": false,
+        "start": 1,
+        "end": 0,
+        "frame_step": 1,
+        "cell_mode": "subject",
+        "pad": 4,
+        "anchor": "bottom-center",
+        "fps": 24,
+        "play_mode": "once",
+        "want_sheet": true,
+        "want_sidecar": true,
+        "want_preview": true,
+        "want_gif": true,
+        "gif_scale": 0.5,
+        "do_verify": true,
+        "prefix": "juanjo_kick"
+      },
+      "job_id": "a44c40438960",
+      "verify": {
+        "ok": false,
+        "lines": [
+          "grid      : 42 cells (7x6 of 590x592) sheet 4130x3552",
+          "I1 straight alpha      failed cells: 0",
+          "I2 no backdrop leak    failed cells: 0  (0 px opaque reachable-black)",
+          "I4 subject intact      failed cells: 42  (11304391 of 13267514 bright px lost, largest hole 277667 px; tolerance 24 px / 0.50%)",
+          "I5 key spill on the rim   failed cells: 0  (0 px whose G channel dominates within 6 px of the edge or at partial alpha, 0 of them opaque)",
+          "faint fringe (informational, alpha<200): 0 px",
+          "",
+          "ERODED  cell 0: 273517 bright px lost alpha (largest hole 273517 px, 86.681% of the subject)",
+          "ERODED  cell 1: 274678 bright px lost alpha (largest hole 274678 px, 86.858% of the subject)",
+          "ERODED  cell 2: 275256 bright px lost alpha (largest hole 275256 px, 87.007% of the subject)",
+          "ERODED  cell 3: 275727 bright px lost alpha (largest hole 275727 px, 87.017% of the subject)",
+          "ERODED  cell 4: 275865 bright px lost alpha (largest hole 275865 px, 87.068% of the subject)"
+        ]
+      },
+      "files": [
+        {
+          "file": "source-assets/sprite-pipeline/juanjo/kick/studio/frames"
+        },
+        {
+          "file": "source-assets/sprite-pipeline/juanjo/kick/studio/juanjo_kick.json"
+        },
+        {
+          "file": "source-assets/sprite-pipeline/juanjo/kick/studio/juanjo_kick_preview.gif"
+        },
+        {
+          "file": "source-assets/sprite-pipeline/juanjo/kick/studio/juanjo_kick_preview.html"
+        },
+        {
+          "file": "source-assets/sprite-pipeline/juanjo/kick/studio/juanjo_kick_sheet.png"
+        }
+      ],
+      "generated": "2026-10-10T21:52:32+02:00"
+    },
+    "juanjo_celebrate": {
+      "id": "juanjo_celebrate",
+      "phase": "4",
+      "status": "presented",
+      "tool": "tostai-sprite-studio",
+      "source_clip": "source-assets/sprite-pipeline/juanjo/celebrate/celebrate_trim.mp4",
+      "mask": null,
+      "cfg": {
+        "do_matte": true,
+        "do_key": true,
+        "key_color": "#00DD01",
+        "key_tol": 64,
+        "key_also_connected": false,
+        "start": 1,
+        "end": 0,
+        "frame_step": 1,
+        "cell_mode": "subject",
+        "pad": 4,
+        "anchor": "bottom-center",
+        "fps": 24,
+        "play_mode": "loop",
+        "want_sheet": true,
+        "want_sidecar": true,
+        "want_preview": true,
+        "want_gif": true,
+        "gif_scale": 0.5,
+        "do_verify": true,
+        "prefix": "juanjo_celebrate"
+      },
+      "job_id": "4edbb38b743f",
+      "verify": {
+        "ok": false,
+        "lines": [
+          "grid      : 11 cells (11x1 of 288x664) sheet 3168x664",
+          "I1 straight alpha      failed cells: 0",
+          "I2 no backdrop leak    failed cells: 0  (0 px opaque reachable-black)",
+          "I4 subject intact      failed cells: 11  (1132014 of 1643104 bright px lost, largest hole 104986 px; tolerance 24 px / 0.50%)",
+          "I5 key spill on the rim   failed cells: 0  (0 px whose G channel dominates within 6 px of the edge or at partial alpha, 0 of them opaque)",
+          "faint fringe (informational, alpha<200): 0 px",
+          "",
+          "ERODED  cell 0: 104233 bright px lost alpha (largest hole 103752 px, 69.828% of the subject)",
+          "ERODED  cell 1: 104440 bright px lost alpha (largest hole 103965 px, 69.890% of the subject)",
+          "ERODED  cell 2: 102796 bright px lost alpha (largest hole 102138 px, 69.252% of the subject)",
+          "ERODED  cell 3: 103365 bright px lost alpha (largest hole 102678 px, 68.798% of the subject)",
+          "ERODED  cell 4: 104880 bright px lost alpha (largest hole 104576 px, 69.265% of the subject)"
+        ]
+      },
+      "files": [
+        {
+          "file": "source-assets/sprite-pipeline/juanjo/celebrate/studio/frames"
+        },
+        {
+          "file": "source-assets/sprite-pipeline/juanjo/celebrate/studio/juanjo_celebrate.json"
+        },
+        {
+          "file": "source-assets/sprite-pipeline/juanjo/celebrate/studio/juanjo_celebrate_preview.gif"
+        },
+        {
+          "file": "source-assets/sprite-pipeline/juanjo/celebrate/studio/juanjo_celebrate_preview.html"
+        },
+        {
+          "file": "source-assets/sprite-pipeline/juanjo/celebrate/studio/juanjo_celebrate_sheet.png"
+        }
+      ],
+      "generated": "2026-10-10T21:52:43+02:00"
+    },
+    "juanjo_run": {
+      "id": "juanjo_run",
+      "phase": "4",
+      "status": "presented",
+      "tool": "tostai-sprite-studio",
+      "source_clip": "source-assets/sprite-pipeline/juanjo/run/run_trim.mp4",
+      "mask": null,
+      "cfg": {
+        "do_matte": true,
+        "do_key": true,
+        "key_color": "#00DD01",
+        "key_tol": 64,
+        "key_also_connected": false,
+        "start": 1,
+        "end": 0,
+        "frame_step": 1,
+        "cell_mode": "subject",
+        "pad": 4,
+        "anchor": "bottom-center",
+        "fps": 24,
+        "play_mode": "loop",
+        "want_sheet": true,
+        "want_sidecar": true,
+        "want_preview": true,
+        "want_gif": true,
+        "gif_scale": 0.5,
+        "do_verify": true,
+        "prefix": "juanjo_run"
+      },
+      "job_id": "53170f8c4a0d",
+      "verify": {
+        "ok": false,
+        "lines": [
+          "grid      : 15 cells (5x3 of 476x656) sheet 2380x1968",
+          "I1 straight alpha      failed cells: 0",
+          "I2 no backdrop leak    failed cells: 0  (0 px opaque reachable-black)",
+          "I4 subject intact      failed cells: 15  (3230313 of 4044064 bright px lost, largest hole 231189 px; tolerance 24 px / 0.50%)",
+          "I5 key spill on the rim   failed cells: 0  (0 px whose G channel dominates within 6 px of the edge or at partial alpha, 0 of them opaque)",
+          "faint fringe (informational, alpha<200): 0 px",
+          "",
+          "ERODED  cell 0: 231189 bright px lost alpha (largest hole 231189 px, 84.032% of the subject)",
+          "ERODED  cell 1: 222241 bright px lost alpha (largest hole 222233 px, 81.569% of the subject)",
+          "ERODED  cell 2: 212611 bright px lost alpha (largest hole 212004 px, 79.070% of the subject)",
+          "ERODED  cell 3: 205411 bright px lost alpha (largest hole 205411 px, 77.366% of the subject)",
+          "ERODED  cell 4: 204573 bright px lost alpha (largest hole 204573 px, 77.526% of the subject)"
+        ]
+      },
+      "files": [
+        {
+          "file": "source-assets/sprite-pipeline/juanjo/run/studio/frames"
+        },
+        {
+          "file": "source-assets/sprite-pipeline/juanjo/run/studio/juanjo_run.json"
+        },
+        {
+          "file": "source-assets/sprite-pipeline/juanjo/run/studio/juanjo_run_preview.gif"
+        },
+        {
+          "file": "source-assets/sprite-pipeline/juanjo/run/studio/juanjo_run_preview.html"
+        },
+        {
+          "file": "source-assets/sprite-pipeline/juanjo/run/studio/juanjo_run_sheet.png"
+        }
+      ],
+      "generated": "2026-10-10T21:52:55+02:00"
+    },
+    "juanjo_jump": {
+      "id": "juanjo_jump",
+      "phase": "4",
+      "status": "presented",
+      "tool": "tostai-sprite-studio",
+      "source_clip": "source-assets/sprite-pipeline/juanjo/jump/jump_trim.mp4",
+      "mask": "source-assets/sprite-pipeline/juanjo/jump/jump_trim_mask.mp4",
+      "cfg": {
+        "do_matte": false,
+        "mask_binary": true,
+        "mask_threshold": 128,
+        "do_key": true,
+        "key_color": "#00DD01",
+        "key_tol": 64,
+        "key_also_connected": false,
+        "start": 1,
+        "end": 0,
+        "frame_step": 1,
+        "cell_mode": "subject",
+        "pad": 4,
+        "anchor": "bottom-center",
+        "fps": 24,
+        "play_mode": "once",
+        "want_sheet": true,
+        "want_sidecar": true,
+        "want_preview": true,
+        "want_gif": true,
+        "gif_scale": 0.5,
+        "do_verify": true,
+        "mask_video": "/app/sprite_studio/uploads/masks/juanjo_jump_mask.mp4",
+        "prefix": "juanjo_jump"
+      },
+      "job_id": "1fa79d93febd",
+      "verify": {
+        "ok": false,
+        "lines": [
+          "grid      : 1 cells (1x1 of 190x376) sheet 190x376",
+          "I1 straight alpha      failed cells: 0",
+          "I2 no backdrop leak    failed cells: 0  (0 px opaque reachable-black)",
+          "I4 subject intact      failed cells: 1  (34407 of 58534 bright px lost, largest hole 34407 px; tolerance 24 px / 0.50%)",
+          "I5 key spill on the rim   failed cells: 1  (687 px whose G channel dominates within 6 px of the edge or at partial alpha, 687 of them opaque)",
+          "faint fringe (informational, alpha<200): 0 px",
+          "",
+          "SPILL  cell 0: 687 px of the key's own channel left on the rim within 6 px of the edge, e.g. (4,157)",
+          "ERODED  cell 0: 34407 bright px lost alpha (largest hole 34407 px, 58.781% of the subject)"
+        ]
+      },
+      "files": [
+        {
+          "file": "source-assets/sprite-pipeline/juanjo/jump/studio/frames"
+        },
+        {
+          "file": "source-assets/sprite-pipeline/juanjo/jump/studio/juanjo_jump.json"
+        },
+        {
+          "file": "source-assets/sprite-pipeline/juanjo/jump/studio/juanjo_jump_preview.gif"
+        },
+        {
+          "file": "source-assets/sprite-pipeline/juanjo/jump/studio/juanjo_jump_preview.html"
+        },
+        {
+          "file": "source-assets/sprite-pipeline/juanjo/jump/studio/juanjo_jump_sheet.png"
+        }
+      ],
+      "generated": "2026-10-10T21:57:24+02:00"
+    },
+    "juanjo_hit": {
+      "id": "juanjo_hit",
+      "phase": "4",
+      "status": "presented",
+      "tool": "tostai-sprite-studio",
+      "source_clip": "source-assets/sprite-pipeline/juanjo/hit/hit_trim.mp4",
+      "mask": "source-assets/sprite-pipeline/juanjo/hit/hit_trim_mask.mp4",
+      "cfg": {
+        "do_matte": false,
+        "mask_binary": true,
+        "mask_threshold": 128,
+        "do_key": true,
+        "key_color": "#00DD01",
+        "key_tol": 64,
+        "key_also_connected": false,
+        "start": 1,
+        "end": 0,
+        "frame_step": 1,
+        "cell_mode": "subject",
+        "pad": 4,
+        "anchor": "bottom-center",
+        "fps": 24,
+        "play_mode": "once",
+        "want_sheet": true,
+        "want_sidecar": true,
+        "want_preview": true,
+        "want_gif": true,
+        "gif_scale": 0.5,
+        "do_verify": true,
+        "mask_video": "/app/sprite_studio/uploads/masks/juanjo_hit_mask.mp4",
+        "prefix": "juanjo_hit"
+      },
+      "job_id": "bf309f9346cf",
+      "verify": {
+        "ok": false,
+        "lines": [
+          "grid      : 3 cells (3x1 of 248x452) sheet 744x452",
+          "I1 straight alpha      failed cells: 0",
+          "I2 no backdrop leak    failed cells: 0  (0 px opaque reachable-black)",
+          "I4 subject intact      failed cells: 3  (204588 of 283669 bright px lost, largest hole 69398 px; tolerance 24 px / 0.50%)",
+          "I5 key spill on the rim   failed cells: 3  (2568 px whose G channel dominates within 6 px of the edge or at partial alpha, 2568 of them opaque)",
+          "faint fringe (informational, alpha<200): 0 px",
+          "",
+          "SPILL  cell 0: 1111 px of the key's own channel left on the rim within 6 px of the edge, e.g. (28,69)",
+          "ERODED  cell 0: 67391 bright px lost alpha (largest hole 67391 px, 72.471% of the subject)",
+          "SPILL  cell 1: 630 px of the key's own channel left on the rim within 6 px of the edge, e.g. (22,129)",
+          "ERODED  cell 1: 69398 bright px lost alpha (largest hole 69398 px, 71.501% of the subject)",
+          "SPILL  cell 2: 827 px of the key's own channel left on the rim within 6 px of the edge, e.g. (4,139)",
+          "ERODED  cell 2: 67799 bright px lost alpha (largest hole 67799 px, 72.419% of the subject)"
+        ]
+      },
+      "files": [
+        {
+          "file": "source-assets/sprite-pipeline/juanjo/hit/studio/frames"
+        },
+        {
+          "file": "source-assets/sprite-pipeline/juanjo/hit/studio/juanjo_hit.json"
+        },
+        {
+          "file": "source-assets/sprite-pipeline/juanjo/hit/studio/juanjo_hit_preview.gif"
+        },
+        {
+          "file": "source-assets/sprite-pipeline/juanjo/hit/studio/juanjo_hit_preview.html"
+        },
+        {
+          "file": "source-assets/sprite-pipeline/juanjo/hit/studio/juanjo_hit_sheet.png"
+        }
+      ],
+      "generated": "2026-10-10T21:57:29+02:00"
+    },
+    "juanjo_chilena": {
+      "id": "juanjo_chilena",
+      "phase": "4",
+      "status": "presented",
+      "tool": "tostai-sprite-studio",
+      "source_clip": "source-assets/sprite-pipeline/juanjo/chilena/chilena_trim.mp4",
+      "mask": "source-assets/sprite-pipeline/juanjo/chilena/chilena_trim_mask.mp4",
+      "cfg": {
+        "do_matte": false,
+        "mask_binary": true,
+        "mask_threshold": 128,
+        "do_key": true,
+        "key_color": "#00DD01",
+        "key_tol": 64,
+        "key_also_connected": false,
+        "start": 1,
+        "end": 0,
+        "frame_step": 1,
+        "cell_mode": "subject",
+        "pad": 4,
+        "anchor": "bottom-center",
+        "fps": 24,
+        "play_mode": "once",
+        "want_sheet": true,
+        "want_sidecar": true,
+        "want_preview": true,
+        "want_gif": true,
+        "gif_scale": 0.5,
+        "do_verify": true,
+        "mask_video": "/app/sprite_studio/uploads/masks/juanjo_chilena_mask.mp4",
+        "prefix": "juanjo_chilena"
+      },
+      "job_id": "73af1a037557",
+      "verify": {
+        "ok": false,
+        "lines": [
+          "grid      : 3 cells (3x1 of 376x406) sheet 1128x406",
+          "I1 straight alpha      failed cells: 0",
+          "I2 no backdrop leak    failed cells: 0  (0 px opaque reachable-black)",
+          "I4 subject intact      failed cells: 3  (338550 of 411988 bright px lost, largest hole 113894 px; tolerance 24 px / 0.50%)",
+          "I5 key spill on the rim   failed cells: 3  (2614 px whose G channel dominates within 6 px of the edge or at partial alpha, 2614 of them opaque)",
+          "faint fringe (informational, alpha<200): 0 px",
+          "",
+          "SPILL  cell 0: 1005 px of the key's own channel left on the rim within 6 px of the edge, e.g. (94,349)",
+          "ERODED  cell 0: 112739 bright px lost alpha (largest hole 112739 px, 81.861% of the subject)",
+          "SPILL  cell 1: 791 px of the key's own channel left on the rim within 6 px of the edge, e.g. (6,236)",
+          "ERODED  cell 1: 113894 bright px lost alpha (largest hole 113894 px, 83.079% of the subject)",
+          "SPILL  cell 2: 818 px of the key's own channel left on the rim within 6 px of the edge, e.g. (50,51)",
+          "ERODED  cell 2: 111917 bright px lost alpha (largest hole 111917 px, 81.586% of the subject)"
+        ]
+      },
+      "files": [
+        {
+          "file": "source-assets/sprite-pipeline/juanjo/chilena/studio/frames"
+        },
+        {
+          "file": "source-assets/sprite-pipeline/juanjo/chilena/studio/juanjo_chilena.json"
+        },
+        {
+          "file": "source-assets/sprite-pipeline/juanjo/chilena/studio/juanjo_chilena_preview.gif"
+        },
+        {
+          "file": "source-assets/sprite-pipeline/juanjo/chilena/studio/juanjo_chilena_preview.html"
+        },
+        {
+          "file": "source-assets/sprite-pipeline/juanjo/chilena/studio/juanjo_chilena_sheet.png"
+        }
+      ],
+      "generated": "2026-10-10T21:57:33+02:00"
+    },
+    "dad_idle": {
+      "id": "dad_idle",
+      "phase": "4",
+      "status": "presented",
+      "tool": "tostai-sprite-studio",
+      "source_clip": "source-assets/sprite-pipeline/dad/idle/idle_trim.mp4",
+      "mask": null,
+      "cfg": {
+        "do_matte": true,
+        "do_key": true,
+        "key_color": "#00DD01",
+        "key_tol": 64,
+        "key_also_connected": false,
+        "start": 1,
+        "end": 0,
+        "frame_step": 1,
+        "cell_mode": "subject",
+        "pad": 4,
+        "anchor": "bottom-center",
+        "fps": 24,
+        "play_mode": "loop",
+        "want_sheet": true,
+        "want_sidecar": true,
+        "want_preview": true,
+        "want_gif": true,
+        "gif_scale": 0.5,
+        "do_verify": true,
+        "prefix": "dad_idle"
+      },
+      "job_id": "2152c3bedbc6",
+      "verify": {
+        "ok": false,
+        "lines": [
+          "grid      : 12 cells (6x2 of 228x614) sheet 1368x1228",
+          "I1 straight alpha      failed cells: 0",
+          "I2 no backdrop leak    failed cells: 0  (0 px opaque reachable-black)",
+          "I4 subject intact      failed cells: 12  (780203 of 1484363 bright px lost, largest hole 65990 px; tolerance 24 px / 0.50%)",
+          "I5 key spill on the rim   failed cells: 0  (0 px whose G channel dominates within 6 px of the edge or at partial alpha, 0 of them opaque)",
+          "faint fringe (informational, alpha<200): 0 px",
+          "",
+          "ERODED  cell 0: 64163 bright px lost alpha (largest hole 63622 px, 52.096% of the subject)",
+          "ERODED  cell 1: 64123 bright px lost alpha (largest hole 63466 px, 52.098% of the subject)",
+          "ERODED  cell 2: 64172 bright px lost alpha (largest hole 63465 px, 52.016% of the subject)",
+          "ERODED  cell 3: 64177 bright px lost alpha (largest hole 63466 px, 51.994% of the subject)",
+          "ERODED  cell 4: 64255 bright px lost alpha (largest hole 63606 px, 52.138% of the subject)"
+        ]
+      },
+      "files": [
+        {
+          "file": "source-assets/sprite-pipeline/dad/idle/studio/dad_idle.json"
+        },
+        {
+          "file": "source-assets/sprite-pipeline/dad/idle/studio/dad_idle_preview.gif"
+        },
+        {
+          "file": "source-assets/sprite-pipeline/dad/idle/studio/dad_idle_preview.html"
+        },
+        {
+          "file": "source-assets/sprite-pipeline/dad/idle/studio/dad_idle_sheet.png"
+        },
+        {
+          "file": "source-assets/sprite-pipeline/dad/idle/studio/frames"
+        }
+      ],
+      "generated": "2026-10-10T21:53:46+02:00"
+    },
+    "dad_kick": {
+      "id": "dad_kick",
+      "phase": "4",
+      "status": "presented",
+      "tool": "tostai-sprite-studio",
+      "source_clip": "source-assets/sprite-pipeline/dad/kick/kick_trim.mp4",
+      "mask": null,
+      "cfg": {
+        "do_matte": true,
+        "do_key": true,
+        "key_color": "#00DD01",
+        "key_tol": 64,
+        "key_also_connected": false,
+        "start": 1,
+        "end": 0,
+        "frame_step": 1,
+        "cell_mode": "subject",
+        "pad": 4,
+        "anchor": "bottom-center",
+        "fps": 24,
+        "play_mode": "once",
+        "want_sheet": true,
+        "want_sidecar": true,
+        "want_preview": true,
+        "want_gif": true,
+        "gif_scale": 0.5,
+        "do_verify": true,
+        "prefix": "dad_kick"
+      },
+      "job_id": "2b330e605375",
+      "verify": {
+        "ok": false,
+        "lines": [
+          "grid      : 45 cells (9x5 of 592x608) sheet 5328x3040",
+          "I1 straight alpha      failed cells: 0",
+          "I2 no backdrop leak    failed cells: 0  (0 px opaque reachable-black)",
+          "I4 subject intact      failed cells: 45  (12836000 of 15480256 bright px lost, largest hole 296095 px; tolerance 24 px / 0.50%)",
+          "I5 key spill on the rim   failed cells: 0  (0 px whose G channel dominates within 6 px of the edge or at partial alpha, 0 of them opaque)",
+          "faint fringe (informational, alpha<200): 0 px",
+          "",
+          "ERODED  cell 0: 289790 bright px lost alpha (largest hole 288417 px, 83.842% of the subject)",
+          "ERODED  cell 1: 290463 bright px lost alpha (largest hole 288706 px, 84.029% of the subject)",
+          "ERODED  cell 2: 290574 bright px lost alpha (largest hole 287780 px, 84.147% of the subject)",
+          "ERODED  cell 3: 289644 bright px lost alpha (largest hole 289644 px, 84.036% of the subject)",
+          "ERODED  cell 4: 288957 bright px lost alpha (largest hole 288957 px, 83.902% of the subject)"
+        ]
+      },
+      "files": [
+        {
+          "file": "source-assets/sprite-pipeline/dad/kick/studio/dad_kick.json"
+        },
+        {
+          "file": "source-assets/sprite-pipeline/dad/kick/studio/dad_kick_preview.gif"
+        },
+        {
+          "file": "source-assets/sprite-pipeline/dad/kick/studio/dad_kick_preview.html"
+        },
+        {
+          "file": "source-assets/sprite-pipeline/dad/kick/studio/dad_kick_sheet.png"
+        },
+        {
+          "file": "source-assets/sprite-pipeline/dad/kick/studio/frames"
+        }
+      ],
+      "generated": "2026-10-10T21:54:17+02:00"
+    },
+    "dad_celebrate": {
+      "id": "dad_celebrate",
+      "phase": "4",
+      "status": "presented",
+      "tool": "tostai-sprite-studio",
+      "source_clip": "source-assets/sprite-pipeline/dad/celebrate/celebrate_trim.mp4",
+      "mask": null,
+      "cfg": {
+        "do_matte": true,
+        "do_key": true,
+        "key_color": "#00DD01",
+        "key_tol": 64,
+        "key_also_connected": false,
+        "start": 1,
+        "end": 0,
+        "frame_step": 1,
+        "cell_mode": "subject",
+        "pad": 4,
+        "anchor": "bottom-center",
+        "fps": 24,
+        "play_mode": "loop",
+        "want_sheet": true,
+        "want_sidecar": true,
+        "want_preview": true,
+        "want_gif": true,
+        "gif_scale": 0.5,
+        "do_verify": true,
+        "prefix": "dad_celebrate"
+      },
+      "job_id": "c0dff3061ce1",
+      "verify": {
+        "ok": false,
+        "lines": [
+          "grid      : 12 cells (6x2 of 276x684) sheet 1656x1368",
+          "I1 straight alpha      failed cells: 0",
+          "I2 no backdrop leak    failed cells: 0  (0 px opaque reachable-black)",
+          "I4 subject intact      failed cells: 12  (1316718 of 2054823 bright px lost, largest hole 111170 px; tolerance 24 px / 0.50%)",
+          "I5 key spill on the rim   failed cells: 0  (0 px whose G channel dominates within 6 px of the edge or at partial alpha, 0 of them opaque)",
+          "faint fringe (informational, alpha<200): 0 px",
+          "",
+          "ERODED  cell 0: 110394 bright px lost alpha (largest hole 110092 px, 64.547% of the subject)",
+          "ERODED  cell 1: 110304 bright px lost alpha (largest hole 110027 px, 64.499% of the subject)",
+          "ERODED  cell 2: 110318 bright px lost alpha (largest hole 110024 px, 64.455% of the subject)",
+          "ERODED  cell 3: 108366 bright px lost alpha (largest hole 108141 px, 63.475% of the subject)",
+          "ERODED  cell 4: 108935 bright px lost alpha (largest hole 108728 px, 63.596% of the subject)"
+        ]
+      },
+      "files": [
+        {
+          "file": "source-assets/sprite-pipeline/dad/celebrate/studio/dad_celebrate.json"
+        },
+        {
+          "file": "source-assets/sprite-pipeline/dad/celebrate/studio/dad_celebrate_preview.gif"
+        },
+        {
+          "file": "source-assets/sprite-pipeline/dad/celebrate/studio/dad_celebrate_preview.html"
+        },
+        {
+          "file": "source-assets/sprite-pipeline/dad/celebrate/studio/dad_celebrate_sheet.png"
+        },
+        {
+          "file": "source-assets/sprite-pipeline/dad/celebrate/studio/frames"
+        }
+      ],
+      "generated": "2026-10-10T21:54:28+02:00"
+    },
+    "dad_run": {
+      "id": "dad_run",
+      "phase": "4",
+      "status": "presented",
+      "tool": "tostai-sprite-studio",
+      "source_clip": "source-assets/sprite-pipeline/dad/run/run_trim.mp4",
+      "mask": null,
+      "cfg": {
+        "do_matte": true,
+        "do_key": true,
+        "key_color": "#00DD01",
+        "key_tol": 64,
+        "key_also_connected": false,
+        "start": 1,
+        "end": 0,
+        "frame_step": 1,
+        "cell_mode": "subject",
+        "pad": 4,
+        "anchor": "bottom-center",
+        "fps": 24,
+        "play_mode": "loop",
+        "want_sheet": true,
+        "want_sidecar": true,
+        "want_preview": true,
+        "want_gif": true,
+        "gif_scale": 0.5,
+        "do_verify": true,
+        "prefix": "dad_run"
+      },
+      "job_id": "9891d2402bb0",
+      "verify": {
+        "ok": false,
+        "lines": [
+          "grid      : 17 cells (17x1 of 448x658) sheet 7616x658",
+          "I1 straight alpha      failed cells: 0",
+          "I2 no backdrop leak    failed cells: 0  (0 px opaque reachable-black)",
+          "I4 subject intact      failed cells: 17  (3470502 of 4669652 bright px lost, largest hole 216344 px; tolerance 24 px / 0.50%)",
+          "I5 key spill on the rim   failed cells: 0  (0 px whose G channel dominates within 6 px of the edge or at partial alpha, 0 of them opaque)",
+          "faint fringe (informational, alpha<200): 0 px",
+          "",
+          "ERODED  cell 0: 201494 bright px lost alpha (largest hole 200540 px, 73.121% of the subject)",
+          "ERODED  cell 1: 194223 bright px lost alpha (largest hole 194223 px, 71.391% of the subject)",
+          "ERODED  cell 2: 194453 bright px lost alpha (largest hole 194453 px, 71.251% of the subject)",
+          "ERODED  cell 3: 191404 bright px lost alpha (largest hole 191404 px, 70.315% of the subject)",
+          "ERODED  cell 4: 194212 bright px lost alpha (largest hole 194212 px, 71.004% of the subject)"
+        ]
+      },
+      "files": [
+        {
+          "file": "source-assets/sprite-pipeline/dad/run/studio/dad_run.json"
+        },
+        {
+          "file": "source-assets/sprite-pipeline/dad/run/studio/dad_run_preview.gif"
+        },
+        {
+          "file": "source-assets/sprite-pipeline/dad/run/studio/dad_run_preview.html"
+        },
+        {
+          "file": "source-assets/sprite-pipeline/dad/run/studio/dad_run_sheet.png"
+        },
+        {
+          "file": "source-assets/sprite-pipeline/dad/run/studio/frames"
+        }
+      ],
+      "generated": "2026-10-10T21:54:43+02:00"
+    },
+    "dad_jump": {
+      "id": "dad_jump",
+      "phase": "4",
+      "status": "presented",
+      "tool": "tostai-sprite-studio",
+      "source_clip": "source-assets/sprite-pipeline/dad/jump/jump_trim.mp4",
+      "mask": "source-assets/sprite-pipeline/dad/jump/jump_trim_mask.mp4",
+      "cfg": {
+        "do_matte": false,
+        "mask_binary": true,
+        "mask_threshold": 128,
+        "do_key": true,
+        "key_color": "#00DD01",
+        "key_tol": 64,
+        "key_also_connected": false,
+        "start": 1,
+        "end": 0,
+        "frame_step": 1,
+        "cell_mode": "subject",
+        "pad": 4,
+        "anchor": "bottom-center",
+        "fps": 24,
+        "play_mode": "once",
+        "want_sheet": true,
+        "want_sidecar": true,
+        "want_preview": true,
+        "want_gif": true,
+        "gif_scale": 0.5,
+        "do_verify": true,
+        "mask_video": "/app/sprite_studio/uploads/masks/dad_jump_mask.mp4",
+        "prefix": "dad_jump"
+      },
+      "job_id": "8246ea479438",
+      "verify": {
+        "ok": false,
+        "lines": [
+          "grid      : 1 cells (1x1 of 190x370) sheet 190x370",
+          "I1 straight alpha      failed cells: 0",
+          "I2 no backdrop leak    failed cells: 0  (0 px opaque reachable-black)",
+          "I4 subject intact      failed cells: 1  (36584 of 67024 bright px lost, largest hole 36584 px; tolerance 24 px / 0.50%)",
+          "I5 key spill on the rim   failed cells: 1  (517 px whose G channel dominates within 6 px of the edge or at partial alpha, 517 of them opaque)",
+          "faint fringe (informational, alpha<200): 0 px",
+          "",
+          "SPILL  cell 0: 517 px of the key's own channel left on the rim within 6 px of the edge, e.g. (4,91)",
+          "ERODED  cell 0: 36584 bright px lost alpha (largest hole 36584 px, 54.583% of the subject)"
+        ]
+      },
+      "files": [
+        {
+          "file": "source-assets/sprite-pipeline/dad/jump/studio/dad_jump.json"
+        },
+        {
+          "file": "source-assets/sprite-pipeline/dad/jump/studio/dad_jump_preview.gif"
+        },
+        {
+          "file": "source-assets/sprite-pipeline/dad/jump/studio/dad_jump_preview.html"
+        },
+        {
+          "file": "source-assets/sprite-pipeline/dad/jump/studio/dad_jump_sheet.png"
+        },
+        {
+          "file": "source-assets/sprite-pipeline/dad/jump/studio/frames"
+        }
+      ],
+      "generated": "2026-10-10T21:55:38+02:00"
+    },
+    "dad_hit": {
+      "id": "dad_hit",
+      "phase": "4",
+      "status": "presented",
+      "tool": "tostai-sprite-studio",
+      "source_clip": "source-assets/sprite-pipeline/dad/hit/hit_trim.mp4",
+      "mask": "source-assets/sprite-pipeline/dad/hit/hit_trim_mask.mp4",
+      "cfg": {
+        "do_matte": false,
+        "mask_binary": true,
+        "mask_threshold": 128,
+        "do_key": true,
+        "key_color": "#00DD01",
+        "key_tol": 64,
+        "key_also_connected": false,
+        "start": 1,
+        "end": 0,
+        "frame_step": 1,
+        "cell_mode": "subject",
+        "pad": 4,
+        "anchor": "bottom-center",
+        "fps": 24,
+        "play_mode": "once",
+        "want_sheet": true,
+        "want_sidecar": true,
+        "want_preview": true,
+        "want_gif": true,
+        "gif_scale": 0.5,
+        "do_verify": true,
+        "mask_video": "/app/sprite_studio/uploads/masks/dad_hit_mask.mp4",
+        "prefix": "dad_hit"
+      },
+      "job_id": "626dcbd300fe",
+      "verify": {
+        "ok": false,
+        "lines": [
+          "grid      : 3 cells (3x1 of 264x458) sheet 792x458",
+          "I1 straight alpha      failed cells: 0",
+          "I2 no backdrop leak    failed cells: 0  (0 px opaque reachable-black)",
+          "I4 subject intact      failed cells: 3  (243806 of 351460 bright px lost, largest hole 81204 px; tolerance 24 px / 0.50%)",
+          "I5 key spill on the rim   failed cells: 3  (1913 px whose G channel dominates within 6 px of the edge or at partial alpha, 1913 of them opaque)",
+          "faint fringe (informational, alpha<200): 0 px",
+          "",
+          "SPILL  cell 0: 679 px of the key's own channel left on the rim within 6 px of the edge, e.g. (22,78)",
+          "ERODED  cell 0: 80211 bright px lost alpha (largest hole 80211 px, 68.435% of the subject)",
+          "SPILL  cell 1: 536 px of the key's own channel left on the rim within 6 px of the edge, e.g. (26,115)",
+          "ERODED  cell 1: 81547 bright px lost alpha (largest hole 81204 px, 69.617% of the subject)",
+          "SPILL  cell 2: 698 px of the key's own channel left on the rim within 6 px of the edge, e.g. (6,156)",
+          "ERODED  cell 2: 82048 bright px lost alpha (largest hole 80073 px, 70.057% of the subject)"
+        ]
+      },
+      "files": [
+        {
+          "file": "source-assets/sprite-pipeline/dad/hit/studio/dad_hit.json"
+        },
+        {
+          "file": "source-assets/sprite-pipeline/dad/hit/studio/dad_hit_preview.gif"
+        },
+        {
+          "file": "source-assets/sprite-pipeline/dad/hit/studio/dad_hit_preview.html"
+        },
+        {
+          "file": "source-assets/sprite-pipeline/dad/hit/studio/dad_hit_sheet.png"
+        },
+        {
+          "file": "source-assets/sprite-pipeline/dad/hit/studio/frames"
+        }
+      ],
+      "generated": "2026-10-10T21:55:43+02:00"
+    },
+    "dad_chilena": {
+      "id": "dad_chilena",
+      "phase": "4",
+      "status": "presented",
+      "tool": "tostai-sprite-studio",
+      "source_clip": "source-assets/sprite-pipeline/dad/chilena/chilena_trim.mp4",
+      "mask": "source-assets/sprite-pipeline/dad/chilena/chilena_trim_mask.mp4",
+      "cfg": {
+        "do_matte": false,
+        "mask_binary": true,
+        "mask_threshold": 128,
+        "do_key": true,
+        "key_color": "#00DD01",
+        "key_tol": 64,
+        "key_also_connected": false,
+        "start": 1,
+        "end": 0,
+        "frame_step": 1,
+        "cell_mode": "subject",
+        "pad": 4,
+        "anchor": "bottom-center",
+        "fps": 24,
+        "play_mode": "once",
+        "want_sheet": true,
+        "want_sidecar": true,
+        "want_preview": true,
+        "want_gif": true,
+        "gif_scale": 0.5,
+        "do_verify": true,
+        "mask_video": "/app/sprite_studio/uploads/masks/dad_chilena_mask.mp4",
+        "prefix": "dad_chilena"
+      },
+      "job_id": "1822b547c21a",
+      "verify": {
+        "ok": false,
+        "lines": [
+          "grid      : 3 cells (3x1 of 376x398) sheet 1128x398",
+          "I1 straight alpha      failed cells: 0",
+          "I2 no backdrop leak    failed cells: 0  (0 px opaque reachable-black)",
+          "I4 subject intact      failed cells: 3  (339674 of 439902 bright px lost, largest hole 115155 px; tolerance 24 px / 0.50%)",
+          "I5 key spill on the rim   failed cells: 3  (1864 px whose G channel dominates within 6 px of the edge or at partial alpha, 1864 of them opaque)",
+          "faint fringe (informational, alpha<200): 0 px",
+          "",
+          "SPILL  cell 0: 556 px of the key's own channel left on the rim within 6 px of the edge, e.g. (99,78)",
+          "ERODED  cell 0: 115155 bright px lost alpha (largest hole 115155 px, 78.598% of the subject)",
+          "SPILL  cell 1: 673 px of the key's own channel left on the rim within 6 px of the edge, e.g. (5,244)",
+          "ERODED  cell 1: 111932 bright px lost alpha (largest hole 111932 px, 76.408% of the subject)",
+          "SPILL  cell 2: 635 px of the key's own channel left on the rim within 6 px of the edge, e.g. (46,55)",
+          "ERODED  cell 2: 112587 bright px lost alpha (largest hole 112587 px, 76.642% of the subject)"
+        ]
+      },
+      "files": [
+        {
+          "file": "source-assets/sprite-pipeline/dad/chilena/studio/dad_chilena.json"
+        },
+        {
+          "file": "source-assets/sprite-pipeline/dad/chilena/studio/dad_chilena_preview.gif"
+        },
+        {
+          "file": "source-assets/sprite-pipeline/dad/chilena/studio/dad_chilena_preview.html"
+        },
+        {
+          "file": "source-assets/sprite-pipeline/dad/chilena/studio/dad_chilena_sheet.png"
+        },
+        {
+          "file": "source-assets/sprite-pipeline/dad/chilena/studio/frames"
+        }
+      ],
+      "generated": "2026-10-10T21:55:47+02:00"
+    },
+    "mum_idle": {
+      "id": "mum_idle",
+      "phase": "4",
+      "status": "presented",
+      "tool": "tostai-sprite-studio",
+      "source_clip": "source-assets/sprite-pipeline/mum/idle/idle_trim.mp4",
+      "mask": null,
+      "cfg": {
+        "do_matte": true,
+        "do_key": true,
+        "key_color": "#00DD01",
+        "key_tol": 64,
+        "key_also_connected": false,
+        "start": 1,
+        "end": 0,
+        "frame_step": 1,
+        "cell_mode": "subject",
+        "pad": 4,
+        "anchor": "bottom-center",
+        "fps": 24,
+        "play_mode": "loop",
+        "want_sheet": true,
+        "want_sidecar": true,
+        "want_preview": true,
+        "want_gif": true,
+        "gif_scale": 0.5,
+        "do_verify": true,
+        "prefix": "mum_idle"
+      },
+      "job_id": "daac83ce8aa7",
+      "verify": {
+        "ok": false,
+        "lines": [
+          "grid      : 26 cells (13x2 of 248x608) sheet 3224x1216",
+          "I1 straight alpha      failed cells: 0",
+          "I2 no backdrop leak    failed cells: 0  (0 px opaque reachable-black)",
+          "I4 subject intact      failed cells: 26  (1782299 of 3230984 bright px lost, largest hole 69005 px; tolerance 24 px / 0.50%)",
+          "I5 key spill on the rim   failed cells: 0  (0 px whose G channel dominates within 6 px of the edge or at partial alpha, 0 of them opaque)",
+          "faint fringe (informational, alpha<200): 0 px",
+          "",
+          "ERODED  cell 0: 68748 bright px lost alpha (largest hole 66604 px, 55.107% of the subject)",
+          "ERODED  cell 1: 68847 bright px lost alpha (largest hole 66610 px, 55.129% of the subject)",
+          "ERODED  cell 2: 68908 bright px lost alpha (largest hole 66435 px, 55.126% of the subject)",
+          "ERODED  cell 3: 68965 bright px lost alpha (largest hole 68712 px, 55.226% of the subject)",
+          "ERODED  cell 4: 69005 bright px lost alpha (largest hole 68682 px, 55.153% of the subject)"
+        ]
+      },
+      "files": [
+        {
+          "file": "source-assets/sprite-pipeline/mum/idle/studio/frames"
+        },
+        {
+          "file": "source-assets/sprite-pipeline/mum/idle/studio/mum_idle.json"
+        },
+        {
+          "file": "source-assets/sprite-pipeline/mum/idle/studio/mum_idle_preview.gif"
+        },
+        {
+          "file": "source-assets/sprite-pipeline/mum/idle/studio/mum_idle_preview.html"
+        },
+        {
+          "file": "source-assets/sprite-pipeline/mum/idle/studio/mum_idle_sheet.png"
+        }
+      ],
+      "generated": "2026-10-10T21:58:57+02:00"
+    },
+    "mum_kick": {
+      "id": "mum_kick",
+      "phase": "4",
+      "status": "presented",
+      "tool": "tostai-sprite-studio",
+      "source_clip": "source-assets/sprite-pipeline/mum/kick/kick_trim.mp4",
+      "mask": null,
+      "cfg": {
+        "do_matte": true,
+        "do_key": true,
+        "key_color": "#00DD01",
+        "key_tol": 64,
+        "key_also_connected": false,
+        "start": 1,
+        "end": 0,
+        "frame_step": 1,
+        "cell_mode": "subject",
+        "pad": 4,
+        "anchor": "bottom-center",
+        "fps": 24,
+        "play_mode": "once",
+        "want_sheet": true,
+        "want_sidecar": true,
+        "want_preview": true,
+        "want_gif": true,
+        "gif_scale": 0.5,
+        "do_verify": true,
+        "prefix": "mum_kick"
+      },
+      "job_id": "ab03e980680f",
+      "verify": {
+        "ok": false,
+        "lines": [
+          "grid      : 47 cells (47x1 of 592x606) sheet 27824x606",
+          "I1 straight alpha      failed cells: 0",
+          "I2 no backdrop leak    failed cells: 0  (0 px opaque reachable-black)",
+          "I4 subject intact      failed cells: 47  (13098268 of 15654527 bright px lost, largest hole 287164 px; tolerance 24 px / 0.50%)",
+          "I5 key spill on the rim   failed cells: 0  (0 px whose G channel dominates within 6 px of the edge or at partial alpha, 0 of them opaque)",
+          "faint fringe (informational, alpha<200): 0 px",
+          "",
+          "ERODED  cell 0: 282493 bright px lost alpha (largest hole 279280 px, 84.474% of the subject)",
+          "ERODED  cell 1: 282682 bright px lost alpha (largest hole 282682 px, 84.529% of the subject)",
+          "ERODED  cell 2: 282650 bright px lost alpha (largest hole 282650 px, 84.609% of the subject)",
+          "ERODED  cell 3: 282026 bright px lost alpha (largest hole 282026 px, 84.628% of the subject)",
+          "ERODED  cell 4: 281724 bright px lost alpha (largest hole 281724 px, 84.627% of the subject)"
+        ]
+      },
+      "files": [
+        {
+          "file": "source-assets/sprite-pipeline/mum/kick/studio/frames"
+        },
+        {
+          "file": "source-assets/sprite-pipeline/mum/kick/studio/mum_kick.json"
+        },
+        {
+          "file": "source-assets/sprite-pipeline/mum/kick/studio/mum_kick_preview.gif"
+        },
+        {
+          "file": "source-assets/sprite-pipeline/mum/kick/studio/mum_kick_preview.html"
+        },
+        {
+          "file": "source-assets/sprite-pipeline/mum/kick/studio/mum_kick_sheet.png"
+        }
+      ],
+      "generated": "2026-10-10T21:59:27+02:00"
+    },
+    "mum_celebrate": {
+      "id": "mum_celebrate",
+      "phase": "4",
+      "status": "presented",
+      "tool": "tostai-sprite-studio",
+      "source_clip": "source-assets/sprite-pipeline/mum/celebrate/celebrate_trim.mp4",
+      "mask": null,
+      "cfg": {
+        "do_matte": true,
+        "do_key": true,
+        "key_color": "#00DD01",
+        "key_tol": 64,
+        "key_also_connected": false,
+        "start": 1,
+        "end": 0,
+        "frame_step": 1,
+        "cell_mode": "subject",
+        "pad": 4,
+        "anchor": "bottom-center",
+        "fps": 24,
+        "play_mode": "loop",
+        "want_sheet": true,
+        "want_sidecar": true,
+        "want_preview": true,
+        "want_gif": true,
+        "gif_scale": 0.5,
+        "do_verify": true,
+        "prefix": "mum_celebrate"
+      },
+      "job_id": "34404cb5e700",
+      "verify": {
+        "ok": false,
+        "lines": [
+          "grid      : 22 cells (11x2 of 270x670) sheet 2970x1340",
+          "I1 straight alpha      failed cells: 0",
+          "I2 no backdrop leak    failed cells: 0  (0 px opaque reachable-black)",
+          "I4 subject intact      failed cells: 22  (2119850 of 3395477 bright px lost, largest hole 98330 px; tolerance 24 px / 0.50%)",
+          "I5 key spill on the rim   failed cells: 0  (0 px whose G channel dominates within 6 px of the edge or at partial alpha, 0 of them opaque)",
+          "faint fringe (informational, alpha<200): 0 px",
+          "",
+          "ERODED  cell 0: 95469 bright px lost alpha (largest hole 94559 px, 62.354% of the subject)",
+          "ERODED  cell 1: 94826 bright px lost alpha (largest hole 93782 px, 62.128% of the subject)",
+          "ERODED  cell 2: 94116 bright px lost alpha (largest hole 92831 px, 61.285% of the subject)",
+          "ERODED  cell 3: 95536 bright px lost alpha (largest hole 94394 px, 62.264% of the subject)",
+          "ERODED  cell 4: 97577 bright px lost alpha (largest hole 97201 px, 63.409% of the subject)"
+        ]
+      },
+      "files": [
+        {
+          "file": "source-assets/sprite-pipeline/mum/celebrate/studio/frames"
+        },
+        {
+          "file": "source-assets/sprite-pipeline/mum/celebrate/studio/mum_celebrate.json"
+        },
+        {
+          "file": "source-assets/sprite-pipeline/mum/celebrate/studio/mum_celebrate_preview.gif"
+        },
+        {
+          "file": "source-assets/sprite-pipeline/mum/celebrate/studio/mum_celebrate_preview.html"
+        },
+        {
+          "file": "source-assets/sprite-pipeline/mum/celebrate/studio/mum_celebrate_sheet.png"
+        }
+      ],
+      "generated": "2026-10-10T21:59:43+02:00"
+    },
+    "mum_run": {
+      "id": "mum_run",
+      "phase": "4",
+      "status": "presented",
+      "tool": "tostai-sprite-studio",
+      "source_clip": "source-assets/sprite-pipeline/mum/run/run_trim.mp4",
+      "mask": null,
+      "cfg": {
+        "do_matte": true,
+        "do_key": true,
+        "key_color": "#00DD01",
+        "key_tol": 64,
+        "key_also_connected": false,
+        "start": 1,
+        "end": 0,
+        "frame_step": 1,
+        "cell_mode": "subject",
+        "pad": 4,
+        "anchor": "bottom-center",
+        "fps": 24,
+        "play_mode": "loop",
+        "want_sheet": true,
+        "want_sidecar": true,
+        "want_preview": true,
+        "want_gif": true,
+        "gif_scale": 0.5,
+        "do_verify": true,
+        "prefix": "mum_run"
+      },
+      "job_id": "46f2ae8f5b1f",
+      "verify": {
+        "ok": false,
+        "lines": [
+          "grid      : 19 cells (19x1 of 454x668) sheet 8626x668",
+          "I1 straight alpha      failed cells: 0",
+          "I2 no backdrop leak    failed cells: 0  (0 px opaque reachable-black)",
+          "I4 subject intact      failed cells: 19  (3824216 of 5035609 bright px lost, largest hole 205709 px; tolerance 24 px / 0.50%)",
+          "I5 key spill on the rim   failed cells: 0  (0 px whose G channel dominates within 6 px of the edge or at partial alpha, 0 of them opaque)",
+          "faint fringe (informational, alpha<200): 0 px",
+          "",
+          "ERODED  cell 0: 205558 bright px lost alpha (largest hole 205558 px, 77.713% of the subject)",
+          "ERODED  cell 1: 205610 bright px lost alpha (largest hole 205610 px, 77.424% of the subject)",
+          "ERODED  cell 2: 204686 bright px lost alpha (largest hole 204116 px, 77.324% of the subject)",
+          "ERODED  cell 3: 203052 bright px lost alpha (largest hole 202982 px, 77.073% of the subject)",
+          "ERODED  cell 4: 201947 bright px lost alpha (largest hole 201710 px, 76.754% of the subject)"
+        ]
+      },
+      "files": [
+        {
+          "file": "source-assets/sprite-pipeline/mum/run/studio/frames"
+        },
+        {
+          "file": "source-assets/sprite-pipeline/mum/run/studio/mum_run.json"
+        },
+        {
+          "file": "source-assets/sprite-pipeline/mum/run/studio/mum_run_preview.gif"
+        },
+        {
+          "file": "source-assets/sprite-pipeline/mum/run/studio/mum_run_preview.html"
+        },
+        {
+          "file": "source-assets/sprite-pipeline/mum/run/studio/mum_run_sheet.png"
+        }
+      ],
+      "generated": "2026-10-10T21:59:57+02:00"
+    },
+    "mum_jump": {
+      "id": "mum_jump",
+      "phase": "4",
+      "status": "presented",
+      "tool": "tostai-sprite-studio",
+      "source_clip": "source-assets/sprite-pipeline/mum/jump/jump_trim.mp4",
+      "mask": "source-assets/sprite-pipeline/mum/jump/jump_trim_mask.mp4",
+      "cfg": {
+        "do_matte": false,
+        "mask_binary": true,
+        "mask_threshold": 128,
+        "do_key": true,
+        "key_color": "#00DD01",
+        "key_tol": 64,
+        "key_also_connected": false,
+        "start": 1,
+        "end": 0,
+        "frame_step": 1,
+        "cell_mode": "subject",
+        "pad": 4,
+        "anchor": "bottom-center",
+        "fps": 24,
+        "play_mode": "once",
+        "want_sheet": true,
+        "want_sidecar": true,
+        "want_preview": true,
+        "want_gif": true,
+        "gif_scale": 0.5,
+        "do_verify": true,
+        "mask_video": "/app/sprite_studio/uploads/masks/mum_jump_mask.mp4",
+        "prefix": "mum_jump"
+      },
+      "job_id": "45079d083c1c",
+      "verify": {
+        "ok": false,
+        "lines": [
+          "grid      : 1 cells (1x1 of 200x390) sheet 200x390",
+          "I1 straight alpha      failed cells: 0",
+          "I2 no backdrop leak    failed cells: 0  (0 px opaque reachable-black)",
+          "I4 subject intact      failed cells: 1  (38470 of 70709 bright px lost, largest hole 38234 px; tolerance 24 px / 0.50%)",
+          "I5 key spill on the rim   failed cells: 1  (529 px whose G channel dominates within 6 px of the edge or at partial alpha, 529 of them opaque)",
+          "faint fringe (informational, alpha<200): 0 px",
+          "",
+          "SPILL  cell 0: 529 px of the key's own channel left on the rim within 6 px of the edge, e.g. (5,124)",
+          "ERODED  cell 0: 38470 bright px lost alpha (largest hole 38234 px, 54.406% of the subject)"
+        ]
+      },
+      "files": [
+        {
+          "file": "source-assets/sprite-pipeline/mum/jump/studio/frames"
+        },
+        {
+          "file": "source-assets/sprite-pipeline/mum/jump/studio/mum_jump.json"
+        },
+        {
+          "file": "source-assets/sprite-pipeline/mum/jump/studio/mum_jump_preview.gif"
+        },
+        {
+          "file": "source-assets/sprite-pipeline/mum/jump/studio/mum_jump_preview.html"
+        },
+        {
+          "file": "source-assets/sprite-pipeline/mum/jump/studio/mum_jump_sheet.png"
+        }
+      ],
+      "generated": "2026-10-10T22:00:02+02:00"
+    },
+    "mum_hit": {
+      "id": "mum_hit",
+      "phase": "4",
+      "status": "presented",
+      "tool": "tostai-sprite-studio",
+      "source_clip": "source-assets/sprite-pipeline/mum/hit/hit_trim.mp4",
+      "mask": "source-assets/sprite-pipeline/mum/hit/hit_trim_mask.mp4",
+      "cfg": {
+        "do_matte": false,
+        "mask_binary": true,
+        "mask_threshold": 128,
+        "do_key": true,
+        "key_color": "#00DD01",
+        "key_tol": 64,
+        "key_also_connected": false,
+        "start": 1,
+        "end": 0,
+        "frame_step": 1,
+        "cell_mode": "subject",
+        "pad": 4,
+        "anchor": "bottom-center",
+        "fps": 24,
+        "play_mode": "once",
+        "want_sheet": true,
+        "want_sidecar": true,
+        "want_preview": true,
+        "want_gif": true,
+        "gif_scale": 0.5,
+        "do_verify": true,
+        "mask_video": "/app/sprite_studio/uploads/masks/mum_hit_mask.mp4",
+        "prefix": "mum_hit"
+      },
+      "job_id": "10511ab03992",
+      "verify": {
+        "ok": false,
+        "lines": [
+          "grid      : 3 cells (3x1 of 254x460) sheet 762x460",
+          "I1 straight alpha      failed cells: 0",
+          "I2 no backdrop leak    failed cells: 0  (0 px opaque reachable-black)",
+          "I4 subject intact      failed cells: 3  (222450 of 327549 bright px lost, largest hole 74734 px; tolerance 24 px / 0.50%)",
+          "I5 key spill on the rim   failed cells: 3  (1738 px whose G channel dominates within 6 px of the edge or at partial alpha, 1738 of them opaque)",
+          "faint fringe (informational, alpha<200): 0 px",
+          "",
+          "SPILL  cell 0: 647 px of the key's own channel left on the rim within 6 px of the edge, e.g. (34,67)",
+          "ERODED  cell 0: 72671 bright px lost alpha (largest hole 72543 px, 66.475% of the subject)",
+          "SPILL  cell 1: 526 px of the key's own channel left on the rim within 6 px of the edge, e.g. (30,115)",
+          "ERODED  cell 1: 75213 bright px lost alpha (largest hole 74734 px, 68.823% of the subject)",
+          "SPILL  cell 2: 565 px of the key's own channel left on the rim within 6 px of the edge, e.g. (4,145)",
+          "ERODED  cell 2: 74566 bright px lost alpha (largest hole 73188 px, 68.444% of the subject)"
+        ]
+      },
+      "files": [
+        {
+          "file": "source-assets/sprite-pipeline/mum/hit/studio/frames"
+        },
+        {
+          "file": "source-assets/sprite-pipeline/mum/hit/studio/mum_hit.json"
+        },
+        {
+          "file": "source-assets/sprite-pipeline/mum/hit/studio/mum_hit_preview.gif"
+        },
+        {
+          "file": "source-assets/sprite-pipeline/mum/hit/studio/mum_hit_preview.html"
+        },
+        {
+          "file": "source-assets/sprite-pipeline/mum/hit/studio/mum_hit_sheet.png"
+        }
+      ],
+      "generated": "2026-10-10T22:00:06+02:00"
+    },
+    "mum_chilena": {
+      "id": "mum_chilena",
+      "phase": "4",
+      "status": "presented",
+      "tool": "tostai-sprite-studio",
+      "source_clip": "source-assets/sprite-pipeline/mum/chilena/chilena_trim.mp4",
+      "mask": "source-assets/sprite-pipeline/mum/chilena/chilena_trim_mask.mp4",
+      "cfg": {
+        "do_matte": false,
+        "mask_binary": true,
+        "mask_threshold": 128,
+        "do_key": true,
+        "key_color": "#00DD01",
+        "key_tol": 64,
+        "key_also_connected": false,
+        "start": 1,
+        "end": 0,
+        "frame_step": 1,
+        "cell_mode": "subject",
+        "pad": 4,
+        "anchor": "bottom-center",
+        "fps": 24,
+        "play_mode": "once",
+        "want_sheet": true,
+        "want_sidecar": true,
+        "want_preview": true,
+        "want_gif": true,
+        "gif_scale": 0.5,
+        "do_verify": true,
+        "mask_video": "/app/sprite_studio/uploads/masks/mum_chilena_mask.mp4",
+        "prefix": "mum_chilena"
+      },
+      "job_id": "824bceb43c65",
+      "verify": {
+        "ok": false,
+        "lines": [
+          "grid      : 3 cells (3x1 of 398x436) sheet 1194x436",
+          "I1 straight alpha      failed cells: 0",
+          "I2 no backdrop leak    failed cells: 0  (0 px opaque reachable-black)",
+          "I4 subject intact      failed cells: 3  (394405 of 499181 bright px lost, largest hole 133948 px; tolerance 24 px / 0.50%)",
+          "I5 key spill on the rim   failed cells: 3  (1942 px whose G channel dominates within 6 px of the edge or at partial alpha, 1942 of them opaque)",
+          "faint fringe (informational, alpha<200): 0 px",
+          "",
+          "SPILL  cell 0: 590 px of the key's own channel left on the rim within 6 px of the edge, e.g. (86,113)",
+          "ERODED  cell 0: 131802 bright px lost alpha (largest hole 131802 px, 79.040% of the subject)",
+          "SPILL  cell 1: 766 px of the key's own channel left on the rim within 6 px of the edge, e.g. (4,254)",
+          "ERODED  cell 1: 128655 bright px lost alpha (largest hole 128620 px, 77.667% of the subject)",
+          "SPILL  cell 2: 586 px of the key's own channel left on the rim within 6 px of the edge, e.g. (86,84)",
+          "ERODED  cell 2: 133948 bright px lost alpha (largest hole 133948 px, 80.315% of the subject)"
+        ]
+      },
+      "files": [
+        {
+          "file": "source-assets/sprite-pipeline/mum/chilena/studio/frames"
+        },
+        {
+          "file": "source-assets/sprite-pipeline/mum/chilena/studio/mum_chilena.json"
+        },
+        {
+          "file": "source-assets/sprite-pipeline/mum/chilena/studio/mum_chilena_preview.gif"
+        },
+        {
+          "file": "source-assets/sprite-pipeline/mum/chilena/studio/mum_chilena_preview.html"
+        },
+        {
+          "file": "source-assets/sprite-pipeline/mum/chilena/studio/mum_chilena_sheet.png"
+        }
+      ],
+      "generated": "2026-10-10T22:00:11+02:00"
     }
   }
 }

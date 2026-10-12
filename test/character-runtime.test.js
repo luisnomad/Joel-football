@@ -1,5 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
+  CHARACTER_COLLISION_PROFILES,
+  getCharacterCollisionProfile,
   getFootballCollisionGeometry,
   getKickfallCollisionGeometry,
 } from '../src/game/content/characterCollisionProfiles.js';
@@ -87,35 +89,42 @@ describe('explicit character collision profiles', () => {
     });
   });
 
-  it('declares Dad and Mum as intentionally larger in both games', () => {
-    const dad = getCharacter('dad');
-    const mum = getCharacter('mum');
-    expect(getFootballCollisionGeometry(dad)).toMatchObject({
-      bodyScale: 1.2,
-      headTop: 284,
-    });
-    expect(getFootballCollisionGeometry(mum)).toMatchObject({
-      bodyScale: 1.2,
-      headTop: 266,
-    });
-    const dadKickfall = getKickfallCollisionGeometry(dad);
-    expect(dadKickfall.bodyWidth).toBeCloseTo(52.8);
-    expect(dadKickfall.bodyHeight).toBeCloseTo(98.4);
-    expect(dadKickfall.footForwardOffset).toBeCloseTo(36);
-    expect(dadKickfall.footVerticalOffset).toBeCloseTo(28.8);
-    expect(dadKickfall.footRadius).toBeCloseTo(9.6);
+  it('gives Dad and Mum the standard adult size in both games', () => {
+    // Owner decision (SPRITE_REDO_PLAN.md §9): one adult size for everyone.
+    // The old dad-large / mum-large profiles (bodyScale 1.2) are retired.
+    expect(Object.keys(CHARACTER_COLLISION_PROFILES).sort()).toEqual(['kid', 'standard']);
+    for (const id of ['dad', 'mum']) {
+      const character = getCharacter(id);
+      expect(getCharacterCollisionProfile(character).id).toBe('standard');
+      expect(getFootballCollisionGeometry(character)).toMatchObject({
+        bodyScale: 1,
+        headTop: 222,
+        headCapY: -112,
+      });
+      expect(getKickfallCollisionGeometry(character)).toMatchObject({
+        bodyScale: 1,
+        bodyWidth: 44,
+        bodyHeight: 82,
+        chamferRadius: 13,
+        footForwardOffset: 30,
+        footVerticalOffset: 24,
+        footRadius: 8,
+      });
+    }
   });
 
   it('extends every standard fixed head collider to the tallest authored idle silhouette', () => {
-    // Standard adults (Juan, still classic) keep the 222 px head top; the
-    // sprite-redo kids (Joel, Luna, Bob) use the 'kid' profile (193).
-    const juan = getCharacter('juan');
-    expect(juan.collisionProfile).toBeUndefined();
-    expect(getFootballCollisionGeometry(juan)).toMatchObject({
-      bodyScale: 1,
-      headTop: 222,
-      headCapY: -112,
-    });
+    // Every adult (Lucia, Juan, Juanjo, Dad, Mum) keeps the 222 px head top;
+    // the sprite-redo kids (Joel, Luna, Bob) use the 'kid' profile (193).
+    for (const id of ['lucia', 'juan', 'juanjo', 'dad', 'mum']) {
+      const adult = getCharacter(id);
+      expect(adult.collisionProfile, id).toBeUndefined();
+      expect(getFootballCollisionGeometry(adult), id).toMatchObject({
+        bodyScale: 1,
+        headTop: 222,
+        headCapY: -112,
+      });
+    }
     const joel = getCharacter('joel');
     expect(joel.collisionProfile).toBe('kid');
     expect(getFootballCollisionGeometry(joel)).toMatchObject({ bodyScale: 1, headTop: 193 });

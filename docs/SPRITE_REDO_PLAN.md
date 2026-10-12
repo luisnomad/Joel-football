@@ -109,3 +109,24 @@ This document **locks the owner's answers** to the open decisions in `docs/SPRIT
 6. **Menus and UI revamp:** 2–3 mock-up options, then the owner's pick, then the build. Then the splash, icon and store art.
 
 **Rules:** report failures honestly, never invent CLI flags, log every generation in `tools/sprite-pipeline/manifest.json`, and don't commit or push unless the owner asks.
+
+## Progress
+
+- **2026-10-08 (commit 3d1496e):** Bob v3, Joel v2, Luna v3 and Lucia v3 installed
+  as roster-v2 atlases with the framed chilena and the `kid` collision profile.
+- **2026-10-11: roster complete (plan steps 4-5), uncommitted, awaiting owner review.**
+  - New roster-v2 atlases for Juan (v4), Juanjo (v2), Dad (v2) and Mum (v2), with
+    their new side-view portraits (the pipeline regenerates portraits on install,
+    as the first four did).
+  - Bob v4, Joel v3, Luna v4 and Lucia v4 reinstalled from the fixed
+    background-removal build: the grey patch that filled enclosed gaps in the
+    hit-reaction cells is gone (`output/roster-v2-integration/`).
+  - Dad and Mum normalised to the standard adult size (§9): no `visualScale`,
+    no `frameScales`, standard collider; `dad-large`/`mum-large` removed.
+  - `kickReach` and `chilenaContact` come from each atlas's measures json; a unit
+    test now ties the catalog to `source-assets/sprite-pipeline/<id>/atlas/*.json`
+    and checks every sheet, master and portrait is installed. Service worker v12.
+  - Open: the framed chilena trigger (76.8 px, calibrated on Bob) admits low balls
+    that the adults' higher contact boots cannot meet; the planner turns those
+    presses into ordinary kicks (see AUDIT B2 status). Classic-layout code is now
+    unused by the catalog (AUDIT I2).

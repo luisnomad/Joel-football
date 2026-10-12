@@ -48,9 +48,11 @@ order through `CONTACT_POSE_MAP`.
 
 Football's standard enhanced sheet display is 186.67×280 with feet at logical
 pitch `y=636`. Every fighter uses a stable authored compound Matter body.
-Gameplay size comes only from an explicit collision profile; Dad and Mum use
-their intentional larger profiles. Character stats do not redefine the
-collider.
+Gameplay size comes only from an explicit collision profile: adults use
+`standard` (the default) and the kids (Joel, Luna, Bob) use `kid`. Dad and Mum
+were normalised to the standard adult size in the sprite redo; their former
+`dad-large`/`mum-large` profiles are retired. Character stats do not redefine
+the collider.
 
 The nominal idle head is a release-gate reference for that stable body. Run
 `.agents/skills/create-game-character/scripts/audit_roster_collision_coverage.py` after any atlas, display-scale, or
@@ -69,7 +71,8 @@ and displayed diameter are competitive geometry and must remain identical
 across characters, including Crazy Mode.
 
 `visualScale` is an optional catalog parameter bounded by
-`getCharacterVisualScale` to 0.85–1.20. It alters Football and Kickfall artwork
+`getCharacterVisualScale` to 0.85–1.20 (no roster character sets it today). It
+alters Football and Kickfall artwork
 but never implicitly changes gameplay geometry. `collisionProfile` separately
 selects authored Football/Kickfall bodies and strike geometry. Ground anchors
 remain unchanged, and Hockey intentionally ignores both size settings.
