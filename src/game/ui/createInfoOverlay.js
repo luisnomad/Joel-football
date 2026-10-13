@@ -70,7 +70,7 @@ const createAboutContent = (scene, language, appInfo, depth, onOpenExternal) => 
     .setDisplaySize(235, 235)
     .setFlipX(creatorCharacter.nativeFacing !== 1)
     .setDepth(depth);
-  const website = scene.add.text(720, 344, 'NotJustPrompts.ai', textStyle(20, '#7ce8ff', {
+  const website = scene.add.text(720, 344, 'www.arkdbox.com', textStyle(20, '#7ce8ff', {
     fontStyle: 'bold',
   })).setOrigin(0.5).setDepth(depth + 0.1);
   const youtubeButton = createAboutLinkButton(scene, {
