@@ -59,21 +59,26 @@ import {
   sprintVisualAt,
 } from '../pure/characterAnimation.js';
 import {
-  CHILENA_FRAMED_MIN_UPWARD_RATIO,
+  CHILENA_BODY_HALF_WIDTH,
   CHILENA_MAX_SECONDS,
   CHILENA_MIN_AIRTIME_SECONDS,
   CHILENA_MIN_UPWARD_RATIO,
   CHILENA_REQUIRED_KICK_PRESSES,
   CHILENA_TAKEOFF_VELOCITY,
   chilenaContactTargetSeconds,
+  chilenaFlightLimits,
   chilenaGuidanceVelocity,
   chilenaSurfaceDistance,
   evaluateChilenaEligibility,
+  evaluateFramedChilenaEligibility,
+  framedChilenaZone,
+  normalJumpRise,
   planFramedChilena,
   resolveChilenaContact,
   chilenaRotationAt,
   resolveChilenaShot,
   resolveLobChilenaLaunch,
+  resolveLobChilenaRiseSpeed,
 } from '../pure/chilena.js';
 import { SUPERPOWER_ACTIVE_SECONDS } from '../content/superpowers.js';
 
@@ -105,6 +110,13 @@ export class Fighter {
     this.side = side;
     this.name = name;
     this.stats = { ...DEFAULT_STATS, ...stats };
+    /**
+     * Body rise (px) of this character's ordinary jump (no Hyper boost). The
+     * framed chilena never lifts the body higher than this.
+     */
+    this.normalJumpRise = normalJumpRise({
+      launchVelocity: scaled(PLAYER_TUNING.jumpVelocity, this.stats.jump),
+    });
     this.visualScale = Phaser.Math.Clamp(Number(visualScale) || 1, 0.85, 1.2);
     /** Boot-tip distance used for the strike capsule; see getCharacterKickReach. */
     this.kickReach = kickReach > 0 ? kickReach : DEFAULT_KICK_REACH;
@@ -167,6 +179,8 @@ export class Fighter {
     this.chilenaTargetSeconds = 0;
     this.chilenaMissed = false;
     this.chilenaPreviousGap = null;
+    /** Takeoff point and caps of the framed chilena in flight. */
+    this.chilenaFlight = null;
     this.lastChilenaContact = null;
     this.celebrating = false;
     /** Game-time seconds for authored loops (idle, celebrate); fixed-step, not wall clock. */
@@ -343,6 +357,7 @@ export class Fighter {
     this.chilenaContactAt = null;
     this.chilenaTargetSeconds = 0;
     this.chilenaMissed = false;
+    this.chilenaFlight = null;
     this.celebrating = false;
     if (!this.ballCollision) this.setBallCollision(true);
     this.sprite.setAngle(0);
@@ -699,9 +714,13 @@ export class Fighter {
       this.prevVelocityY = velocityY;
     }
 
-    // Ease the impulse envelopes so they punch in and settle smoothly.
-    const landSquash = (this.landSquashTimer / LAND_SQUASH_SECONDS) ** 2;
-    const takeoffStretch = (this.takeoffStretchTimer / TAKEOFF_STRETCH_SECONDS) ** 2;
+    // Ease the impulse envelopes so they punch in and settle smoothly. A
+    // framed chilena is drawn unscaled: its contact drawing's boot is the
+    // gameplay boot, and capped (normal-jump) chilenas often meet the ball
+    // while the takeoff stretch would still be running.
+    const framedChilena = this.chilenaActive && this.layout.chilenaFramed;
+    const landSquash = framedChilena ? 0 : (this.landSquashTimer / LAND_SQUASH_SECONDS) ** 2;
+    const takeoffStretch = framedChilena ? 0 : (this.takeoffStretchTimer / TAKEOFF_STRETCH_SECONDS) ** 2;
     const motion = secondaryMotionAt({
       pose: this.currentPose,
       stage: this.currentAnimationStage,
@@ -897,6 +916,35 @@ export class Fighter {
   }
 
   /**
+   * This character's framed chilena zone for its current (grounded) body:
+   * head top from the collision profile, contact boot for the chilena facing,
+   * and the ordinary jump's rise. See framedChilenaZone.
+   */
+  framedChilenaZone() {
+    const bounds = this.sprite.body.bounds;
+    return framedChilenaZone({
+      bodyX: this.sprite.x,
+      bodyBottomY: bounds.max.y,
+      headTopY: bounds.min.y,
+      bootOffset: this.chilenaBootOffset(-this.baseFacing),
+      jumpRise: this.normalJumpRise,
+      bodyHalfWidth: CHILENA_BODY_HALF_WIDTH * this.collisionScale * this.bigGuyScale,
+    });
+  }
+
+  /** Velocity caps for this tick of the framed chilena (no higher than a normal jump). */
+  chilenaFlightLimits() {
+    const flight = this.chilenaFlight;
+    if (!flight) return undefined;
+    return chilenaFlightLimits({
+      rise: flight.takeoffY - this.sprite.y,
+      maxRise: flight.maxRise,
+      sideOffset: this.sprite.x - flight.takeoffX,
+      maxSideTravel: flight.maxSideTravel,
+    });
+  }
+
+  /**
    * Framed chilena in flight: steer the jump so the contact drawing's boot
    * meets the ball, and apply the shot at that moment. Returns the strike
    * result on contact (MatchScene announces it then), otherwise null.
@@ -930,6 +978,7 @@ export class Fighter {
         ballVelocity: ball.body.body.velocity,
         velocity,
         secondsLeft: Math.max(1 / 60, this.chilenaTargetSeconds - this.chilenaElapsed),
+        limits: this.chilenaFlightLimits(),
       });
       this.sprite.setVelocity(next.x, next.y);
       return null;
@@ -943,7 +992,22 @@ export class Fighter {
       ball: ballPoint,
       surfaceDistance: this.chilenaPreviousGap,
     };
-    return this.applyChilenaShot(ball, pending.lob);
+    const strike = this.applyChilenaShot(ball, pending.lob);
+    // The pose for this tick was chosen in update() before the boot met the
+    // ball; switch to the contact drawing now so it shows on the strike tick
+    // instead of one tick later, when the ball is already 40+ px away.
+    this.updatePose();
+    return strike;
+  }
+
+  /**
+   * Launch speed (before the ball's strike lift multiplier) that makes a high
+   * chilena peak just above CHILENA_LOB_APEX_Y from the ball's current height.
+   */
+  lobChilenaRiseSpeed(ball) {
+    const { gravityPerTick, frictionAir, liftScale } = ball.flightPhysics({ powered: true });
+    const speed = resolveLobChilenaRiseSpeed({ ballY: ball.body.y, gravityPerTick, frictionAir });
+    return speed / Math.max(0.1, liftScale);
   }
 
   applyChilenaShot(ball, lobChilena) {
@@ -954,6 +1018,7 @@ export class Fighter {
         attackDirection: this.baseFacing,
         targetX,
         targetY,
+        riseSpeed: this.lobChilenaRiseSpeed(ball),
       })
       : resolveChilenaShot({
         attackDirection: this.baseFacing,
@@ -981,24 +1046,34 @@ export class Fighter {
   attemptChilena(ball) {
     if (this.chilenaActive && this.layout.chilenaFramed) return this.guideFramedChilena(ball);
     const kickPresses = 1 + this.kickBoostTaps;
-    const eligibility = evaluateChilenaEligibility({
-      fighter: {
-        x: this.sprite.x,
-        y: this.sprite.y,
-        // The trigger zone scales with the character: taller players (Dad,
-        // Mum) get a proportionally bigger window, matching their body.
-        height: CHARACTER_GAMEPLAY_HEIGHT * this.collisionScale * this.bigGuyScale,
-        grounded: this.grounded,
-        stunned: this.stunned,
-        active: this.chilenaActive,
-      },
-      ball: { x: ball.body.x, y: ball.body.y },
-      kickPresses,
-      // Framed chilenas only start where the contact drawing's boot can reach.
-      minimumUpwardRatio: this.layout.chilenaFramed
-        ? CHILENA_FRAMED_MIN_UPWARD_RATIO
-        : CHILENA_MIN_UPWARD_RATIO,
-    });
+    const framed = Boolean(this.layout.chilenaFramed && this.chilenaContactPoint);
+    const fighterState = {
+      x: this.sprite.x,
+      y: this.sprite.y,
+      grounded: this.grounded,
+      stunned: this.stunned,
+      active: this.chilenaActive,
+    };
+    const ballPoint = { x: ball.body.x, y: ball.body.y };
+    const eligibility = framed
+      // Framed chilenas: the ball must be overhead and within the boot's reach
+      // on this character's ordinary jump (framedChilenaZone).
+      ? evaluateFramedChilenaEligibility({
+        fighter: fighterState,
+        ball: ballPoint,
+        kickPresses,
+        zone: this.framedChilenaZone(),
+      })
+      : evaluateChilenaEligibility({
+        fighter: {
+          ...fighterState,
+          // The classic trigger zone scales with the character's body.
+          height: CHARACTER_GAMEPLAY_HEIGHT * this.collisionScale * this.bigGuyScale,
+        },
+        ball: ballPoint,
+        kickPresses,
+        minimumUpwardRatio: CHILENA_MIN_UPWARD_RATIO,
+      });
     if (kickPresses >= CHILENA_REQUIRED_KICK_PRESSES) {
       this.lastChilenaAttempt = eligibility;
     }
@@ -1006,9 +1081,7 @@ export class Fighter {
     // kick must not suppress a valid overhead conversion on this press.
     const allowed = eligibility.allowed;
     if (!allowed) return null;
-    if (this.layout.chilenaFramed && this.chilenaContactPoint) {
-      return this.startFramedChilena(ball, eligibility);
-    }
+    if (framed) return this.startFramedChilena(ball, eligibility);
 
     const targetX = this.baseFacing > 0 ? GOAL_LINE_RIGHT + 24 : GOAL_LINE_LEFT - 24;
     const targetY = (CROSSBAR_Y + GROUND_Y) / 2;
@@ -1018,6 +1091,7 @@ export class Fighter {
         attackDirection: this.baseFacing,
         targetX,
         targetY,
+        riseSpeed: this.lobChilenaRiseSpeed(ball),
       })
       : resolveChilenaShot({
         attackDirection: this.baseFacing,
@@ -1068,10 +1142,23 @@ export class Fighter {
    * (guideFramedChilena) and the ball is struck when the boot reaches it.
    */
   startFramedChilena(ball, eligibility) {
+    // Higher balls (more boot rise needed) are met later, as the player rises.
     const targetSeconds = chilenaContactTargetSeconds({
-      upwardDistance: eligibility.upwardDistance,
-      height: eligibility.maximumDistance,
+      upwardDistance: eligibility.bootRiseNeeded,
+      height: eligibility.maxRise,
     });
+    const flight = {
+      takeoffX: this.sprite.x,
+      takeoffY: this.sprite.y,
+      maxRise: eligibility.maxRise,
+      maxSideTravel: eligibility.maxSideTravel,
+    };
+    // Takeoff no faster than the flight cap allows (an ordinary jump's climb).
+    const takeoffVelocityY = Math.max(
+      CHILENA_TAKEOFF_VELOCITY,
+      chilenaFlightLimits({ maxRise: flight.maxRise, maxSideTravel: flight.maxSideTravel }).minVy,
+    );
+    const takeoffVelocityX = Phaser.Math.Clamp((ball.body.x - this.sprite.x) * 0.025, -2.4, 2.4);
     // Only start a chilena that will connect: the same controller is planned
     // forward first. An unreachable ball stays an ordinary kick press.
     const ballVelocity = ball.body.body.velocity;
@@ -1079,6 +1166,7 @@ export class Fighter {
       fighter: {
         x: this.sprite.x,
         y: this.sprite.y,
+        vx: takeoffVelocityX,
         bodyBottomOffset: this.sprite.body.bounds.max.y - this.sprite.y,
         frictionAir: this.sprite.body.frictionAir,
       },
@@ -1093,6 +1181,9 @@ export class Fighter {
       bootOffset: this.chilenaBootOffset(-this.baseFacing),
       groundY: GROUND_Y,
       targetSeconds,
+      maxRise: flight.maxRise,
+      maxSideTravel: flight.maxSideTravel,
+      takeoffVelocityY,
     });
     if (!plan.reachable) {
       this.lastChilenaAttempt = Object.freeze({ ...eligibility, allowed: false, reason: 'ball-unreachable' });
@@ -1107,6 +1198,7 @@ export class Fighter {
     this.lastChilenaContact = null;
     this.chilenaPreviousGap = null;
     this.chilenaTargetSeconds = targetSeconds;
+    this.chilenaFlight = flight;
     this.chilenaPendingShot = { lob: this.shotType === 'lob' };
     // The drawn body lies horizontal; the upright collider must not bat the
     // ball away before (or right after) the boot strikes it.
@@ -1123,10 +1215,7 @@ export class Fighter {
     this.setFacing(-this.baseFacing);
     this.sprite.setAngle(0);
     this.syncChilenaVisual(0);
-    this.sprite.setVelocity(
-      Phaser.Math.Clamp((ball.body.x - this.sprite.x) * 0.025, -2.4, 2.4),
-      CHILENA_TAKEOFF_VELOCITY,
-    );
+    this.sprite.setVelocity(takeoffVelocityX, takeoffVelocityY);
     this.currentPose = 'chilena';
     // Steer from the very first tick so short contacts are not late.
     return this.guideFramedChilena(ball);
@@ -1196,6 +1285,7 @@ export class Fighter {
     this.chilenaPendingShot = null;
     this.chilenaContactAt = null;
     this.chilenaMissed = false;
+    this.chilenaFlight = null;
     this.chilenaElapsed = 0;
     this.chilenaAngle = 0;
     this.sprite.setAngle(0);
@@ -1495,6 +1585,7 @@ export class Fighter {
       chilenaRotation: Math.round(this.chilenaAngle * 10) / 10,
       chilenaSuccesses: this.chilenaSuccesses,
       chilenaFramed: this.layout.chilenaFramed,
+      normalJumpRise: Math.round(this.normalJumpRise * 10) / 10,
       ballCollision: this.ballCollision,
       chilenaPending: Boolean(this.chilenaPendingShot),
       chilenaContactSeconds: this.chilenaContactAt === null ? null : Math.round(this.chilenaContactAt * 1000) / 1000,

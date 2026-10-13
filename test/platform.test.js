@@ -1,6 +1,7 @@
+import { readFile } from 'node:fs/promises';
 import { describe, expect, it, vi } from 'vitest';
 import { PLATFORM_EVENTS } from '../src/platform/PlatformServices.js';
-import { WebPlatformServices } from '../src/platform/WebPlatformServices.js';
+import { SERVICE_WORKER_VERSION, WebPlatformServices } from '../src/platform/WebPlatformServices.js';
 import { CapacitorPlatformServices } from '../src/platform/CapacitorPlatformServices.js';
 
 describe('WebPlatformServices', () => {
@@ -119,10 +120,31 @@ describe('WebPlatformServices', () => {
 
     await service.registerServiceWorker();
 
-    expect(register).toHaveBeenCalledWith('/sw.js?v=12', {
+    expect(register).toHaveBeenCalledWith('/sw.js?v=13', {
       scope: '/',
       updateViaCache: 'none',
     });
+  });
+
+  it('registers the same worker version that public/sw.js caches with', async () => {
+    const source = await readFile(new URL('../public/sw.js', import.meta.url), 'utf8');
+    expect(source).toContain(`const WORKER_VERSION = '${SERVICE_WORKER_VERSION}';`);
+  });
+
+  it('asks the active worker to resume the background precache on every start', async () => {
+    const postMessage = vi.fn();
+    const register = vi.fn(async () => ({}));
+    const ready = Promise.resolve({ active: { postMessage } });
+    const service = new WebPlatformServices({
+      navigatorRef: { serviceWorker: { register, ready } },
+      secureContext: true,
+      development: false,
+    });
+
+    await service.registerServiceWorker();
+    await ready;
+
+    expect(postMessage).toHaveBeenCalledWith({ type: 'precache-media' });
   });
 });
 

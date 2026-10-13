@@ -1,3 +1,5 @@
+import { BALL_RADIUS, PLAYER_TUNING } from '../constants.js';
+
 export const CHILENA_FIRE_COLOR = 0xff5a24;
 export const CHILENA_REQUIRED_KICK_PRESSES = 2;
 export const CHILENA_ROTATION_SECONDS = 0.58;
@@ -9,16 +11,55 @@ export const CHILENA_LOB_APEX_Y = 150;
 // launch reaches the declared scoreboard apex from the bottom of the legal
 // chilena trigger zone instead of relying on frame-perfect input.
 export const CHILENA_LOB_RISE_SPEED = 17;
+// The high chilena is launched from where the boot actually met the ball so it
+// peaks this many px above CHILENA_LOB_APEX_Y: it reaches the line almost at
+// rest and the redirect fires there, whichever tick the contact happened on.
+export const CHILENA_LOB_PEAK_MARGIN = 4;
+// Matter at the 60 Hz fixed step: gravity 1.08 x scale 0.001 x (1000/60)^2.
+export const MATTER_GRAVITY_PER_TICK = 1.08 * 0.001 * (1000 / 60) ** 2;
+
+/** Rise (px) of a ball launched upward at `speed` px/tick until it stops. */
+export const lobRiseDistance = ({ speed, gravityPerTick = MATTER_GRAVITY_PER_TICK, frictionAir = 0 }) => {
+  let velocity = Math.max(0, Number(speed) || 0);
+  let rise = 0;
+  for (let tick = 0; tick < 600; tick += 1) {
+    // Matter: v' = v(1 - frictionAir) + g, then the position moves by v'.
+    velocity = velocity * (1 - frictionAir) - gravityPerTick;
+    if (velocity <= 0) break;
+    rise += velocity;
+  }
+  return rise;
+};
+
+/**
+ * Upward launch speed (px/tick) that carries a ball from `ballY` to a peak
+ * CHILENA_LOB_PEAK_MARGIN px above `apexY`, for the ball's own air friction
+ * and net gravity. Clamped to [minimum, maximum].
+ */
+export const resolveLobChilenaRiseSpeed = ({
+  ballY,
+  apexY = CHILENA_LOB_APEX_Y,
+  gravityPerTick = MATTER_GRAVITY_PER_TICK,
+  frictionAir = 0,
+  margin = CHILENA_LOB_PEAK_MARGIN,
+  minimum = 4,
+  maximum = CHILENA_LOB_RISE_SPEED * 1.5,
+} = {}) => {
+  const rise = (Number(ballY) || 0) - apexY + margin;
+  if (!(gravityPerTick > 0) || rise <= 0) return minimum;
+  let low = 0;
+  let high = maximum;
+  if (lobRiseDistance({ speed: high, gravityPerTick, frictionAir }) < rise) return maximum;
+  for (let step = 0; step < 40; step += 1) {
+    const middle = (low + high) / 2;
+    if (lobRiseDistance({ speed: middle, gravityPerTick, frictionAir }) < rise) low = middle;
+    else high = middle;
+  }
+  return Math.min(maximum, Math.max(minimum, high));
+};
 
 /** Classic trigger: the ball must be at least this share of the player height above the body centre. */
 export const CHILENA_MIN_UPWARD_RATIO = 0.18;
-/**
- * Framed (roster-v2) trigger. The contact drawing's boot sits well above the
- * head, so balls below about 76 px over the body centre cannot be met by it
- * (test/sprite-redo.test.js reachability sweep: every still ball from 76 px up
- * connects). 0.32 x 240 = 76.8 px, scaled with the player like the classic zone.
- */
-export const CHILENA_FRAMED_MIN_UPWARD_RATIO = 0.32;
 
 export const evaluateChilenaEligibility = ({
   fighter = {},
@@ -83,11 +124,12 @@ export const resolveLobChilenaLaunch = ({
   targetX,
   targetY,
   apexY = CHILENA_LOB_APEX_Y,
+  riseSpeed = CHILENA_LOB_RISE_SPEED,
 } = {}) => {
   const direction = attackDirection >= 0 ? 1 : -1;
   return {
     vx: direction * 2.4,
-    vy: -CHILENA_LOB_RISE_SPEED,
+    vy: -riseSpeed,
     spin: direction * 0.42,
     color: CHILENA_FIRE_COLOR,
     meterAfter: 100,
@@ -145,9 +187,166 @@ export const CHILENA_CONTACT_SLOP = 12;
 export const CHILENA_FORGIVE_RADIUS = 32;
 /** Share of the velocity error corrected per tick. */
 export const CHILENA_GUIDANCE_GAIN = 0.55;
-export const CHILENA_GUIDANCE_LIMITS = Object.freeze({ minVx: -8, maxVx: 8, minVy: -15, maxVy: 6 });
+/**
+ * Absolute velocity bounds (px/tick). The per-tick flight caps
+ * (chilenaFlightLimits) are tighter: they keep the body inside an ordinary
+ * jump's height and within half a body width of the takeoff spot.
+ */
+export const CHILENA_GUIDANCE_LIMITS = Object.freeze({ minVx: -6, maxVx: 6, minVy: -15, maxVy: 6 });
 
 const clampValue = (value, min, max) => Math.min(max, Math.max(min, value));
+
+/** World gravity per fixed tick (Matter gravity y 1.08 at scale 0.001, 60 Hz). */
+export const CHILENA_WORLD_GRAVITY_PER_TICK = 1.08 * 0.001 * (1000 / 60) ** 2;
+
+/*
+ * Framed chilena zone (owner decision 2026-10-12, all characters): the move
+ * only starts when the ball is overhead and close enough that an ordinary
+ * jump brings the boot of the contact drawing to it. The zone is derived per
+ * character from its own geometry (contact boot, head top, normal jump), and
+ * the guided flight is capped to the same jump so it never rockets the
+ * player toward the top of the screen.
+ */
+
+/**
+ * Half the player's body width (px): the head collider's radius (43 at body
+ * scale 1), the widest part of the compound. "Overhead" means the ball centre
+ * is above the span from the far shoulder to the boot, widened by this much
+ * on each side - i.e. within one body width of the body or the boot.
+ */
+export const CHILENA_BODY_HALF_WIDTH = 43;
+/** Pixels the body may exceed its normal jump apex (one-tick rounding). */
+export const CHILENA_APEX_TOLERANCE = 2;
+/**
+ * Upward speed cap model (px/tick^2): world gravity plus the fast-fall every
+ * airborne fighter feels on an ordinary jump. Capping the rise speed at
+ * sqrt(2 * a * headroom) means the body can never climb past the headroom,
+ * even if guidance stops (after contact the fall is faster still).
+ */
+export const CHILENA_RISE_DECELERATION = CHILENA_WORLD_GRAVITY_PER_TICK + PLAYER_TUNING.fastFallAcceleration;
+/** Post-contact fall acceleration added per tick (Fighter.updateFramedChilena). */
+export const CHILENA_POST_CONTACT_FAST_FALL = PLAYER_TUNING.fastFallAcceleration * 1.55;
+
+/**
+ * Rise (px) of the body on an ordinary jump, replaying the fighter's per-tick
+ * physics: launch velocity, the airborne fast-fall, then Matter's air drag and
+ * world gravity. `launchVelocity` is the character's jump velocity (px/tick,
+ * negative = up), e.g. PLAYER_TUNING.jumpVelocity scaled by its jump stat.
+ */
+export const normalJumpRise = ({
+  launchVelocity = PLAYER_TUNING.jumpVelocity,
+  fastFall = PLAYER_TUNING.fastFallAcceleration,
+  gravity = CHILENA_WORLD_GRAVITY_PER_TICK,
+  frictionAir = 0.018,
+} = {}) => {
+  let vy = Number(launchVelocity) || 0;
+  let rise = 0;
+  let apex = 0;
+  for (let tick = 0; tick < 600 && vy < 0; tick += 1) {
+    vy = (vy + fastFall) * (1 - frictionAir) + gravity;
+    rise -= vy;
+    apex = Math.max(apex, rise);
+  }
+  return apex;
+};
+
+/**
+ * Per-character trigger zone in world px for a grounded fighter.
+ *   bodyX:       body centre x
+ *   bodyBottomY: body bottom (feet) y
+ *   headTopY:    top of the head collider y
+ *   bootOffset:  contact-drawing boot relative to (bodyX, bodyBottomY), chilena facing
+ *   jumpRise:    the character's normal jump rise (normalJumpRise)
+ * The ball centre must be at or above head level (`lowestBallY`), no higher
+ * than the boot can touch at the normal jump apex (`highestBallY`: boot
+ * apex minus ball radius and contact slop), and horizontally between `left`
+ * and `right`.
+ */
+export const framedChilenaZone = ({
+  bodyX,
+  bodyBottomY,
+  headTopY,
+  bootOffset,
+  jumpRise,
+  ballRadius = BALL_RADIUS,
+  bodyHalfWidth = CHILENA_BODY_HALF_WIDTH,
+}) => {
+  const bootX = bodyX + bootOffset.x;
+  const bootY = bodyBottomY + bootOffset.y;
+  return Object.freeze({
+    bootX,
+    bootY,
+    lowestBallY: headTopY,
+    highestBallY: bootY - jumpRise - (ballRadius + CHILENA_CONTACT_SLOP),
+    left: Math.min(bodyX, bootX) - bodyHalfWidth,
+    right: Math.max(bodyX, bootX) + bodyHalfWidth,
+    maxRise: jumpRise,
+    maxSideTravel: bodyHalfWidth,
+  });
+};
+
+/**
+ * Framed eligibility against a framedChilenaZone. Reasons match the classic
+ * gate: 'ball-not-overhead' (below head level), 'ball-too-far-sideways',
+ * 'ball-too-high-or-far' (beyond the boot's normal-jump reach).
+ */
+export const evaluateFramedChilenaEligibility = ({
+  fighter = {},
+  ball = {},
+  kickPresses = 0,
+  zone,
+} = {}) => {
+  const bodyX = Number(fighter.x) || 0;
+  const bodyY = Number(fighter.y) || 0;
+  const ballX = Number(ball.x) || 0;
+  const ballY = Number(ball.y) || 0;
+  const dx = Math.abs(ballX - bodyX);
+  const upwardDistance = bodyY - ballY;
+  let reason = 'eligible';
+  if (!fighter.grounded) reason = 'airborne';
+  else if (fighter.stunned) reason = 'stunned';
+  else if (fighter.active) reason = 'already-active';
+  else if (kickPresses < CHILENA_REQUIRED_KICK_PRESSES) reason = 'needs-second-press';
+  else if (ballY > zone.lowestBallY) reason = 'ball-not-overhead';
+  else if (ballX < zone.left || ballX > zone.right) reason = 'ball-too-far-sideways';
+  else if (ballY < zone.highestBallY) reason = 'ball-too-high-or-far';
+  return Object.freeze({
+    allowed: reason === 'eligible',
+    reason,
+    dx,
+    upwardDistance,
+    distance: Math.hypot(dx, upwardDistance),
+    minimumUpwardDistance: bodyY - zone.lowestBallY,
+    maximumHorizontalDistance: Math.max(bodyX - zone.left, zone.right - bodyX),
+    maximumDistance: bodyY - zone.highestBallY,
+    // Boot rise still needed to touch the ball; drives the planned contact time.
+    bootRiseNeeded: Math.max(0, zone.bootY - ballY - BALL_RADIUS),
+    maxRise: zone.maxRise,
+    maxSideTravel: zone.maxSideTravel,
+  });
+};
+
+/**
+ * Velocity bounds (px/tick) for this tick of a framed chilena. `rise` is the
+ * body's height above its takeoff position and `sideOffset` its horizontal
+ * travel since takeoff. The upward cap shrinks to zero at the normal jump
+ * apex; the sideways cap stops the body `maxSideTravel` from takeoff.
+ */
+export const chilenaFlightLimits = ({
+  rise = 0,
+  maxRise = Infinity,
+  sideOffset = 0,
+  maxSideTravel = Infinity,
+  limits = CHILENA_GUIDANCE_LIMITS,
+} = {}) => {
+  const climb = Math.sqrt(2 * CHILENA_RISE_DECELERATION * Math.max(0, maxRise - rise));
+  return {
+    minVx: clampValue(-maxSideTravel - sideOffset, limits.minVx, limits.maxVx),
+    maxVx: clampValue(maxSideTravel - sideOffset, limits.minVx, limits.maxVx),
+    minVy: climb > 0 ? Math.min(0, Math.max(limits.minVy, -climb)) : 0,
+    maxVy: limits.maxVy,
+  };
+};
 
 /** Planned contact time: higher balls are met later, as the player rises. */
 export const chilenaContactTargetSeconds = ({ upwardDistance = 0, height = 1 } = {}) => {
@@ -210,18 +409,21 @@ export const resolveChilenaContact = ({
   return 'pending';
 };
 
-/** World gravity per fixed tick (Matter gravity y 1.08 at scale 0.001, 60 Hz). */
-export const CHILENA_WORLD_GRAVITY_PER_TICK = 1.08 * 0.001 * (1000 / 60) ** 2;
-
 /**
  * Deterministic forward plan of a framed chilena, using the same controller
- * as the game: would the contact drawing's boot meet this ball? Eligibility
- * uses it so a chilena only starts when it will connect; anything else stays
- * an ordinary kick. Positions in world px, velocities in px/tick.
+ * and flight caps as the game: would the contact drawing's boot meet this
+ * ball? Eligibility uses it so a chilena only starts when it will connect;
+ * anything else stays an ordinary kick. Positions in world px, velocities in
+ * px/tick. Integration follows Matter: v = v * (1 - frictionAir) + gravity.
  *
  *   fighter: { x, y, bodyBottomOffset, vx?, frictionAir? }
  *   ball:    { x, y, vx, vy, radius, frictionAir? }
  *   bootOffset: boot point relative to (fighter.x, body bottom) for the chilena facing
+ *   maxRise / maxSideTravel: flight caps (framedChilenaZone), measured from takeoff
+ *
+ * Also returns the body's highest rise over the whole move (`apexRise`,
+ * continuing after contact with the post-contact fast fall) and its largest
+ * sideways travel before contact (`sideTravel`).
  */
 export const planFramedChilena = ({
   fighter,
@@ -229,6 +431,8 @@ export const planFramedChilena = ({
   bootOffset,
   groundY,
   targetSeconds,
+  maxRise = Infinity,
+  maxSideTravel = Infinity,
   takeoffVelocityY = CHILENA_TAKEOFF_VELOCITY,
   gravity = CHILENA_WORLD_GRAVITY_PER_TICK,
 } = {}) => {
@@ -247,6 +451,24 @@ export const planFramedChilena = ({
     drag: 1 - (Number(ball.frictionAir) || 0.012),
   };
   const restY = groundY - fighter.bodyBottomOffset;
+  const takeoff = { x: fighter.x, y: fighter.y };
+  let apexRise = 0;
+  let sideTravel = 0;
+  const step = (moving, extraGravity = 0) => {
+    moving.vx *= moving.drag;
+    moving.vy = (moving.vy + extraGravity) * moving.drag + gravity;
+    moving.x += moving.vx;
+    moving.y += moving.vy;
+  };
+  // After contact the guidance stops and the body falls faster: follow it up
+  // to its apex so the plan reports the full height of the move.
+  const finishApex = () => {
+    for (let tick = 0; tick < 120 && body.vy < 0; tick += 1) {
+      step(body, CHILENA_POST_CONTACT_FAST_FALL);
+      apexRise = Math.max(apexRise, takeoff.y - body.y);
+    }
+    return apexRise;
+  };
   let previousSurfaceDistance = null;
   for (let tick = 0; tick <= Math.ceil(CHILENA_GUIDE_MAX_SECONDS * 60) + 1; tick += 1) {
     const elapsed = tick / 60;
@@ -264,6 +486,8 @@ export const planFramedChilena = ({
         reachable: outcome === 'contact',
         contactSeconds: outcome === 'contact' ? elapsed : null,
         surfaceDistance: chilenaSurfaceDistance({ boot, ball: target, ballRadius: ball.radius }),
+        apexRise: finishApex(),
+        sideTravel,
       };
     }
     previousSurfaceDistance = chilenaSurfaceDistance({ boot, ball: target, ballRadius: ball.radius });
@@ -273,20 +497,23 @@ export const planFramedChilena = ({
       ballVelocity: { x: target.vx, y: target.vy },
       velocity: { x: body.vx, y: body.vy },
       secondsLeft: Math.max(1 / 60, targetSeconds - elapsed),
+      limits: chilenaFlightLimits({
+        rise: takeoff.y - body.y,
+        maxRise,
+        sideOffset: body.x - takeoff.x,
+        maxSideTravel,
+      }),
     });
     body.vx = next.x;
     body.vy = next.y;
-    for (const moving of [body, target]) {
-      moving.vy += gravity;
-      moving.vx *= moving.drag;
-      moving.vy *= moving.drag;
-      moving.x += moving.vx;
-      moving.y += moving.vy;
-    }
+    step(body);
+    step(target);
     if (body.y > restY) {
       body.y = restY;
       body.vy = Math.min(0, body.vy);
     }
+    apexRise = Math.max(apexRise, takeoff.y - body.y);
+    sideTravel = Math.max(sideTravel, Math.abs(body.x - takeoff.x));
   }
-  return { reachable: false, contactSeconds: null, surfaceDistance: null };
+  return { reachable: false, contactSeconds: null, surfaceDistance: null, apexRise: finishApex(), sideTravel };
 };

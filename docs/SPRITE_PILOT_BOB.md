@@ -104,8 +104,16 @@ The layout was rebalanced after the owner's playtest to animate sprint and hit
     controller as in-game) says the contact boot will meet the ball. Otherwise the
     press stays an ordinary kick (`lastChilenaAttempt.reason: 'ball-unreachable'`;
     in practice chest-high balls on the far side of the boot).
+  - Trigger zone (owner decision 2026-10-12, every character): the ball must be
+    overhead, at or above head level and within one body width (43 px each side)
+    of the body-to-boot span, and no higher than the contact boot reaches on the
+    character's ordinary jump (`framedChilenaZone`). Anything else is an
+    ordinary kick (`ball-not-overhead`, `ball-too-far-sideways`,
+    `ball-too-high-or-far`).
   - In flight, the jump is steered every tick so the contact drawing's boot meets
-    the ball. The shot is applied **at contact**, and MatchScene announces it then.
+    the ball, capped (`chilenaFlightLimits`) so the body never climbs past its
+    ordinary jump apex or drifts more than 43 px sideways before contact. The
+    shot is applied **at contact**, and MatchScene announces it then.
   - Contact is a boot-to-ball-surface gap of ≤12 px, or ≤32 px at the planned time or
     at closest approach.
   - The body ignores the ball from takeoff until 0.2 s after contact. The upright

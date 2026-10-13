@@ -83,6 +83,19 @@ const settleInputEvent = (page) => page.evaluate(
   () => new Promise((resolve) => requestAnimationFrame(resolve)),
 );
 
+// Desktop R asks before restarting a match (owner decision 2026-10-13):
+// confirm with the dialog's Restart button (the dialog sits centred on a
+// 1280x720 stage, its buttons 76 px below the centre).
+const restartViaKeyboard = async (page) => {
+  await page.keyboard.press('r');
+  await page.waitForFunction(() => JSON.parse(window.render_game_to_text()).modal === 'restart-confirm');
+  assert.equal((await readState(page)).mode, 'paused', 'the match must wait while R asks');
+  // Phaser registers the new dialog buttons on its next step.
+  await page.evaluate(() => new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve))));
+  await touchControl(page, 760, 436, 30);
+  await page.waitForFunction(() => JSON.parse(window.render_game_to_text()).mode === 'countdown');
+};
+
 const hold = async (page, key, milliseconds) => {
   await page.keyboard.up(key);
   await page.keyboard.down(key);
@@ -316,6 +329,16 @@ const server = spawn('npm', ['run', 'dev', '--', '--host', '127.0.0.1', '--port'
   cwd: root,
   stdio: ['ignore', 'pipe', 'pipe'],
 });
+// Vite messages about dependency re-optimisation and page reloads, and the
+// desktop page's main-frame navigations; printed if the run fails.
+const viteEvents = [];
+const mainFrameNavigations = [];
+let browserGamePassed = false;
+server.stdout.on('data', (chunk) => {
+  for (const line of String(chunk).split('\n')) {
+    if (/optimiz|reload/i.test(line)) viteEvents.push(line.replace(/\x1b\[[0-9;]*m/g, '').trim());
+  }
+});
 
 let browser;
 try {
@@ -329,6 +352,11 @@ try {
     if (message.type() === 'error') errors.push(`console: ${message.text()}`);
   });
 
+  // Every main-frame navigation after the first load is a page reload (for
+  // example Vite re-optimising dependencies on a cold cache).
+  page.on('framenavigated', (frame) => {
+    if (frame === page.mainFrame()) mainFrameNavigations.push(`${new Date().toISOString()} ${frame.url()}`);
+  });
   await page.goto(url, { waitUntil: 'domcontentloaded' });
   await waitThroughSplash(page, `${output}/00-splash-option-a.png`);
   let state = await readState(page);
@@ -1907,25 +1935,34 @@ try {
     support: 'https://notjustprompts.ai/games/support/?game=joel-football',
   });
   await capture(page, `${output}/01-about.png`);
-  const youtubePopupPromise = page.waitForEvent('popup');
-  await touchControl(page, 720, 505, 30);
-  const youtubePopup = await youtubePopupPromise;
+  // Check the URL each link asks the popup to open (the app's contract), not
+  // where the live site then redirects (the privacy page now redirects to
+  // another domain; YouTube may redirect through regional consent).
+  const openExternalPopup = async (x, y) => {
+    const requested = [];
+    // A popup's first navigation can fire before its frame is attached, so
+    // match any navigation away from the game itself.
+    const onRequest = (request) => {
+      if (request.isNavigationRequest() && !request.url().startsWith(url)) requested.push(request.url());
+    };
+    desktop.on('request', onRequest);
+    const popupPromise = page.waitForEvent('popup');
+    await touchControl(page, x, y, 30);
+    const popup = await popupPromise;
+    for (let attempt = 0; attempt < 150 && requested.length === 0; attempt += 1) {
+      await new Promise((resolve) => setTimeout(resolve, 100));
+    }
+    desktop.off('request', onRequest);
+    await popup.close();
+    return requested[0] ?? '';
+  };
   assert.match(
-    youtubePopup.url(),
+    await openExternalPopup(720, 505),
     /youtube\.com.*luisnomad/i,
-    'YouTube may redirect through regional consent, but must retain the Luis Nomad channel destination',
+    'the YouTube link must open the Luis Nomad channel',
   );
-  await youtubePopup.close();
-  const privacyPopupPromise = page.waitForEvent('popup');
-  await touchControl(page, 614, 565, 30);
-  const privacyPopup = await privacyPopupPromise;
-  assert.match(privacyPopup.url(), /^https:\/\/notjustprompts\.ai\/games\/legal\/?/);
-  await privacyPopup.close();
-  const supportPopupPromise = page.waitForEvent('popup');
-  await touchControl(page, 824, 565, 30);
-  const supportPopup = await supportPopupPromise;
-  assert.match(supportPopup.url(), /^https:\/\/notjustprompts\.ai\/games\/support\/?\?game=joel-football/);
-  await supportPopup.close();
+  assert.match(await openExternalPopup(614, 565), /^https:\/\/notjustprompts\.ai\/games\/legal\/?/);
+  assert.match(await openExternalPopup(824, 565), /^https:\/\/notjustprompts\.ai\/games\/support\/?\?game=joel-football/);
   await page.evaluate(() => window.__SKYHEAD_PLATFORM_DEBUG__.backForTesting());
   await page.waitForFunction(() => JSON.parse(window.render_game_to_text()).modal === null);
 
@@ -2155,7 +2192,27 @@ try {
     'Joel’s upper visible hairline must be inside the fixed head cap',
   );
   await capture(page, `${output}/02-ground-baseline.png`);
+  // The 2 s window opens on the first rendered gameplay frame: it follows a
+  // screenshot, after which headless Chromium may hold the next frame. A page
+  // that never renders again still fails, with its visibility and loop state.
   await page.evaluate(() => window.__SKYHEAD_PERFORMANCE__.start());
+  const firstBenchmarkFrame = await page.waitForFunction(
+    () => window.__SKYHEAD_PERFORMANCE__.snapshot().frames.samples > 0,
+    null,
+    { timeout: 10_000, polling: 100 },
+  ).then(() => true).catch(() => false);
+  const benchmarkPageState = () => page.evaluate(() => ({
+    visibility: document.visibilityState,
+    focused: document.hasFocus(),
+    loopRunning: window.__SKYHEAD_GAME__.loop.running,
+    loopSleeping: window.__SKYHEAD_GAME__.loop.sleeping ?? null,
+    mode: JSON.parse(window.render_game_to_text()).mode,
+  }));
+  assert.ok(
+    firstBenchmarkFrame,
+    `the real-time benchmark should see a rendered frame within 10 s; ${JSON.stringify(await benchmarkPageState())}; navigations ${JSON.stringify(mainFrameNavigations)}`,
+  );
+  await page.evaluate(() => window.__SKYHEAD_PERFORMANCE__.reset());
   await page.waitForTimeout(2000);
   const desktopPerformanceBaseline = await page.evaluate(
     () => window.__SKYHEAD_PERFORMANCE__.stop(),
@@ -2163,7 +2220,7 @@ try {
   assert.equal(desktopPerformanceBaseline.renderer, 'canvas');
   assert.ok(
     desktopPerformanceBaseline.frames.samples >= 60,
-    `the real-time benchmark should sample active gameplay; ${JSON.stringify(desktopPerformanceBaseline)}`,
+    `the real-time benchmark should sample active gameplay; ${JSON.stringify(desktopPerformanceBaseline)}; ${JSON.stringify(await benchmarkPageState())}; navigations ${JSON.stringify(mainFrameNavigations)}; vite ${JSON.stringify(viteEvents)}`,
   );
   await writeFile(
     `${output}/runtime-performance-desktop.json`,
@@ -2545,7 +2602,11 @@ try {
   await hold(page, 'x', 17);
   await hold(page, 'k', 17);
   state = await readState(page);
-  assert.equal(state.players.left.chilenaSuccesses, chilenaMissesBefore, 'an overhead ball more than one player-height away must be unreachable');
+  // Framed chilena zone (owner decision 2026-10-12): the boot only reaches as
+  // high as a normal jump allows (Lucia, the player here: y=333; the
+  // highest-reaching character, Mum: y=319), so a ball at y=280 is out of reach.
+  assert.equal(state.players.left.chilenaSuccesses, chilenaMissesBefore, 'an overhead ball beyond the boot\'s normal-jump reach must not start a chilena');
+  assert.equal(state.players.left.lastChilenaAttempt?.reason, 'ball-too-high-or-far');
   assert.notEqual(state.powerBall.superpowerId, 'chilena');
   assert.ok(state.players.left.meter >= 20 && state.players.left.meter < 100, 'an unreachable attempt must not award the meter');
   await advance(page, 240);
@@ -2555,7 +2616,11 @@ try {
     window.__SKYHEAD_DEBUG__.setHumanPosition(600);
     window.__SKYHEAD_DEBUG__.setHumanMeter(12);
     window.__SKYHEAD_DEBUG__.setOpponentPosition(1080);
-    window.__SKYHEAD_DEBUG__.setBall({ x: 620, y: 360, vx: 0.2, vy: -2 });
+    // Inside every character's framed zone (from adult head level y=414 up to
+    // y=368, Luna's, the lowest normal-jump boot reach in the roster). Was (620, 360),
+    // which is out of reach for the kids now that the zone follows each
+    // character's normal jump instead of one player-height.
+    window.__SKYHEAD_DEBUG__.setBall({ x: 610, y: 385, vx: 0.2, vy: -2 });
   });
   const chilenaSuccessesBefore = (await readState(page)).players.left.chilenaSuccesses;
   await hold(page, 'x', 17);
@@ -2592,13 +2657,22 @@ try {
   state = await readState(page);
   // Framed chilenas carry the body orientation in the drawings: no spin.
   assert.equal(state.players.left.chilenaRotation, 0);
+  // The lowest opaque row of every roster-v2 chilena drawing (cells 17-19) is
+  // the cell's foot anchor (source y=418); the 62 source px below it are
+  // transparent padding. The cell's getBounds() includes that padding, so it
+  // only cleared the pitch while chilenas flew at least 36 px high; capped
+  // (normal-jump) chilenas on head-high balls are lower hops. Check the art.
   const chilenaVisual = await page.evaluate(() => {
-    const fighter = window.__SKYHEAD_GAME__.scene.getScene('Match').leftPlayer;
-    return { bottom: fighter.visual.getBounds().bottom };
+    const visual = window.__SKYHEAD_GAME__.scene.getScene('Match').leftPlayer.visual;
+    return {
+      artBottom: visual.y + (418 - visual.displayOriginY) * visual.scaleY,
+      angle: visual.angle,
+    };
   });
+  assert.equal(chilenaVisual.angle, 0, 'framed chilena drawings are not rotated');
   assert.ok(
-    chilenaVisual.bottom < 636,
-    `the airborne chilena artwork must stay above the pitch; bottom=${chilenaVisual.bottom}`,
+    chilenaVisual.artBottom <= 636.5,
+    `the airborne chilena artwork must stay above the pitch; art bottom=${chilenaVisual.artBottom}`,
   );
   await capture(page, `${output}/02-chilena.png`);
   await advance(page, 1150);
@@ -2621,7 +2695,7 @@ try {
     window.__SKYHEAD_DEBUG__.setHumanPosition(600);
     window.__SKYHEAD_DEBUG__.setHumanMeter(12);
     window.__SKYHEAD_DEBUG__.setOpponentPosition(1080);
-    window.__SKYHEAD_DEBUG__.setBall({ x: 620, y: 360, vx: 0, vy: -1 });
+    window.__SKYHEAD_DEBUG__.setBall({ x: 610, y: 385, vx: 0, vy: -1 });
   });
   const lobChilenaSuccessesBefore = (await readState(page)).players.left.chilenaSuccesses;
   await hold(page, 'z', 17);
@@ -2720,8 +2794,17 @@ try {
   assert.ok(state.powerBall.visuals.particles > 0 && state.powerBall.visuals.glowVisible, 'the fire effect should be live');
   await capture(page, `${output}/02-power-shot.png`);
 
+  // R asks first; Escape keeps playing.
   await page.keyboard.press('r');
-  await page.waitForFunction(() => JSON.parse(window.render_game_to_text()).mode === 'countdown');
+  await page.waitForFunction(() => JSON.parse(window.render_game_to_text()).modal === 'restart-confirm');
+  state = await readState(page);
+  assert.equal(state.mode, 'paused', 'R must not restart a match without asking');
+  assert.deepEqual(state.confirmationActions, ['stay', 'restart match']);
+  await capture(page, `${output}/02-restart-key-confirm.png`);
+  await page.keyboard.press('Escape');
+  await page.waitForFunction(() => JSON.parse(window.render_game_to_text()).modal === null);
+  assert.equal((await readState(page)).mode, 'playing', 'Escape must dismiss the question and keep playing');
+  await restartViaKeyboard(page);
   await advance(page, 3100);
   await page.evaluate(() => {
     window.__SKYHEAD_DEBUG__.resumePlay();
@@ -2829,8 +2912,7 @@ try {
   assert.ok(state.hud.announcementWidth <= 760, 'Hyper feedback should stay compact');
   await capture(page, `${output}/02-hyper-glow.png`);
 
-  await page.keyboard.press('r');
-  await page.waitForFunction(() => JSON.parse(window.render_game_to_text()).mode === 'countdown');
+  await restartViaKeyboard(page);
   await advance(page, 3100);
   await page.evaluate(() => {
     window.__SKYHEAD_DEBUG__.resumePlay();
@@ -4456,7 +4538,7 @@ try {
     'the first kick in the conversion fixture must really connect with the ball',
   );
   await mobilePage.evaluate(() => {
-    window.__SKYHEAD_DEBUG__.setBall({ x: 620, y: 360, vx: 0.2, vy: -2 });
+    window.__SKYHEAD_DEBUG__.setBall({ x: 610, y: 385, vx: 0.2, vy: -2 });
   });
   await advance(mobilePage, 70);
   await touchStageControl(mobilePage, 1165 + mobileControlOverflow, 610, 17);
@@ -4474,7 +4556,7 @@ try {
     window.__SKYHEAD_DEBUG__.setHumanPosition(600);
     window.__SKYHEAD_DEBUG__.setHumanMeter(0);
     window.__SKYHEAD_DEBUG__.setOpponentPosition(1080);
-    window.__SKYHEAD_DEBUG__.setBall({ x: 620, y: 360, vx: 0.2, vy: -2 });
+    window.__SKYHEAD_DEBUG__.setBall({ x: 610, y: 385, vx: 0.2, vy: -2 });
     window.__SKYHEAD_GAME__.scene.getScene('Match').inputController.neutralize();
   });
   const touchChilenasBefore = (await readState(mobilePage)).players.left.chilenaSuccesses;
@@ -4521,7 +4603,7 @@ try {
     window.__SKYHEAD_DEBUG__.setHumanPosition(600);
     window.__SKYHEAD_DEBUG__.setHumanMeter(0);
     window.__SKYHEAD_DEBUG__.setOpponentPosition(1080);
-    window.__SKYHEAD_DEBUG__.setBall({ x: 620, y: 360, vx: 0, vy: -1 });
+    window.__SKYHEAD_DEBUG__.setBall({ x: 610, y: 385, vx: 0, vy: -1 });
   });
   await touchStageControl(mobilePage, 1195 + mobileControlOverflow, 475, 17);
   await mobilePage.waitForTimeout(260);
@@ -4584,6 +4666,12 @@ try {
   await advance(mobilePage, 520);
 
   await touchStageControl(mobilePage, 132, 54, 40);
+  mobileState = await readState(mobilePage);
+  assert.equal(mobileState.modal, 'restart-confirm', 'on-screen Restart must ask before throwing the match away');
+  assert.equal(mobileState.mode, 'paused', 'the match must wait while Restart asks');
+  assert.deepEqual(mobileState.confirmationActions, ['stay', 'restart match']);
+  await capture(mobilePage, `${output}/05-touch-restart-confirm.png`);
+  await touchControl(mobilePage, 775, 438, 40);
   await mobilePage.waitForFunction(() => JSON.parse(window.render_game_to_text()).mode === 'countdown');
   await advance(mobilePage, 3100);
   mobileState = await readState(mobilePage);
@@ -4611,7 +4699,16 @@ try {
   await touchControl(mobilePage, 640, 390, 40);
   assert.equal((await readState(mobilePage)).mode, 'playing', 'touch resume should continue the match');
 
+  await mobilePage.waitForTimeout(550);
   await touchStageControl(mobilePage, 132, 54, 40);
+  assert.equal((await readState(mobilePage)).modal, 'restart-confirm');
+  await touchControl(mobilePage, 505, 438, 40);
+  mobileState = await readState(mobilePage);
+  assert.equal(mobileState.modal, null, 'Stay should dismiss the restart confirmation');
+  assert.equal(mobileState.mode, 'playing', 'Stay should return to the running match');
+  await mobilePage.waitForTimeout(550);
+  await touchStageControl(mobilePage, 132, 54, 40);
+  await touchControl(mobilePage, 775, 438, 40);
   await mobilePage.waitForFunction(() => JSON.parse(window.render_game_to_text()).mode === 'countdown');
   await advance(mobilePage, 3100);
   await touchStageControl(mobilePage, 48, 54, 40);
@@ -5175,8 +5272,13 @@ try {
   await spanishDevice.close();
 
   await writeFile(`${output}/summary.json`, JSON.stringify({ passed: true, checks: 261 }, null, 2));
+  browserGamePassed = true;
   process.stdout.write('Browser game checks passed: splash, Kickfall, random math, persistence, bilingual settings, whistle signals, directional dash/boost, Big Guy, full gameplay, and touch flow.\n');
 } finally {
+  if (!browserGamePassed) {
+    console.error(`desktop page navigations: ${JSON.stringify(mainFrameNavigations)}`);
+    console.error(`vite events: ${JSON.stringify(viteEvents)}`);
+  }
   await browser?.close();
   server.kill('SIGTERM');
 }

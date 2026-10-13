@@ -17,6 +17,7 @@ export const createButtonActivationGate = () => {
       y = 0,
       guardMs = 0,
       radius = TOUCH_BUTTON_GUARD_RADIUS,
+      source = 'mouse',
     } = {}) {
       const activationTime = normalizeNumber(now, Date.now());
       const activationX = normalizeNumber(x, 0);
@@ -25,7 +26,10 @@ export const createButtonActivationGate = () => {
       const safeRadius = Math.max(0, normalizeNumber(radius, TOUCH_BUTTON_GUARD_RADIUS));
 
       recentActivations = recentActivations.filter(({ expiresAt }) => expiresAt > activationTime);
-      const isCompatibilityPress = recentActivations.some((activation) => (
+      // A finger is always a deliberate press: only the emulated mouse press a
+      // WebView sends after touchend can be a duplicate, so quick repeated taps
+      // (menu arrows, answers) all register.
+      const isCompatibilityPress = source !== 'touch' && recentActivations.some((activation) => (
         Math.hypot(activation.x - activationX, activation.y - activationY) <= safeRadius
       ));
       if (isCompatibilityPress) return false;
@@ -53,6 +57,10 @@ const getGameActivationGate = (game) => {
   return gate;
 };
 
+// Phaser marks pointers driven by touch events; the compatibility press arrives
+// through the mouse pointer instead.
+const getPointerSource = (pointer) => (pointer?.wasTouch === true ? 'touch' : 'mouse');
+
 const getPointerPosition = (pointer, target) => ({
   x: normalizeNumber(pointer?.x, normalizeNumber(target?.x, 0)),
   y: normalizeNumber(pointer?.y, normalizeNumber(target?.y, 0)),
@@ -64,8 +72,9 @@ const getPointerPosition = (pointer, target) => ({
  * A pointer-down reserves one accepted press. Components can activate on that
  * press when a WebView may cancel release, or use the conventional release
  * phase. On touch layouts, a game-wide spatial gate suppresses the
- * compatibility mouse press that some WebViews emit after touchend. Controls
- * at other positions remain immediately available.
+ * compatibility mouse press that some WebViews emit after touchend. Touch
+ * presses are never suppressed, so rapid deliberate taps all register, and
+ * controls at other positions remain immediately available.
  *
  * Gameplay holds, joysticks, and sliders should keep their own pointer
  * ownership and must not use this helper.
@@ -95,6 +104,7 @@ export const bindButtonInput = (scene, target, {
       ...position,
       guardMs,
       radius: guardRadius,
+      source: getPointerSource(pointer),
     })) {
       acceptedPresses.delete(pointerKey);
       return;

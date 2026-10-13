@@ -137,7 +137,9 @@ export class IntroScene extends Phaser.Scene {
       size: 28,
       color: '#d9f8ff',
     });
-    compactBodyText(this, 345, 410, t(this.language, 'hub.footballMeta'), {
+    // One phrase per line: wrapping the bulleted line split "KICK / OFF".
+    const meta = t(this.language, 'hub.footballMeta').split('•').map((part) => part.trim()).join('\n');
+    compactBodyText(this, 345, 410, meta, {
       width: 390,
       size: 26,
       color: '#ffdc72',

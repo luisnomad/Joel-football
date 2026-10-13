@@ -12,6 +12,7 @@ import { arcadeAudio } from '../../services/ArcadeAudio.js';
 import { playerProfileStore } from '../../services/PlayerProfile.js';
 import { clearActiveScene, setActiveScene } from '../../stateBridge.js';
 import { createButton } from '../../ui/createButton.js';
+import { createConfirmationOverlay } from '../../ui/createConfirmationOverlay.js';
 import { discHockeyAssetUrl } from './discHockeyAssets.js';
 import { getDiscHockeyCollisionMap } from './discHockeyCollisionMaps.js';
 import {
@@ -27,6 +28,7 @@ import {
   chooseDiscHockeyCrazyTargets,
   chooseDiscHockeyAiTarget,
   clampDiscPlayerPosition,
+  shouldDiscHockeyAiEndRecovery,
   closestPointOnCollisionContour,
   createDiscHockeyCornerBankPuck,
   createDiscHockeyCrazyAttackPuck,
@@ -228,6 +230,7 @@ export class DiscHockeyScene extends Phaser.Scene {
     this.isPaused = false;
     this.suspended = false;
     this.pauseReason = null;
+    this.leaveConfirmation = null;
     this.collisionSoundCooldown = 0;
     this.lastCollisionSound = null;
     this.lastPuckTouch = null;
@@ -704,7 +707,7 @@ export class DiscHockeyScene extends Phaser.Scene {
         height: 54,
         label: t(this.language, 'discHockey.leave'),
         color: 0x9e3024,
-        onPress: () => this.leaveToSetup(),
+        onPress: () => this.requestLeave(),
       }), 82),
     ];
     this.pauseButtons.forEach((button) => button.setVisible(false));
@@ -780,11 +783,12 @@ export class DiscHockeyScene extends Phaser.Scene {
     this.input.on('pointerupoutside', this.onPointerUp);
     this.onPauseKey = (event) => {
       if (event.repeat) return;
+      if (this.closeLeaveConfirmation()) return;
       if (this.isPaused) this.resumeGame();
       else this.pauseGame('manual');
     };
     this.onRestartKey = (event) => {
-      if (!event.repeat) this.restartMatch();
+      if (!event.repeat && !this.leaveConfirmation) this.restartMatch();
     };
     this.onFullscreenKey = (event) => {
       if (!event.repeat) this.game.registry.get('platformActions')?.toggleFullscreen?.();
@@ -1079,6 +1083,19 @@ export class DiscHockeyScene extends Phaser.Scene {
         return;
       }
       const tuning = getDiscHockeyAiTuning(this.difficulty);
+      if (this.aiRecovery.active) {
+        this.aiRecovery.elapsedSeconds += dt;
+        if (shouldDiscHockeyAiEndRecovery({
+          puck: this.puck,
+          player: this.rightPlayer,
+          elapsedSeconds: this.aiRecovery.elapsedSeconds,
+          difficulty: this.difficulty,
+          collisionMap: this.collisionMap,
+        })) {
+          this.aiRecovery.active = false;
+          this.aiThinkTimer = 0;
+        }
+      }
       this.aiThinkTimer -= dt;
       if (this.aiThinkTimer <= 0) {
         this.aiTarget = chooseDiscHockeyAiTarget({
@@ -1086,6 +1103,7 @@ export class DiscHockeyScene extends Phaser.Scene {
           player: this.rightPlayer,
           difficulty: this.difficulty,
           collisionMap: this.collisionMap,
+          recovering: this.aiRecovery.active,
         });
         this.aiThinkTimer = tuning.reactionSeconds;
       }
@@ -1591,6 +1609,8 @@ export class DiscHockeyScene extends Phaser.Scene {
     this.aiTarget = { x: this.rightPlayer.x, y: this.rightPlayer.y };
     this.aiTargets = this.rightPlayers.map(({ x, y, crazyRole: role }) => ({ x, y, role }));
     this.aiThinkTimer = 0;
+    // Every restart sends the computer back to guard its goal before it presses.
+    this.aiRecovery = { active: true, elapsedSeconds: 0 };
     this.rightTeamCreaseSeconds = 0;
     this.pendingWinner = null;
     this.announcementText?.setColor(this.themeId === 'neon' ? '#ffcf35' : '#173d5b');
@@ -1636,15 +1656,48 @@ export class DiscHockeyScene extends Phaser.Scene {
     this.isPaused = true;
     this.pauseReason = reason;
     this.releaseAllPointers();
+    this.showPause();
+    arcadeAudio.click();
+  }
+
+  showPause() {
     this.pauseShade.setVisible(true);
     this.pausePanel.setVisible(true);
     this.pauseTitle.setVisible(true);
     this.pauseButtons.forEach((button) => button.setVisible(true));
+  }
+
+  // Leaving from the pause menu asks first, like Football and Kickfall.
+  requestLeave() {
+    if (this.phase === 'result') {
+      this.leaveToSetup();
+      return;
+    }
+    if (this.leaveConfirmation) return;
+    this.hidePause();
+    this.leaveConfirmation = createConfirmationOverlay(this, {
+      title: t(this.language, 'discHockey.leaveConfirmTitle'),
+      message: t(this.language, 'match.abandonConfirmCopy'),
+      cancelLabel: t(this.language, 'match.abandonStay'),
+      confirmLabel: t(this.language, 'match.abandonLeave'),
+      onCancel: () => this.closeLeaveConfirmation(),
+      onConfirm: () => this.leaveToSetup(),
+    });
+    this.leaveConfirmation.kind = 'leave-confirm';
     arcadeAudio.click();
   }
 
+  closeLeaveConfirmation() {
+    if (!this.leaveConfirmation) return false;
+    this.leaveConfirmation.destroy();
+    this.leaveConfirmation = null;
+    if (this.isPaused && this.phase !== 'result') this.showPause();
+    arcadeAudio.click();
+    return true;
+  }
+
   resumeGame() {
-    if (!this.isPaused || this.suspended) return;
+    if (!this.isPaused || this.suspended || this.leaveConfirmation) return;
     this.isPaused = false;
     this.pauseReason = null;
     this.hidePause();
@@ -1709,6 +1762,8 @@ export class DiscHockeyScene extends Phaser.Scene {
   }
 
   leaveToSetup() {
+    this.leaveConfirmation?.destroy();
+    this.leaveConfirmation = null;
     arcadeAudio.click();
     this.scene.start('MiniGameSetup', { gameId: 'discHockey' });
   }
@@ -1718,6 +1773,7 @@ export class DiscHockeyScene extends Phaser.Scene {
       this.leaveToSetup();
       return true;
     }
+    if (this.closeLeaveConfirmation()) return true;
     if (this.isPaused) this.resumeGame();
     else this.pauseGame('back');
     return true;
@@ -2168,6 +2224,7 @@ export class DiscHockeyScene extends Phaser.Scene {
     };
     return {
       mode: this.isPaused ? 'paused' : this.phase,
+      modal: this.leaveConfirmation?.kind ?? null,
       minigame: 'discHockey',
       playMode: this.playMode,
       theme: this.themeId,
@@ -2185,6 +2242,7 @@ export class DiscHockeyScene extends Phaser.Scene {
           x: round(this.aiTarget.x),
           y: round(this.aiTarget.y),
         },
+        recovering: this.isCrazyMode ? false : Boolean(this.aiRecovery?.active),
         tuning: {
           reactionSeconds: getDiscHockeyAiTuning(this.difficulty).reactionSeconds,
           maxSpeed: getDiscHockeyAiTuning(this.difficulty).maxSpeed,

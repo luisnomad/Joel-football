@@ -4,7 +4,10 @@
  * is applied, unreachable low balls stay ordinary kicks, the authored loops
  * play, and the scorer celebrates. The framed chilena is then repeated for
  * adults with much higher contact boots (Dad, Juanjo and Mum, whose boot is
- * the highest in the roster). Run: node test/framed-chilena-browser.mjs
+ * the highest in the roster). Every chilena keeps the body within the
+ * character's live ordinary jump, and a ball near the top of the screen stays
+ * an ordinary kick (owner decision 2026-10-12).
+ * Run: node test/framed-chilena-browser.mjs
  */
 import assert from 'node:assert/strict';
 import { spawn } from 'node:child_process';
@@ -27,6 +30,14 @@ const CONTACT_BOOTS = {
   mum: { x: 220, y: 70 },
 };
 const FORGIVE_RADIUS = 32;
+// src/game/pure/chilena.js CHILENA_APEX_TOLERANCE: px the chilena body may
+// exceed the character's ordinary jump apex.
+const APEX_TOLERANCE = 2;
+// A moving overhead ball inside every character's zone (head level of an
+// adult is y=414, Bob's boot reaches up to y=359 on a normal jump), high
+// enough that even Mum's and Juanjo's high boots need a real jump to meet it.
+// The old moving case (560, 350) rising at 3 px/tick sat above Bob's reach.
+const MOVING_BALL = { x: 575, y: 372, vx: 2, vy: 1 };
 const ROSTER_V2 = {
   takeoff: 17,
   contact: 18,
@@ -103,7 +114,7 @@ const readContactGeometry = (page, boot) => page.evaluate((boot) => {
 }, boot);
 
 /** Second kick press on an overhead ball, then step until the boot meets it. */
-const runChilena = async (page, { ball, label, boot = CONTACT_BOOTS.bob }) => {
+const runChilena = async (page, { ball, label, boot = CONTACT_BOOTS.bob, normalJumpRise, screenshot }) => {
   await page.evaluate((setup) => {
     window.__SKYHEAD_DEBUG__.resumePlay();
     window.__SKYHEAD_DEBUG__.setHumanPosition(600);
@@ -112,6 +123,7 @@ const runChilena = async (page, { ball, label, boot = CONTACT_BOOTS.bob }) => {
     window.__SKYHEAD_DEBUG__.setBall(setup);
   }, ball);
   const before = await readState(page);
+  await startApexProbe(page);
   await hold(page, 'x', 17);
   await hold(page, 'k', 17);
   let state = await readState(page);
@@ -133,9 +145,10 @@ const runChilena = async (page, { ball, label, boot = CONTACT_BOOTS.bob }) => {
   assert.ok(contact, `${label}: the boot never reached the ball`);
   assert.equal(contact.outcome, 'contact', `${label}: ${JSON.stringify(contact)}`);
   assert.ok(contact.surfaceDistance <= FORGIVE_RADIUS, `${label}: contact gap ${contact.surfaceDistance}`);
-  // Same tick as the contact: the drawing on screen is the contact drawing and
-  // its boot is on the ball; the strike has been applied now.
-  await page.evaluate(() => window.__SKYHEAD_GAME__.scene.getScene('Match').leftPlayer.updatePose());
+  // Same tick as the contact, exactly as the game left it (no extra pose
+  // update): the drawing on screen is the contact drawing and its boot is on
+  // the ball; the strike has been applied now (playtest 2026-10-12: the
+  // takeoff drawing used to linger for this tick).
   geometry = await readContactGeometry(page, boot);
   assert.deepEqual(geometry.catalogBoot, boot, `${label}: catalog chilenaContact must match the measured boot`);
   assert.equal(geometry.frame, ROSTER_V2.contact, `${label}: contact drawing at contact`);
@@ -148,7 +161,115 @@ const runChilena = async (page, { ball, label, boot = CONTACT_BOOTS.bob }) => {
     state.ball.vx > 12 && state.ball.vy > 0 && Math.hypot(state.ball.vx, state.ball.vy) > 20,
     `${label}: the chilena must drive down toward the rival goal; v=(${state.ball.vx}, ${state.ball.vy})`,
   );
-  return { contact, geometry };
+  // The screenshot is the contact moment.
+  if (screenshot) await capture(page, screenshot);
+  // Owner decision 2026-10-12: the chilena never lifts the body above the
+  // character's ordinary jump. Follow the body past contact to its apex.
+  for (let step = 0; step < 60 && state.players.left.vy < 0.5; step += 1) {
+    await advance(page, 1000 / 60);
+    state = await readState(page);
+  }
+  const apexRise = before.players.left.y - (await readApexProbe(page));
+  assert.ok(
+    apexRise <= normalJumpRise + APEX_TOLERANCE,
+    `${label}: the chilena rose ${apexRise.toFixed(1)} px, above the normal jump's ${normalJumpRise.toFixed(1)} px`,
+  );
+  return { contact, geometry, apexRise };
+};
+
+/**
+ * Highest point (smallest y) of the left player's body over every simulation
+ * tick from now on. Sampling the snapshot between test steps can miss the apex
+ * (the real-time loop also advances the game), so the tick itself records it.
+ */
+const startApexProbe = (page) => page.evaluate(() => {
+  const scene = window.__SKYHEAD_GAME__.scene.getScene('Match');
+  if (!scene.__apexProbeOriginalStep) {
+    scene.__apexProbeOriginalStep = scene.stepGame;
+    scene.stepGame = function stepGameWithApexProbe(...args) {
+      const result = scene.__apexProbeOriginalStep.apply(this, args);
+      scene.__apexProbeMinY = Math.min(scene.__apexProbeMinY, scene.leftPlayer.sprite.y);
+      return result;
+    };
+  }
+  scene.__apexProbeMinY = scene.leftPlayer.sprite.y;
+});
+const readApexProbe = (page) => page.evaluate(() => (
+  window.__SKYHEAD_GAME__.scene.getScene('Match').__apexProbeMinY
+));
+
+/** Live rise (px) of an ordinary jump from the ground, ball out of the way. */
+const measureNormalJump = async (page) => {
+  await page.evaluate(() => {
+    window.__SKYHEAD_DEBUG__.resumePlay();
+    window.__SKYHEAD_DEBUG__.setHumanPosition(600);
+    window.__SKYHEAD_DEBUG__.setOpponentPosition(1080);
+    window.__SKYHEAD_DEBUG__.setBall({ x: 300, y: 200, vx: 0, vy: 0 });
+  });
+  await advance(page, 200);
+  let state = await readState(page);
+  assert.equal(state.players.left.grounded, true, 'the jump measurement starts on the ground');
+  const groundY = state.players.left.y;
+  // Deterministic: the real-time loop sleeps and each advance() is exactly one
+  // game tick plus one physics step; the human input reports Jump for one tick.
+  await page.evaluate(() => {
+    const game = window.__SKYHEAD_GAME__;
+    const scene = game.scene.getScene('Match');
+    game.loop.sleep();
+    scene.__jumpProbeDecide = scene.humanProvider.decide;
+    let pending = true;
+    scene.humanProvider.decide = (snapshot) => {
+      const intent = scene.__jumpProbeDecide(snapshot);
+      if (!pending) return intent;
+      pending = false;
+      return { ...intent, jump: true };
+    };
+  });
+  await startApexProbe(page);
+  for (let tick = 0; tick < 50; tick += 1) await advance(page, 1000 / 60);
+  await page.evaluate(() => {
+    const game = window.__SKYHEAD_GAME__;
+    const scene = game.scene.getScene('Match');
+    scene.humanProvider.decide = scene.__jumpProbeDecide;
+    game.loop.wake();
+  });
+  state = await readState(page);
+  assert.equal(state.players.left.grounded, true, 'the measured jump lands');
+  const rise = groundY - (await readApexProbe(page));
+  assert.ok(rise > 60, `the jump probe should have jumped; rose ${rise} px`);
+  await advance(page, 300);
+  return { rise, modelRise: state.players.left.normalJumpRise };
+};
+
+/**
+ * A ball hanging near the top of the screen above the player: the double
+ * press stays an ordinary kick, and the player does not leave the ground for
+ * a chilena (owner decision 2026-10-12).
+ */
+const refuseHighBall = async (page, label) => {
+  await page.evaluate(() => {
+    window.__SKYHEAD_DEBUG__.resumePlay();
+    window.__SKYHEAD_DEBUG__.setHumanPosition(600);
+    window.__SKYHEAD_DEBUG__.setHumanMeter(12);
+    window.__SKYHEAD_DEBUG__.setOpponentPosition(1080);
+    window.__SKYHEAD_DEBUG__.setBall({ x: 600, y: 170, vx: 0, vy: 0 });
+  });
+  const before = await readState(page);
+  await hold(page, 'x', 17);
+  await hold(page, 'k', 17);
+  let state = await readState(page);
+  assert.equal(state.players.left.chilenaSuccesses, before.players.left.chilenaSuccesses, `${label}: a ball near the top of the screen must not start a chilena`);
+  assert.equal(state.players.left.chilenaActive, false, `${label}: no chilena in flight`);
+  assert.equal(state.players.left.lastChilenaAttempt?.reason, 'ball-too-high-or-far', `${label}: ${JSON.stringify(state.players.left.lastChilenaAttempt)}`);
+  let lowestY = state.players.left.y;
+  for (let step = 0; step < 20; step += 1) {
+    await advance(page, 1000 / 60);
+    state = await readState(page);
+    lowestY = Math.min(lowestY, state.players.left.y);
+  }
+  assert.ok(before.players.left.y - lowestY < 2, `${label}: the player must stay on the ground; rose ${before.players.left.y - lowestY} px`);
+  assert.notEqual(state.powerBall.superpowerId, 'chilena', `${label}: no chilena strike`);
+  await advance(page, 900);
 };
 
 /** A fresh 1280x720 page with a saved `<playerId>` vs Joel lineup, in a running match. */
@@ -228,8 +349,19 @@ try {
   assert.ok(Math.abs(state.players.left.displayWidth - 196) < 0.5, `336 px cells draw 196 px wide; got ${state.players.left.displayWidth}`);
   await capture(page, `${output}/00-bob-idle.png`);
 
-  const still = await runChilena(page, { ball: { x: 610, y: 380, vx: 0, vy: 0 }, label: 'still high ball' });
-  await capture(page, `${output}/01-bob-chilena-contact.png`);
+  // Bob's ordinary jump, live: the chilena flight must stay within it, and
+  // the pure model (normalJumpRise) must match the game's physics.
+  const bobJump = await measureNormalJump(page);
+  assert.ok(Math.abs(bobJump.rise - bobJump.modelRise) < 1.5, `Bob jump: live ${bobJump.rise} vs model ${bobJump.modelRise}`);
+  // A high ball near the top of the screen: ordinary kick, Bob stays down.
+  await refuseHighBall(page, 'bob high ball');
+
+  const still = await runChilena(page, {
+    ball: { x: 610, y: 380, vx: 0, vy: 0 },
+    label: 'still high ball',
+    normalJumpRise: bobJump.rise,
+    screenshot: `${output}/01-bob-chilena-contact.png`,
+  });
   // The drawn boot and the gameplay boot are the same point, so the contact gap
   // the game measured is the gap the player sees.
   assert.ok(still.geometry.drawnToModel < 2, `drawn vs model boot ${JSON.stringify(still.geometry)}`);
@@ -244,9 +376,26 @@ try {
   assert.ok(Math.abs(state.players.left.visualGroundAnchorY - 636) < 0.2, 'landing returns to the shared foot baseline');
   await advance(page, 600);
 
-  const moving = await runChilena(page, { ball: { x: 560, y: 350, vx: 2, vy: -3 }, label: 'moving ball' });
-  await capture(page, `${output}/02-bob-chilena-moving-contact.png`);
+  const moving = await runChilena(page, {
+    ball: MOVING_BALL,
+    label: 'moving ball',
+    normalJumpRise: bobJump.rise,
+    screenshot: `${output}/02-bob-chilena-moving-contact.png`,
+  });
   assert.ok(moving.geometry.drawnToModel < 2, `moving: drawn vs model boot ${JSON.stringify(moving.geometry)}`);
+  await advance(page, 2000);
+
+  // A ball popped up to the top of Bob's zone (it peaks near y=357, where his
+  // boot only reaches at the top of a normal jump): it still connects, and the
+  // body climbs about one ordinary jump, no more.
+  const topOfZone = await runChilena(page, {
+    ball: { x: 590, y: 372, vx: 0, vy: -3 },
+    label: 'top of the zone',
+    normalJumpRise: bobJump.rise,
+    screenshot: `${output}/02-bob-chilena-top-of-zone-contact.png`,
+  });
+  assert.ok(topOfZone.apexRise > 60, `the top-of-zone chilena should be a real jump; rose ${topOfZone.apexRise} px`);
+  assert.ok(topOfZone.geometry.drawnToModel < 2, `top of zone: drawn vs model boot ${JSON.stringify(topOfZone.geometry)}`);
   await advance(page, 2000);
 
   // A chest-high ball is "overhead" by the old trigger but no overhead boot can
@@ -264,8 +413,8 @@ try {
   await hold(page, 'k', 17);
   state = await readState(page);
   assert.equal(state.players.left.chilenaSuccesses, beforeLow.players.left.chilenaSuccesses, 'an unreachable low ball must not start a chilena');
-  // Audit B2: the framed trigger zone now starts where the overhead boot can
-  // reach, so a chest-high ball is rejected up front instead of by the planner.
+  // The framed trigger zone starts at head level (Bob: 193 px above his
+  // feet), so a chest-high ball is rejected up front instead of by the planner.
   assert.equal(state.players.left.lastChilenaAttempt?.reason, 'ball-not-overhead');
   await advance(page, 1500);
 
@@ -352,12 +501,16 @@ try {
     assert.equal(adultState.players.left.visualScale, 1, `${id} visual scale`);
     assert.equal(adultState.players.left.displayHeight, 280, `${id} display height`);
     assert.ok(Math.abs(adultState.players.left.visualGroundAnchorY - 636) < 0.2, `${id} stands on the pitch`);
+    const adultJump = await measureNormalJump(adult.page);
+    assert.ok(Math.abs(adultJump.rise - adultJump.modelRise) < 1.5, `${id} jump: live ${adultJump.rise} vs model ${adultJump.modelRise}`);
+    await refuseHighBall(adult.page, `${id} high ball`);
     const adultStill = await runChilena(adult.page, {
       ball: { x: 610, y: 380, vx: 0, vy: 0 },
       label: `${id} still high ball`,
       boot: CONTACT_BOOTS[id],
+      normalJumpRise: adultJump.rise,
+      screenshot: `${output}/10-${id}-chilena-contact.png`,
     });
-    await capture(adult.page, `${output}/10-${id}-chilena-contact.png`);
     assert.ok(adultStill.geometry.drawnToModel < 2, `${id}: drawn vs model boot ${JSON.stringify(adultStill.geometry)}`);
     for (let attempt = 0; attempt < 40; attempt += 1) {
       await advance(adult.page, 50);
@@ -368,17 +521,21 @@ try {
     assert.ok(Math.abs(adultState.players.left.visualGroundAnchorY - 636) < 0.2, `${id}: landing returns to the foot baseline`);
     await advance(adult.page, 600);
     const adultMoving = await runChilena(adult.page, {
-      ball: { x: 560, y: 350, vx: 2, vy: -3 },
+      ball: MOVING_BALL,
       label: `${id} moving ball`,
       boot: CONTACT_BOOTS[id],
+      normalJumpRise: adultJump.rise,
     });
     assert.ok(adultMoving.geometry.drawnToModel < 2, `${id} moving: drawn vs model boot ${JSON.stringify(adultMoving.geometry)}`);
     assert.deepEqual(adult.errors, [], `${id} browser emitted errors:\n${adult.errors.join('\n')}`);
-    adultResults.push(`${id} ${adultStill.contact.surfaceDistance}/${adultMoving.contact.surfaceDistance} px`);
+    adultResults.push(`${id} ${adultStill.contact.surfaceDistance}/${adultMoving.contact.surfaceDistance} px, `
+      + `apex ${adultStill.apexRise.toFixed(1)}/${adultMoving.apexRise.toFixed(1)} vs jump ${adultJump.rise.toFixed(1)} px`);
     await adult.context.close();
   }
 
-  console.log(`Adult framed chilenas connected (still/moving contact gap): ${adultResults.join(', ')}.`);
+  console.log(`Adult framed chilenas connected (still/moving contact gap, body apex): ${adultResults.join('; ')}.`);
+  console.log(`Bob chilena apex ${still.apexRise.toFixed(1)}/${moving.apexRise.toFixed(1)}/${topOfZone.apexRise.toFixed(1)} px (still/moving/top of zone) vs normal jump ${bobJump.rise.toFixed(1)} px `
+    + `(model ${bobJump.modelRise} px); high balls near the top of the screen refused for Bob, Dad, Juanjo and Mum.`);
   console.log(`Roster-v2 checks passed: still contact gap ${still.contact.surfaceDistance} px at ${still.contact.seconds}s, `
     + `moving contact gap ${moving.contact.surfaceDistance} px at ${moving.contact.seconds}s, drawn-vs-model boot `
     + `${still.geometry.drawnToModel.toFixed(2)} / ${moving.geometry.drawnToModel.toFixed(2)} px, sprint ${sprintFrames} `

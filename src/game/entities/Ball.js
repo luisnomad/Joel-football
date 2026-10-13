@@ -89,6 +89,22 @@ export class Ball {
     ));
   }
 
+  /**
+   * Net downward acceleration (px/tick at the fixed step), air friction and
+   * strike lift multiplier the ball flies with, for launches aimed at a height.
+   */
+  flightPhysics({ powered = false } = {}) {
+    const gravity = this.scene.matter.world.engine.gravity;
+    const tickMs = 1000 / 60;
+    const gravityPerTick = gravity.y * gravity.scale * tickMs ** 2
+      - 0.00078 * Math.max(0, this.type.gravityAssist || 0) * tickMs ** 2;
+    return {
+      gravityPerTick,
+      frictionAir: this.type.frictionAir,
+      liftScale: powered ? 0.72 + this.type.liftScale * 0.28 : this.type.liftScale,
+    };
+  }
+
   applyStrikeVelocity(vx, vy, { powered = false } = {}) {
     const speedScale = powered ? 0.65 + this.type.speedScale * 0.35 : this.type.speedScale;
     const liftScale = powered ? 0.72 + this.type.liftScale * 0.28 : this.type.liftScale;

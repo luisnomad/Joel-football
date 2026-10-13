@@ -1,6 +1,7 @@
 import Phaser from 'phaser';
 import { createControlIcon } from './createControlIcon.js';
 import { bindButtonInput } from './buttonInput.js';
+import { fitTextSize } from './textFit.js';
 
 const coverImage = (image, width, height) => {
   const source = image.texture?.getSourceImage?.();
@@ -242,7 +243,20 @@ export const createJourneyCard = (scene, {
 
   const arrowX = cinematic ? right - 48 : right - bevel - 22;
   const arrowY = cinematic ? top + 54 : y;
-  const arrow = scene.add.circle(arrowX, arrowY, Math.min(28, height * 0.18), 0x071426, 0.9)
+  const arrowRadius = Math.min(28, height * 0.18);
+  // Copy beside the play icon (every line on standard cards, the title on
+  // cinematic ones) shrinks to stop short of it: Spanish OPCIONES ran under it.
+  const copyMaxWidth = arrowX - arrowRadius - 14 - copyX;
+  (cinematic ? [titleText] : [titleText, subtitleText, metaText]).forEach((text) => {
+    const baseSize = Number.parseFloat(text.style.fontSize);
+    text.setFontSize(fitTextSize({
+      measuredWidth: text.width,
+      maxWidth: copyMaxWidth,
+      baseSize,
+      minSize: Math.min(16, baseSize),
+    }));
+  });
+  const arrow = scene.add.circle(arrowX, arrowY, arrowRadius, 0x071426, 0.9)
     .setStrokeStyle(2, 0xffffff, 0.46)
     .setDepth(depth + 1.1);
   const arrowIcon = createControlIcon(scene, {
@@ -285,6 +299,8 @@ export const createJourneyCard = (scene, {
   return {
     objects,
     zone,
+    titleText,
+    arrow,
     setVisible: (visible) => objects.forEach((object) => object.setVisible(visible)),
     destroy: () => {
       objects.forEach((object) => object.destroy());

@@ -55,7 +55,7 @@ export class TouchControls {
 
     const systemX = this.compactPhoneUi ? [48, 132, 216] : [52, 118, 184];
     this.addSystemButton(systemX[0], 54, 'pause', () => scene.togglePause(), 0x52d7e8);
-    this.addSystemButton(systemX[1], 54, 'restart', () => scene.scene.restart(), 0xffc857);
+    this.addSystemButton(systemX[1], 54, 'restart', () => scene.requestRestart(), 0xffc857);
     this.addSystemButton(systemX[2], 54, 'home', () => scene.abandonMatch(), 0xff8f70);
     this.addSystemButton(1228 + horizontalOverflow, 54, 'fullscreen', () => {
       scene.game.registry.get('platformActions')?.toggleFullscreen();

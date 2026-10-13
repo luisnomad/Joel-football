@@ -19,6 +19,8 @@
     "test:e2e": "node test/browser-game.mjs",
     "test:disc-hockey:e2e": "node test/disc-hockey-browser.mjs",
     "test:responsive:e2e": "node test/responsive-layout-browser.mjs",
+    "test:offline:e2e": "npm run build && node test/offline-browser.mjs",
+    "test:playtest-fixes:e2e": "node test/playtest-fixes-browser.mjs",
     "test:watch": "vitest"
   },
   "dependencies": {

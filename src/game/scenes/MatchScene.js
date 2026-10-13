@@ -45,6 +45,8 @@ import { resolveChilenaShot, shouldRedirectLobChilena } from '../pure/chilena.js
 import {
   directionalDashContact,
   isGoalFootPinCandidate,
+  PERCH_SLIDE_SPEED,
+  resolveFighterPerch,
   shouldResolvePlayerClash,
   sweepCircleAgainstBounds,
 } from '../pure/gameplayPhysics.js';
@@ -67,6 +69,9 @@ const round = (value, places = 2) => {
 
 /** Scoreboard meter bars (inside the 350..930 x 20..124 scoreboard panel). */
 const HUD_METER = Object.freeze({ y: 90, height: 20, width: 190, leftX: 382, rightX: 708 });
+// Name + charge labels: left edge of the left label, right edge of the right one.
+const HUD_NAME_INSET = Object.freeze({ left: 382, right: 898 });
+const HUD_NAME_FONT = Object.freeze({ base: 21, minimum: 15 });
 
 const createPowerBallState = (overrides = {}) => ({
   active: false,
@@ -183,6 +188,10 @@ export class MatchScene extends Phaser.Scene {
     this.clashCount = 0;
     this.lastClashPoppedBall = false;
     this.goalFootPinTimers = { left: 0, right: 0 };
+    this.fighterPerchTimers = { left: 0, right: 0 };
+    this.fighterPerchSlide = { left: null, right: null };
+    this.fighterPerchSlides = 0;
+    this.lastFighterPerch = null;
     this.goalFootPinCooldown = 0;
     this.goalFootPinReleases = 0;
     this.lastGoalFootPinSide = null;
@@ -352,8 +361,8 @@ export class MatchScene extends Phaser.Scene {
     this.hud = this.add.graphics().setDepth(60);
     this.hud.fillStyle(0x071426, 0.88).fillRoundedRect(350, 20, 580, 104, 24);
     this.hud.lineStyle(3, 0xffffff, 0.17).strokeRoundedRect(350, 20, 580, 104, 24);
-    this.leftNameText = this.add.text(382, 42, getCharacterLabel(this.playerCharacter, this.language), this.hudTextStyle(21, Phaser.Display.Color.IntegerToColor(this.playerCharacter.accent).rgba)).setDepth(61);
-    this.rightNameText = this.add.text(898, 42, getCharacterLabel(this.opponent, this.language), this.hudTextStyle(21, Phaser.Display.Color.IntegerToColor(this.opponent.accent).rgba)).setOrigin(1, 0).setDepth(61);
+    this.leftNameText = this.add.text(HUD_NAME_INSET.left, 42, getCharacterLabel(this.playerCharacter, this.language), this.hudTextStyle(21, Phaser.Display.Color.IntegerToColor(this.playerCharacter.accent).rgba)).setDepth(61);
+    this.rightNameText = this.add.text(HUD_NAME_INSET.right, 42, getCharacterLabel(this.opponent, this.language), this.hudTextStyle(21, Phaser.Display.Color.IntegerToColor(this.opponent.accent).rgba)).setOrigin(1, 0).setDepth(61);
     this.scoreText = this.add.text(640, 33, '0  :  0', this.hudTextStyle(42, '#ffffff')).setOrigin(0.5, 0).setDepth(61);
     this.clockText = this.add.text(640, 85, '1:30', this.hudTextStyle(21, '#d8e7ff')).setOrigin(0.5).setDepth(61);
     this.suddenDeathText = this.add.text(640, 113, '', this.hudTextStyle(14, '#ffda55')).setOrigin(0.5).setDepth(61);
@@ -374,6 +383,48 @@ export class MatchScene extends Phaser.Scene {
       strokeThickness: 12,
       shadow: { color: '#42d9ef', blur: 20, fill: true },
     }).setOrigin(0.5).setDepth(65);
+  }
+
+  /**
+   * Name and charge on each side of the score. Long names (UNCLE JUANJO,
+   * TÍO JUANJO) with a full charge used to run under the score: shrink to
+   * fit the room left by the current score, then shorten the name, keeping
+   * the charge readable.
+   */
+  fitHudNames(leftMeterValue, rightMeterValue) {
+    const scoreHalfWidth = this.scoreText.width / 2;
+    const gap = 16;
+    this.fitHudName(this.leftNameText, {
+      name: getCharacterLabel(this.playerCharacter, this.language),
+      charge: `${leftMeterValue}%`,
+      side: 'left',
+      maxWidth: (this.scoreText.x - scoreHalfWidth - gap) - HUD_NAME_INSET.left,
+    });
+    this.fitHudName(this.rightNameText, {
+      name: getCharacterLabel(this.opponent, this.language),
+      charge: `${rightMeterValue}%`,
+      side: 'right',
+      maxWidth: HUD_NAME_INSET.right - (this.scoreText.x + scoreHalfWidth + gap),
+    });
+  }
+
+  fitHudName(text, { name, charge, side, maxWidth }) {
+    const compose = (label) => (side === 'left' ? `${label}  ${charge}` : `${charge}  ${label}`);
+    text.setFontSize(HUD_NAME_FONT.base).setText(compose(name));
+    if (text.width <= maxWidth) return;
+    text.setFontSize(fitTextSize({
+      measuredWidth: text.width,
+      maxWidth,
+      baseSize: HUD_NAME_FONT.base,
+      minSize: HUD_NAME_FONT.minimum,
+    }));
+    // Still too wide: drop the title first (UNCLE JUANJO -> JUANJO keeps it
+    // distinct from UNCLE JUAN), then shorten with an ellipsis.
+    const shortName = name.includes(' ') ? name.slice(name.indexOf(' ') + 1) : name;
+    if (text.width > maxWidth && shortName !== name) text.setText(compose(shortName));
+    for (let length = shortName.length - 1; text.width > maxWidth && length > 1; length -= 1) {
+      text.setText(compose(`${shortName.slice(0, length).trimEnd()}…`));
+    }
   }
 
   hudTextStyle(size, color) {
@@ -398,7 +449,7 @@ export class MatchScene extends Phaser.Scene {
     this.pauseOverlay = this.add.container(0, 0, [pauseShade, pausePanel, pauseTitle, pauseCopy]).setDepth(100).setVisible(false);
     this.pauseMenuButtons = [
       createButton(this, { x: 640, y: 390, width: 280, height: 62, label: t(this.language, 'match.resume'), color: 0x2a9eb5, onPress: () => this.togglePause() }),
-      createButton(this, { x: 505, y: 475, width: 230, height: 54, label: t(this.language, 'match.restart'), color: 0x705cff, onPress: () => this.scene.restart() }),
+      createButton(this, { x: 505, y: 475, width: 230, height: 54, label: t(this.language, 'match.restart'), color: 0x705cff, onPress: () => this.requestRestart() }),
       createButton(this, { x: 775, y: 475, width: 230, height: 54, label: t(this.language, 'match.abandon'), color: 0xa34457, onPress: () => this.abandonMatch() }),
     ];
     this.pauseMenuButtons.forEach((button) => {
@@ -407,7 +458,8 @@ export class MatchScene extends Phaser.Scene {
     });
 
     const resultShade = this.add.rectangle(0, 0, GAME_WIDTH, this.stageLayout.height, 0x050914, 0.76).setOrigin(0).setInteractive();
-    const resultPanel = this.add.rectangle(640, 340, 610, 390, 0x0d1b34, 0.98).setStrokeStyle(4, 0xffdc63, 0.55);
+    // Tall enough that MAIN MENU (and its shadow) clears the bottom border.
+    const resultPanel = this.add.rectangle(640, 357, 610, 430, 0x0d1b34, 0.98).setStrokeStyle(4, 0xffdc63, 0.55);
     this.resultTitle = this.add.text(640, 225, t(this.language, 'match.characterWins', { name: getCharacterLabel(this.playerCharacter, this.language) }), this.hudTextStyle(54, '#ffffff')).setOrigin(0.5);
     this.resultScore = this.add.text(640, 300, '1  :  0', this.hudTextStyle(48, '#ffda55')).setOrigin(0.5);
     this.resultCopy = this.add.text(
@@ -538,7 +590,12 @@ export class MatchScene extends Phaser.Scene {
     this.onMenuKey = () => {
       if (this.isPaused) this.abandonMatch();
     };
-    this.onRestartKey = () => this.scene.restart();
+    // Same rule as the on-screen Restart: ask first during a match (owner
+    // decision 2026-10-13); straight to the rematch on the result screen.
+    this.onRestartKey = (event) => {
+      if (event?.repeat) return;
+      this.requestRestart();
+    };
     this.onEnterKey = () => {
       if (this.phase === 'result') this.scene.restart();
     };
@@ -681,6 +738,20 @@ export class MatchScene extends Phaser.Scene {
       this.leaveMatch();
       return;
     }
+    this.openMatchConfirmation('abandon');
+  }
+
+  // The on-screen Restart (touch bar and pause menu) asks first, like Home:
+  // one stray tap must not throw away a match in progress.
+  requestRestart() {
+    if (this.phase === 'result') {
+      this.scene.restart();
+      return;
+    }
+    this.openMatchConfirmation('restart');
+  }
+
+  openMatchConfirmation(action) {
     if (this.abandonConfirmation) return;
     this.inputController?.neutralize();
     this.abandonResumeOnCancel = !this.isPaused;
@@ -694,14 +765,16 @@ export class MatchScene extends Phaser.Scene {
     this.setPauseMenuButtonsVisible(false);
     this.touchControls.setVisible(false);
     this.helpButton.setVisible(false);
+    const restart = action === 'restart';
     this.abandonConfirmation = createConfirmationOverlay(this, {
-      title: t(this.language, 'match.abandonConfirmTitle'),
+      title: t(this.language, restart ? 'match.restartConfirmTitle' : 'match.abandonConfirmTitle'),
       message: t(this.language, 'match.abandonConfirmCopy'),
       cancelLabel: t(this.language, 'match.abandonStay'),
-      confirmLabel: t(this.language, 'match.abandonLeave'),
+      confirmLabel: t(this.language, restart ? 'match.restart' : 'match.abandonLeave'),
       onCancel: () => this.closeAbandonConfirmation(),
-      onConfirm: () => this.leaveMatch(),
+      onConfirm: () => (restart ? this.confirmRestart() : this.leaveMatch()),
     });
+    this.abandonConfirmation.kind = restart ? 'restart-confirm' : 'abandon-confirm';
     arcadeAudio.click();
   }
 
@@ -726,6 +799,15 @@ export class MatchScene extends Phaser.Scene {
     this.touchControls.setGameplayVisible(!this.isPaused && this.phase !== 'result');
     arcadeAudio.click();
     return true;
+  }
+
+  confirmRestart() {
+    this.abandonConfirmation?.destroy();
+    this.abandonConfirmation = null;
+    this.isPaused = false;
+    this.pauseReason = null;
+    arcadeAudio.click();
+    this.scene.restart();
   }
 
   leaveMatch() {
@@ -834,6 +916,7 @@ export class MatchScene extends Phaser.Scene {
       this.currentIntents.right = { ...this.currentIntents.right, kickBoost: 0 };
     }
     this.handleGoalFootPin(dt);
+    this.handleFighterPerch(dt);
     this.handleStrikes();
     this.handleSweptPowerContact();
     const clashResolved = this.handlePlayerClash(dt);
@@ -1009,6 +1092,45 @@ export class MatchScene extends Phaser.Scene {
     );
     this.game.events.emit('platform:haptic', 'medium');
     return true;
+  }
+
+  // Round heads let a fighter balance on the other's head (playtest: up to
+  // 4 s with the sprites overlapping). After a brief grace, slide the top
+  // fighter off toward open pitch; its own movement resumes once it is clear.
+  handleFighterPerch(dt) {
+    for (const [top, bottom] of [
+      [this.leftPlayer, this.rightPlayer],
+      [this.rightPlayer, this.leftPlayer],
+    ]) {
+      const topBody = top.sprite.body;
+      const bottomBody = bottom.sprite.body;
+      const direction = resolveFighterPerch({
+        top: { x: top.sprite.x, vx: topBody.velocity.x, vy: topBody.velocity.y, grounded: top.grounded },
+        bottom: { x: bottom.sprite.x },
+        topBounds: topBody.bounds,
+        bottomBounds: bottomBody.bounds,
+        // Matter reports resting contact only with some penetration; feet
+        // flush with the head top (also held by a crossbar) count as well.
+        touching: Math.abs(topBody.bounds.max.y - bottomBody.bounds.min.y) <= 4
+          || Phaser.Physics.Matter.Matter.Query.collides(topBody, [bottomBody]).length > 0,
+      });
+      this.fighterPerchTimers[top.side] = direction ? this.fighterPerchTimers[top.side] + dt : 0;
+      if (direction && this.fighterPerchTimers[top.side] >= 0.05 && !this.fighterPerchSlide[top.side]) {
+        // Commit to the slide until the fighter lands (capped at a second):
+        // held input toward the rival would otherwise climb straight back on.
+        this.fighterPerchSlide[top.side] = { direction, seconds: 1 };
+        this.fighterPerchSlides += 1;
+        this.lastFighterPerch = { side: top.side, direction };
+      }
+      const slide = this.fighterPerchSlide[top.side];
+      if (!slide) continue;
+      slide.seconds -= dt;
+      if (slide.seconds <= 0 || top.grounded) {
+        this.fighterPerchSlide[top.side] = null;
+        continue;
+      }
+      top.sprite.setVelocityX(slide.direction * PERCH_SLIDE_SPEED);
+    }
   }
 
   handleGoalFootPin(dt) {
@@ -1517,8 +1639,7 @@ export class MatchScene extends Phaser.Scene {
       this.meterGraphics.fillStyle(0xffef9b, Math.min(0.5, this.meterFlash.right * 1.4)).fillRoundedRect(rightX, meterY, meterWidth, meterHeight, radius);
       this.meterGraphics.lineStyle(3, 0xffdc62, 0.9).strokeRoundedRect(rightX, meterY, meterWidth, meterHeight, radius);
     }
-    this.leftNameText.setText(`${getCharacterLabel(this.playerCharacter, this.language)}  ${leftMeterValue}%`);
-    this.rightNameText.setText(`${rightMeterValue}%  ${getCharacterLabel(this.opponent, this.language)}`);
+    this.fitHudNames(leftMeterValue, rightMeterValue);
     const showChip = Boolean(equipped) && equippedCount > 0;
     [this.superPowerPill, this.superPowerBadge, this.superPowerIcon, this.superPowerText]
       .forEach((item) => item.setVisible(showChip));
@@ -1646,6 +1767,8 @@ export class MatchScene extends Phaser.Scene {
         clashCooldown: round(this.clashCooldown),
         lastClashPoppedBall: this.lastClashPoppedBall,
         goalFootPinReleases: this.goalFootPinReleases,
+        fighterPerchSlides: this.fighterPerchSlides,
+        lastFighterPerch: this.lastFighterPerch,
         lastGoalFootPinRelease: this.lastGoalFootPinRelease
           ? { ...this.lastGoalFootPinRelease }
           : null,
@@ -1693,7 +1816,9 @@ export class MatchScene extends Phaser.Scene {
         fullscreen: 'F',
       },
       pauseActions: ['resume', 'restart', 'abandon match'],
-      confirmationActions: this.abandonConfirmation ? ['stay', 'leave match'] : [],
+      confirmationActions: this.abandonConfirmation
+        ? ['stay', this.abandonConfirmation.kind === 'restart-confirm' ? 'restart match' : 'leave match']
+        : [],
     };
   }
 

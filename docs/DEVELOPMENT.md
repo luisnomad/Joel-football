@@ -19,6 +19,23 @@ Optional reading for architecture, opponent providers, or audio processing. Read
   tracks and encoded effects are generated with `npm run optimize:audio`. This
   requires `ffmpeg`.
 
+## Offline web play
+
+- `public/sw.js` (worker version 13, registered as `sw.js?v=13` by
+  `src/platform/WebPlatformServices.js`; bump both together) makes one online
+  visit enough to play offline. `vite build` runs
+  `scripts/precache-manifest.mjs`, which writes the precache list into
+  `dist/sw.js`: the shell and every hashed JS/CSS bundle are cached at install;
+  every public asset the built code or `index.html` refers to (arenas, sprites,
+  mini-game art, sounds) is fetched in the background after activation, and
+  each page start asks the worker to resume an interrupted fill. Music tracks
+  are skipped on Data Saver. Unreferenced files in `public/assets` are left out.
+- Sounds go into the game's own audio cache (`AUDIO_CACHE_NAME`), so they are
+  stored once; offline media range requests are answered with 206 slices.
+- The build logs the precache size (about 13.5 MB in October 2026: 1.4 MB
+  code, 6.8 MB art and effects, 5.2 MB music). Verify with
+  `npm run test:offline:e2e`.
+
 ## Architecture
 
 - `src/vendor/`: the trimmed Phaser engine (Canvas renderer and Matter only;

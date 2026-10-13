@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import { getDiscHockeyCollisionMap } from '../src/game/minigames/discHockey/discHockeyCollisionMaps.js';
 import {
   DISC_HOCKEY_AI,
   DISC_HOCKEY_ARENA,
@@ -14,6 +15,7 @@ import {
   addDiscHockeyCrazyPower,
   chooseDiscHockeyCrazyTargets,
   chooseDiscHockeyAiTarget,
+  chooseDiscHockeyAiGuardTarget,
   clampDiscPlayerPosition,
   closestPointOnCollisionContour,
   constrainDiscToCollisionMap,
@@ -24,6 +26,7 @@ import {
   detectDiscHockeyGoal,
   evaluateDiscHockeyCrease,
   formatDiscHockeyTime,
+  getDiscHockeyAiGuardX,
   getDiscHockeyAiTuning,
   getDiscHockeyCrazyRoleMotion,
   getDiscHockeyEjectionVelocity,
@@ -33,6 +36,8 @@ import {
   getDiscHockeyMatchResult,
   getDiscHockeyPoweredKnockback,
   isDiscHockeyDefensiveSave,
+  isDiscHockeyGoalThreat,
+  predictDiscHockeyPuckY,
   moveDiscDirectlyTowardTarget,
   moveDiscTowardTarget,
   releaseDiscHockeyControl,
@@ -40,6 +45,7 @@ import {
   resolvePlayerPuckCollision,
   selectDiscHockeyCrazyRoster,
   separateDiscHockeyPushers,
+  shouldDiscHockeyAiEndRecovery,
   shouldEndDiscHockeyPoweredShot,
   stepPuck,
 } from '../src/game/minigames/discHockey/discHockeyRules.js';
@@ -1077,5 +1083,68 @@ describe('Disc Hockey pure gameplay', () => {
     expect(player.x).toBeLessThan(950);
     expect(puck.x).toBeLessThan(740);
     expect(puck.vx).toBeLessThan(-50);
+  });
+
+  describe('computer recovery and goal defence (playtest 2026-10-12)', () => {
+    const player = { side: 'right', x: 760, y: 390, vx: 0, vy: 0, radius: DISC_HOCKEY_ARENA.playerRadius };
+    // Captured from the playtest loop: the rival's bank shot off the top boards.
+    const bankShot = { x: 646, y: 250, vx: 715, vy: -579, radius: DISC_HOCKEY_ARENA.puckRadius };
+
+    it.each(['ice', 'neon'])('guards the %s goal from outside its own crease', (themeId) => {
+      const collisionMap = getDiscHockeyCollisionMap(themeId);
+      const guard = chooseDiscHockeyAiGuardTarget({
+        puck: { x: 300, y: 383, vx: 0, vy: 0 },
+        player,
+        collisionMap,
+      });
+      expect(guard.x).toBeCloseTo(getDiscHockeyAiGuardX({ radius: player.radius, collisionMap }), 5);
+      expect(guard.y).toBeGreaterThan(collisionMap.goalTop);
+      expect(guard.y).toBeLessThan(collisionMap.goalBottom);
+      const crease = evaluateDiscHockeyCrease({
+        player: { ...player, ...guard },
+        puck: { x: 300, y: 383 },
+        collisionMap,
+        previousSeconds: 3,
+        deltaSeconds: 1,
+      });
+      expect(crease.inCrease).toBe(false);
+      expect(crease.violated).toBe(false);
+    });
+
+    it('predicts a bank shot off the side boards', () => {
+      const y = predictDiscHockeyPuckY({ puck: bankShot, x: 1148 });
+      // Up to the top boards (y = 141) and back down into the goal mouth.
+      expect(y).toBeGreaterThan(292);
+      expect(y).toBeLessThan(474);
+    });
+
+    it('treats the bank shot as a threat and meets it instead of chasing the boards', () => {
+      const collisionMap = getDiscHockeyCollisionMap('ice');
+      expect(isDiscHockeyGoalThreat({ puck: bankShot, player, difficulty: 'normal', collisionMap })).toBe(true);
+      expect(isDiscHockeyGoalThreat({ puck: { ...bankShot, vx: -715 }, player, difficulty: 'normal', collisionMap })).toBe(false);
+      const target = chooseDiscHockeyAiTarget({ puck: bankShot, player, difficulty: 'normal', collisionMap });
+      // Before the fix Normal went up to the boards with the puck (y about 168).
+      expect(target.x).toBeGreaterThan(player.x);
+      expect(target.y).toBeGreaterThan(200);
+    });
+
+    it('returns to its guard line after a restart on every difficulty, then presses', () => {
+      const collisionMap = getDiscHockeyCollisionMap('ice');
+      const centredPuck = { x: DISC_HOCKEY_ARENA.centerX, y: DISC_HOCKEY_ARENA.centerY, vx: 0, vy: 0 };
+      const spawn = { ...player, x: 950, y: DISC_HOCKEY_ARENA.centerY };
+      ['easy', 'normal', 'hard'].forEach((difficulty) => {
+        const recovering = chooseDiscHockeyAiTarget({ puck: centredPuck, player: spawn, difficulty, collisionMap, recovering: true });
+        expect(recovering.x).toBeCloseTo(getDiscHockeyAiGuardX({ radius: player.radius, collisionMap }), 5);
+        const { recoverySeconds } = getDiscHockeyAiTuning(difficulty);
+        expect(shouldDiscHockeyAiEndRecovery({ puck: centredPuck, player: spawn, elapsedSeconds: recoverySeconds / 2, difficulty, collisionMap })).toBe(false);
+        // Still walking back: keep recovering even after the time is up.
+        expect(shouldDiscHockeyAiEndRecovery({ puck: centredPuck, player: spawn, elapsedSeconds: recoverySeconds, difficulty, collisionMap })).toBe(false);
+        expect(shouldDiscHockeyAiEndRecovery({ puck: centredPuck, player: { ...spawn, ...recovering }, elapsedSeconds: recoverySeconds, difficulty, collisionMap })).toBe(true);
+        // A slow puck deep in its half is cleared at once.
+        expect(shouldDiscHockeyAiEndRecovery({ puck: { x: 900, y: 300, vx: 20, vy: 0 }, player: spawn, elapsedSeconds: 0, difficulty, collisionMap })).toBe(true);
+      });
+      expect(DISC_HOCKEY_AI.easy.recoverySeconds).toBeGreaterThan(DISC_HOCKEY_AI.normal.recoverySeconds);
+      expect(DISC_HOCKEY_AI.normal.recoverySeconds).toBeGreaterThan(DISC_HOCKEY_AI.hard.recoverySeconds);
+    });
   });
 });

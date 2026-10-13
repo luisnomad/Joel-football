@@ -24,6 +24,8 @@ npm run build
 npm run test:e2e
 npm run test:disc-hockey:e2e
 npm run test:responsive:e2e
+npm run test:playtest-fixes:e2e
+npm run test:offline:e2e
 ```
 
 Run the suites relevant to the change; gameplay releases require the full

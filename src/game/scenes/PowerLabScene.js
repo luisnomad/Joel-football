@@ -12,6 +12,10 @@ import { bindButtonInput } from '../ui/buttonInput.js';
 import { createPowerIcon, playPowerRewardBurst, powerIconTextureKey } from '../ui/powerRewardBurst.js';
 import { renderMathExplanation } from '../ui/mathExplanation.js';
 
+// Math challenge panel (top-anchored): compact while answering, full height
+// once the result, explanation and Continue / New problem buttons appear.
+const CHALLENGE_PANEL = Object.freeze({ top: 52, closeY: 468, answeringHeight: 472, fullHeight: 620 });
+
 /** Tablet power cards: five tall cards filling the space above the action bar. */
 const CARD_WIDTH = 232;
 const CARD_HEIGHT = 300;
@@ -259,12 +263,23 @@ export class PowerLabScene extends Phaser.Scene {
     this.challenge = { problem, choices, status: 'answering', level, explained: false };
 
     const shade = this.add.rectangle(0, 0, GAME_WIDTH, this.stageLayout.height, 0x020711, 0.8).setOrigin(0).setDepth(200).setInteractive();
-    const panel = this.add.rectangle(640, 362, 760, 620, 0x0b1930, 0.99).setDepth(201).setStrokeStyle(4, 0x7ce8ff, 0.45);
+    // While answering the panel ends under the Close button; it grows to
+    // CHALLENGE_PANEL.full once the answer, explanation and buttons need room.
+    const panel = this.challengePanel = this.add.rectangle(640, CHALLENGE_PANEL.top, 760, CHALLENGE_PANEL.answeringHeight, 0x0b1930, 0.99)
+      .setOrigin(0.5, 0)
+      .setDepth(201)
+      .setStrokeStyle(4, 0x7ce8ff, 0.45);
     const title = this.add.text(640, 95, t(this.language, 'lab.challenge'), this.textStyle(34)).setOrigin(0.5).setDepth(202);
     const levelBadge = this.challengeLevelBadge = this.add.text(970, 72, t(this.language, `lab.level.${level}`), this.textStyle(15, '#ffdd75'))
       .setOrigin(1, 0.5).setDepth(202);
     const power = getSuperpower(this.selectedPowerId);
-    const powerLabel = this.add.text(640, 140, `${power.icon}  ${t(this.language, power.nameKey)}`, this.textStyle(21, '#ffdd75')).setOrigin(0.5).setDepth(202);
+    // Painted power icon beside the name, centred together (glyph fallback).
+    const powerName = this.add.text(640, 140, t(this.language, power.nameKey), this.textStyle(21, '#ffdd75')).setOrigin(0, 0.5).setDepth(202);
+    const powerIconSize = 38;
+    const powerGroupLeft = 640 - (powerIconSize + 10 + powerName.width) / 2;
+    const powerIcon = createPowerIcon(this, { x: powerGroupLeft + powerIconSize / 2, y: 140, power, size: powerIconSize, depth: 202 });
+    powerName.setX(powerGroupLeft + powerIconSize + 10);
+    this.challengeObjects.push(powerIcon, powerName);
     const problemText = this.add.text(640, 228, `${problem.expression} = ?`, this.textStyle(62)).setOrigin(0.5).setDepth(202);
     const prompt = this.add.text(640, 290, t(this.language, 'lab.chooseAnswer'), this.textStyle(17, '#bcd1eb')).setOrigin(0.5).setDepth(202);
     this.challengePrompt = prompt;
@@ -273,7 +288,7 @@ export class PowerLabScene extends Phaser.Scene {
       align: 'center',
       lineSpacing: 8,
     }).setOrigin(0.5).setDepth(202);
-    this.challengeObjects.push(shade, panel, title, levelBadge, powerLabel, problemText, prompt, this.challengeFeedback);
+    this.challengeObjects.push(shade, panel, title, levelBadge, problemText, prompt, this.challengeFeedback);
 
     this.answerButtons = choices.map((choice, index) => {
       const button = createButton(this, {
@@ -289,6 +304,23 @@ export class PowerLabScene extends Phaser.Scene {
       this.challengeObjects.push(button.shadow, button.background, button.text, button.zone);
       return button;
     });
+
+    this.closeChallengeButton = createButton(this, {
+      x: 640,
+      y: CHALLENGE_PANEL.closeY,
+      width: 240,
+      height: 54,
+      label: t(this.language, 'lab.close'),
+      color: 0x39485a,
+      onPress: () => this.closeChallenge(),
+    });
+    this.setButtonDepth(this.closeChallengeButton, 203);
+    this.challengeObjects.push(
+      this.closeChallengeButton.shadow,
+      this.closeChallengeButton.background,
+      this.closeChallengeButton.text,
+      this.closeChallengeButton.zone,
+    );
 
     this.continueButton = createButton(this, {
       x: 640,
@@ -333,9 +365,16 @@ export class PowerLabScene extends Phaser.Scene {
     [button.shadow, button.background, button.text, button.zone].forEach((item) => item.setDepth(depth));
   }
 
+  /** Bounds of the challenge panel (tests and layout checks). */
+  challengePanelBounds() {
+    return this.challengePanel?.active ? this.challengePanel.getBounds() : null;
+  }
+
   answerChallenge(value) {
     if (!this.challenge || this.challenge.status !== 'answering') return;
     const { problem } = this.challenge;
+    this.closeChallengeButton?.setVisible(false);
+    this.challengePanel?.setSize(760, CHALLENGE_PANEL.fullHeight);
     const correct = isCorrectAnswer(problem, value);
     this.answerButtons.forEach((button) => {
       button.zone.input.enabled = false;
@@ -409,6 +448,8 @@ export class PowerLabScene extends Phaser.Scene {
     this.challengeFeedback = null;
     this.continueButton = null;
     this.newProblemButton = null;
+    this.closeChallengeButton = null;
+    this.challengePanel = null;
     arcadeAudio.click();
     this.refreshAll();
   }

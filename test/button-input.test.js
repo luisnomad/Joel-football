@@ -106,6 +106,44 @@ describe('shared button activation gate', () => {
     expect(activations).toBe(1);
   });
 
+  it('lets rapid real touch taps through while still rejecting the ghost mouse press after a touch', () => {
+    const gate = createButtonActivationGate();
+    const touchAt = (now) => gate.tryActivate({
+      now, x: 580, y: 430, guardMs: TOUCH_BUTTON_GUARD_MS, source: 'touch',
+    });
+    const mouseAt = (now) => gate.tryActivate({
+      now, x: 580, y: 430, guardMs: TOUCH_BUTTON_GUARD_MS, source: 'mouse',
+    });
+
+    // Playtest repro: six taps on a menu arrow at 150, 250 and 400 ms gaps.
+    expect([0, 150, 300, 550, 800, 1_200].map((offset) => touchAt(1_000 + offset))).toEqual([true, true, true, true, true, true]);
+    // The WebView's compatibility mouse press right after the last tap.
+    expect(mouseAt(2_260)).toBe(false);
+    expect(mouseAt(2_700)).toBe(true);
+  });
+
+  it('treats a Phaser touch pointer as a real tap and a mouse pointer at the same spot as its ghost', () => {
+    const scene = createScene();
+    const target = createTarget(580, 430);
+    let activations = 0;
+    bindButtonInput(scene, target, {
+      activateOnPointerDown: true,
+      guardMs: TOUCH_BUTTON_GUARD_MS,
+      onActivate: () => { activations += 1; },
+    });
+    const touch = { id: 1, x: 580, y: 430, wasTouch: true };
+    const ghostMouse = { id: 0, x: 580, y: 430, wasTouch: false };
+
+    target.emit('pointerdown', touch);
+    target.emit('pointerup', touch);
+    target.emit('pointerdown', ghostMouse);
+    target.emit('pointerup', ghostMouse);
+    target.emit('pointerdown', touch);
+    target.emit('pointerup', touch);
+
+    expect(activations).toBe(2);
+  });
+
   it('activates release-phase controls once and ignores their compatibility sequence', () => {
     const scene = createScene();
     const target = createTarget(1_155, 430);

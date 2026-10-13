@@ -107,6 +107,48 @@ export const shouldResolvePlayerClash = ({ left = {}, right = {}, intents = {} }
   return (pushingInward || simultaneousKicks) && relativeSpeed < 3.2;
 };
 
+/**
+ * One fighter held up by the other: airborne but barely moving vertically,
+ * touching the rival with its feet at or below the rival's head top yet well
+ * above the rival's own feet (balanced on the head, or wedged against the
+ * head and shoulder). Returns the direction (-1 or 1) the top fighter should
+ * slide off, or 0 when it is not perched. It slides the way it is already
+ * moving, otherwise away from the rival's centre, and toward open pitch when
+ * the rival is pressed against a goal or the side of the pitch.
+ */
+export const PERCH_SLIDE_SPEED = 6.5;
+export const resolveFighterPerch = ({
+  top = {},
+  bottom = {},
+  topBounds,
+  bottomBounds,
+  touching = true,
+  minX = 142,
+  maxX = 1138,
+} = {}) => {
+  if (!topBounds || !bottomBounds || top.grounded || !touching) return 0;
+  if (Math.abs(Number(top.vy) || 0) > 3) return 0;
+  const overlap = Math.min(topBounds.max.x, bottomBounds.max.x) - Math.max(topBounds.min.x, bottomBounds.min.x);
+  if (overlap <= 4) return 0;
+  const feet = topBounds.max.y;
+  if (feet < bottomBounds.min.y - 6 || feet > bottomBounds.max.y - 30) return 0;
+  const topX = Number(top.x) || 0;
+  const bottomX = Number(bottom.x) || 0;
+  const vx = Number(top.vx) || 0;
+  const pitchCentre = (minX + maxX) / 2;
+  let direction = (Math.abs(vx) > 0.3 ? Math.sign(vx) : 0)
+    || Math.sign(topX - bottomX)
+    || Math.sign(pitchCentre - bottomX)
+    || 1;
+  const width = topBounds.max.x - topBounds.min.x;
+  // Blocked by a goal or the pitch edge on that side: go the other way.
+  if ((direction > 0 && bottomBounds.max.x + width / 2 > maxX + 30)
+    || (direction < 0 && bottomBounds.min.x - width / 2 < minX - 30)) {
+    direction = -direction;
+  }
+  return direction;
+};
+
 export const isGoalFootPinCandidate = ({
   defender = {},
   attacker = {},

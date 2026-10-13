@@ -161,9 +161,11 @@ export class PowerLabScene extends Phaser.Scene {
     this.challengeObjects.push(this.challengeFeedback);
     this.continueButton = setButtonDepth(createCompactButton(this, { x: 640, y: 612, width: 320, height: 68, label: t(this.language, 'lab.continue'), color: 0x2a9eb5, onPress: () => this.closeChallenge() }), 203);
     this.newProblemButton = setButtonDepth(createCompactButton(this, { x: 640, y: 612, width: 340, height: 68, label: t(this.language, 'lab.newProblem'), color: 0x5a3fe0, onPress: () => this.nextChallenge() }), 203);
+    // Close sits where Continue / New problem appear once answered.
+    this.closeChallengeButton = setButtonDepth(createCompactButton(this, { x: 640, y: 612, width: 320, height: 68, label: t(this.language, 'lab.close'), color: 0x39485a, onPress: () => this.closeChallenge() }), 203);
     this.continueButton.setVisible(false);
     this.newProblemButton.setVisible(false);
-    this.challengeObjects.push(...this.continueButton.objects, ...this.newProblemButton.objects);
+    this.challengeObjects.push(...this.continueButton.objects, ...this.newProblemButton.objects, ...this.closeChallengeButton.objects);
   }
 
   nextChallenge() {
@@ -176,6 +178,7 @@ export class PowerLabScene extends Phaser.Scene {
   answerChallenge(value) {
     if (!this.challenge || this.challenge.status !== 'answering') return;
     const { problem } = this.challenge;
+    this.closeChallengeButton?.setVisible(false);
     const correct = isCorrectAnswer(problem, value);
     this.answerButtons.forEach((button, index) => {
       button.zone.input.enabled = false;

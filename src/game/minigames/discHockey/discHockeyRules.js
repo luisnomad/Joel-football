@@ -117,6 +117,12 @@ export const DISC_HOCKEY_AI = Object.freeze({
     centerTrackingBlend: 0.38,
     contestOffset: 0,
     attackBias: 0.58,
+    // Goal defence: shots faster than threatSpeed heading for the goal are met
+    // on their path (interceptsShots) or at the guard line; after each restart
+    // the AI holds that line for recoverySeconds before it presses.
+    threatSpeed: 480,
+    interceptsShots: false,
+    recoverySeconds: 1.6,
   }),
   normal: Object.freeze({
     reactionSeconds: 0.1,
@@ -126,6 +132,9 @@ export const DISC_HOCKEY_AI = Object.freeze({
     centerTrackingBlend: 0.16,
     contestOffset: 20,
     attackBias: 0.78,
+    threatSpeed: 320,
+    interceptsShots: true,
+    recoverySeconds: 1.1,
   }),
   hard: Object.freeze({
     reactionSeconds: 0.04,
@@ -135,6 +144,9 @@ export const DISC_HOCKEY_AI = Object.freeze({
     centerTrackingBlend: 0.04,
     contestOffset: 36,
     attackBias: 0.96,
+    threatSpeed: 240,
+    interceptsShots: true,
+    recoverySeconds: 0.8,
   }),
 });
 
@@ -771,7 +783,46 @@ export const detectDiscHockeyGoal = ({
   return null;
 };
 
-export const chooseDiscHockeyAiTarget = ({
+// The computer defends from just outside its own crease, so guarding the goal
+// never counts as goal-camping.
+export const getDiscHockeyAiGuardX = ({
+  radius = DISC_HOCKEY_ARENA.playerRadius,
+  collisionMap = getDiscHockeyCollisionMap('ice'),
+} = {}) => (
+  collisionMap.goalLineRight
+    - radius
+    - DISC_HOCKEY_CREASE_RULE.extraCreaseDepth
+    - DISC_HOCKEY_CREASE_RULE.boundaryHysteresis
+    - 10
+);
+
+const reflectBetween = (value, minimum, maximum) => {
+  const span = maximum - minimum;
+  if (span <= 0) return minimum;
+  let offset = (value - minimum) % (2 * span);
+  if (offset < 0) offset += 2 * span;
+  return minimum + (offset <= span ? offset : 2 * span - offset);
+};
+
+/** Where a puck travelling right crosses x, bouncing off the side boards. */
+export const predictDiscHockeyPuckY = ({ puck, x, arena = DISC_HOCKEY_ARENA }) => {
+  const vx = finite(puck.vx);
+  const puckRadius = finite(puck.radius, arena.puckRadius);
+  if (vx <= 0 || x <= puck.x) return finite(puck.y, arena.centerY);
+  const seconds = (x - puck.x) / vx;
+  return reflectBetween(
+    finite(puck.y, arena.centerY) + finite(puck.vy) * seconds,
+    arena.top + puckRadius,
+    arena.bottom - puckRadius,
+  );
+};
+
+/**
+ * A shot the computer must block: fast enough for its difficulty, still in
+ * front of the guard line and on course for the goal mouth (after any bank off
+ * the side boards).
+ */
+export const isDiscHockeyGoalThreat = ({
   puck,
   player,
   difficulty = 'normal',
@@ -779,6 +830,113 @@ export const chooseDiscHockeyAiTarget = ({
   collisionMap = getDiscHockeyCollisionMap('ice'),
 }) => {
   const tuning = getDiscHockeyAiTuning(difficulty);
+  const guardX = getDiscHockeyAiGuardX({ radius: player.radius, collisionMap });
+  if (finite(puck.vx) < tuning.threatSpeed || puck.x >= guardX) return false;
+  const puckRadius = finite(puck.radius, arena.puckRadius);
+  const goalY = predictDiscHockeyPuckY({ puck, x: collisionMap.goalLineRight, arena });
+  return goalY >= collisionMap.goalTop - puckRadius - 30
+    && goalY <= collisionMap.goalBottom + puckRadius + 30;
+};
+
+/** Stand on the guard line where the puck will cross it, inside the goal mouth. */
+export const chooseDiscHockeyAiGuardTarget = ({
+  puck,
+  player,
+  arena = DISC_HOCKEY_ARENA,
+  collisionMap = getDiscHockeyCollisionMap('ice'),
+}) => {
+  const guardX = getDiscHockeyAiGuardX({ radius: player.radius, collisionMap });
+  const goalCenterY = (collisionMap.goalTop + collisionMap.goalBottom) / 2;
+  const incoming = finite(puck.vx) > 0 && puck.x < guardX;
+  const lineY = incoming
+    ? predictDiscHockeyPuckY({ puck, x: guardX, arena })
+    : goalCenterY + (finite(puck.y, goalCenterY) - goalCenterY) * 0.5;
+  return clampDiscPlayerPosition({
+    side: 'right',
+    x: guardX,
+    y: clamp(lineY, collisionMap.goalTop + 18, collisionMap.goalBottom - 18),
+    radius: player.radius,
+    arena,
+    collisionMap,
+  });
+};
+
+/**
+ * Meet a shot on its way to goal: the earliest point on the puck's path
+ * (bounces included) the computer can reach first, otherwise the guard line.
+ */
+export const chooseDiscHockeyAiInterceptTarget = ({
+  puck,
+  player,
+  difficulty = 'normal',
+  arena = DISC_HOCKEY_ARENA,
+  collisionMap = getDiscHockeyCollisionMap('ice'),
+}) => {
+  const tuning = getDiscHockeyAiTuning(difficulty);
+  const guardX = getDiscHockeyAiGuardX({ radius: player.radius, collisionMap });
+  const vx = finite(puck.vx);
+  const puckRadius = finite(puck.radius, arena.puckRadius);
+  for (let seconds = 1 / 30; vx > 0 && seconds <= 1.5; seconds += 1 / 30) {
+    const x = puck.x + vx * seconds;
+    if (x >= guardX) break;
+    if (x < arena.centerX + player.radius) continue;
+    const y = reflectBetween(
+      finite(puck.y, arena.centerY) + finite(puck.vy) * seconds,
+      arena.top + puckRadius,
+      arena.bottom - puckRadius,
+    );
+    const reach = tuning.maxSpeed * Math.max(0, seconds - tuning.reactionSeconds);
+    if (Math.hypot(x - player.x, y - player.y) <= reach + player.radius * 0.5) {
+      return clampDiscPlayerPosition({
+        side: 'right',
+        x: x + puckRadius * 0.5,
+        y,
+        radius: player.radius,
+        arena,
+        collisionMap,
+      });
+    }
+  }
+  return chooseDiscHockeyAiGuardTarget({ puck, player, arena, collisionMap });
+};
+
+/**
+ * After a restart the computer first returns to its guard line. It presses
+ * once it has been there long enough with no shot coming, or as soon as a
+ * slow puck sits well inside its own half (which only it can clear).
+ */
+export const shouldDiscHockeyAiEndRecovery = ({
+  puck,
+  player,
+  elapsedSeconds = 0,
+  difficulty = 'normal',
+  arena = DISC_HOCKEY_ARENA,
+  collisionMap = getDiscHockeyCollisionMap('ice'),
+}) => {
+  const tuning = getDiscHockeyAiTuning(difficulty);
+  const puckSpeed = Math.hypot(finite(puck.vx), finite(puck.vy));
+  if (puck.x > arena.centerX + 60 && puckSpeed < 180) return true;
+  if (elapsedSeconds < tuning.recoverySeconds) return false;
+  if (isDiscHockeyGoalThreat({ puck, player, difficulty, arena, collisionMap })) return false;
+  const guard = chooseDiscHockeyAiGuardTarget({ puck, player, arena, collisionMap });
+  return Math.hypot(player.x - guard.x, player.y - guard.y) <= 40;
+};
+
+export const chooseDiscHockeyAiTarget = ({
+  puck,
+  player,
+  difficulty = 'normal',
+  arena = DISC_HOCKEY_ARENA,
+  collisionMap = getDiscHockeyCollisionMap('ice'),
+  recovering = false,
+}) => {
+  const tuning = getDiscHockeyAiTuning(difficulty);
+  if (isDiscHockeyGoalThreat({ puck, player, difficulty, arena, collisionMap })) {
+    return tuning.interceptsShots
+      ? chooseDiscHockeyAiInterceptTarget({ puck, player, difficulty, arena, collisionMap })
+      : chooseDiscHockeyAiGuardTarget({ puck, player, arena, collisionMap });
+  }
+  if (recovering) return chooseDiscHockeyAiGuardTarget({ puck, player, arena, collisionMap });
   const predictedY = clamp(
     puck.y + finite(puck.vy) * tuning.predictionSeconds,
     arena.top + player.radius,

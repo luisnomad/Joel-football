@@ -14,8 +14,14 @@ import {
   canStartChilena,
   chilenaRotationAt,
   evaluateChilenaEligibility,
+  evaluateFramedChilenaEligibility,
+  framedChilenaZone,
+  normalJumpRise,
   resolveChilenaShot,
   resolveLobChilenaLaunch,
+  resolveLobChilenaRiseSpeed,
+  CHILENA_LOB_PEAK_MARGIN,
+  MATTER_GRAVITY_PER_TICK,
   shouldRedirectLobChilena,
 } from '../src/game/pure/chilena.js';
 import { PLAYER_TUNING } from '../src/game/constants.js';
@@ -51,11 +57,47 @@ import {
   directionalDashContact,
   isGoalFootPinCandidate,
   resolveAdaptiveLob,
+  resolveFighterPerch,
   shouldResolvePlayerClash,
   sweepCircleAgainstBounds,
 } from '../src/game/pure/gameplayPhysics.js';
 
 describe('gameplay physics polish', () => {
+  it('slides a fighter off the rival head toward open pitch (playtest 2026-10-12)', () => {
+    const bounds = (x, top, width = 86, height = 178) => ({
+      min: { x: x - width / 2, y: top },
+      max: { x: x + width / 2, y: top + height },
+    });
+    const rival = { x: 1090, grounded: true };
+    const rivalBounds = bounds(1090, 458);
+    // Resting on the head, slightly left of centre, rival against the right goal.
+    const perched = { x: 1084, vy: 0.2, grounded: false };
+    const perchedBounds = bounds(1084, 458 - 178 + 3);
+    expect(resolveFighterPerch({ top: perched, bottom: rival, topBounds: perchedBounds, bottomBounds: rivalBounds })).toBe(-1);
+    // Right of centre but the goal blocks that side: still slide back to the pitch.
+    expect(resolveFighterPerch({ top: { ...perched, x: 1096 }, bottom: rival, topBounds: bounds(1096, 283), bottomBounds: rivalBounds })).toBe(-1);
+    // Open pitch on both sides: slide off the side it already leans to.
+    const midRival = { x: 640, grounded: true };
+    expect(resolveFighterPerch({ top: { ...perched, x: 652 }, bottom: midRival, topBounds: bounds(652, 283), bottomBounds: bounds(640, 458) })).toBe(1);
+    // Wedged against the rival's head and shoulder beside the goal (Juanjo on Juan).
+    expect(resolveFighterPerch({
+      top: { x: 1076, vx: 1, vy: 0, grounded: false },
+      bottom: { x: 1140 },
+      topBounds: { min: { x: 1032, y: 304 }, max: { x: 1120, y: 526 } },
+      bottomBounds: { min: { x: 1097, y: 415 }, max: { x: 1182, y: 637 } },
+    })).toBe(-1);
+    // Mid-pitch, holding toward the rival's far side: keep going that way.
+    expect(resolveFighterPerch({ top: { ...perched, x: 630, vx: 2 }, bottom: midRival, topBounds: bounds(630, 283), bottomBounds: bounds(640, 458) })).toBe(1);
+    // Side by side on the ground, or not actually touching: leave them alone.
+    expect(resolveFighterPerch({ top: { ...perched, x: 1040 }, bottom: rival, topBounds: bounds(1040, 455), bottomBounds: rivalBounds })).toBe(0);
+    expect(resolveFighterPerch({ top: perched, bottom: rival, topBounds: perchedBounds, bottomBounds: rivalBounds, touching: false })).toBe(0);
+    // Not perched: still rising/falling through, grounded, or clear of the head.
+    expect(resolveFighterPerch({ top: { ...perched, vy: -9 }, bottom: rival, topBounds: perchedBounds, bottomBounds: rivalBounds })).toBe(0);
+    expect(resolveFighterPerch({ top: { ...perched, grounded: true }, bottom: rival, topBounds: perchedBounds, bottomBounds: rivalBounds })).toBe(0);
+    expect(resolveFighterPerch({ top: perched, bottom: rival, topBounds: bounds(1084, 120), bottomBounds: rivalBounds })).toBe(0);
+    expect(resolveFighterPerch({ top: { ...perched, x: 900 }, bottom: rival, topBounds: bounds(900, 283), bottomBounds: rivalBounds })).toBe(0);
+  });
+
   it('recognizes a sustained ball-under-foot pin beside either goal', () => {
     const leftFixture = {
       defender: { x: 190, y: 525, vy: 0, grounded: false, stunned: false },
@@ -501,6 +543,11 @@ describe('countdown whistle contract', () => {
 });
 
 describe('chilena contract', () => {
+  // Classic (non-framed) rig only: one shared trigger zone of one player
+  // height (240 px) around the body centre. Every roster character now uses
+  // the framed rig and its own zone (see 'framed chilena zone' below and
+  // test/sprite-redo.test.js), so the 240 px reach no longer applies to them;
+  // this gate remains for layouts without a contact drawing.
   const fighter = { x: 600, y: 547, height: 240, grounded: true, stunned: false, active: false };
 
   it('requires two fast presses and an overhead ball within one player-height', () => {
@@ -517,9 +564,11 @@ describe('chilena contract', () => {
     expect(canStartChilena({ fighter, ball: { x: 600, y: 560 }, kickPresses: 2 })).toBe(false);
   });
 
-  it('widens the trigger zone for taller characters', () => {
-    // Dad's center sits at feet-107 with a 288 px gameplay height; a ball
-    // 260 px above his center is beyond the standard 240 zone but inside his.
+  it('widens the classic trigger zone for taller characters', () => {
+    // Classic rig: a body with a 288 px gameplay height (centre at feet-107);
+    // a ball 260 px above its centre is beyond the standard 240 zone but
+    // inside its own. (This used to describe Dad; Dad is now standard size and
+    // framed, so his zone comes from framedChilenaZone instead.)
     const dad = { x: 600, y: 529, height: 288, grounded: true, stunned: false, active: false };
     const highBall = { x: 640, y: 269 };
     expect(canStartChilena({ fighter: dad, ball: highBall, kickPresses: 2 })).toBe(true);
@@ -553,6 +602,34 @@ describe('chilena contract', () => {
       allowed: false,
       reason: 'ball-not-overhead',
     });
+  });
+
+  it('framed chilena zone: overhead and within a normal jump, not one player-height', () => {
+    // Bob standing at x=600 on the pitch (feet 636, head top 193 above them),
+    // chilena facing left: his contact boot is 24.5 px behind him and 161.6 px
+    // up; his ordinary jump rises about 81 px.
+    const jumpRise = normalJumpRise({ launchVelocity: PLAYER_TUNING.jumpVelocity * (0.9 + 0.1 * 1.11) });
+    const zone = framedChilenaZone({
+      bodyX: 600,
+      bodyBottomY: 636,
+      headTopY: 636 - 193,
+      bootOffset: { x: -24.5, y: -161.6 },
+      jumpRise,
+    });
+    const bob = { x: 600, y: 566, grounded: true, stunned: false, active: false };
+    const reason = (ball) => evaluateFramedChilenaEligibility({ fighter: bob, ball, kickPresses: 2, zone }).reason;
+    expect(reason({ x: 610, y: 400 })).toBe('eligible');
+    expect(evaluateFramedChilenaEligibility({ fighter: bob, ball: { x: 610, y: 400 }, kickPresses: 1, zone }).reason)
+      .toBe('needs-second-press');
+    // Each of these was inside the old 240 px zone and is refused now:
+    // 296 px up is beyond the boot's reach on a normal jump (276.6 px),
+    expect(reason({ x: 600, y: 340 })).toBe('ball-too-high-or-far');
+    // chest height is below the head,
+    expect(reason({ x: 600, y: 470 })).toBe('ball-not-overhead');
+    // and 100 px ahead is past the shoulder, not overhead.
+    expect(reason({ x: 700, y: 420 })).toBe('ball-too-far-sideways');
+    // Ball too high also covers the top of the screen.
+    expect(reason({ x: 600, y: 150 })).toBe('ball-too-high-or-far');
   });
 
   it('fires toward the rival goal and rewards a full meter', () => {
@@ -608,6 +685,37 @@ describe('chilena contract', () => {
     // Look-ahead: a fast-rising lob that would cross the apex next tick turns now.
     expect(shouldRedirectLobChilena({ ballY: 160, velocityY: -17 })).toBe(true);
     expect(shouldRedirectLobChilena({ ballY: 170, velocityY: -17 })).toBe(false);
+  });
+
+  it('launches the lob chilena from its contact height to peak just above the apex line', () => {
+    // Same integration as Matter at the fixed step: v' = v(1 - frictionAir) + g; y += v'.
+    const peakY = (ballY, speed, gravityPerTick, frictionAir) => {
+      let y = ballY;
+      let velocity = -speed;
+      for (let tick = 0; tick < 600; tick += 1) {
+        velocity = velocity * (1 - frictionAir) + gravityPerTick;
+        if (velocity >= 0) return y;
+        y += velocity;
+      }
+      return y;
+    };
+    const balls = [
+      { name: 'classic', gravityPerTick: MATTER_GRAVITY_PER_TICK, frictionAir: 0.0035 },
+      { name: 'balloon', gravityPerTick: MATTER_GRAVITY_PER_TICK * 0.55, frictionAir: 0.017 },
+    ];
+    for (const { name, gravityPerTick, frictionAir } of balls) {
+      for (const ballY of [300, 360, 400, 440, 520]) {
+        const speed = resolveLobChilenaRiseSpeed({ ballY, gravityPerTick, frictionAir });
+        const peak = peakY(ballY, speed, gravityPerTick, frictionAir);
+        // Playtest 2026-10-12: a fixed 17 px/tick launch crossed the line at
+        // about 10 px/tick, so the redirect height varied by up to a tick.
+        expect(peak, `${name} from y=${ballY}`).toBeLessThanOrEqual(CHILENA_LOB_APEX_Y);
+        expect(peak, `${name} from y=${ballY}`).toBeGreaterThan(CHILENA_LOB_APEX_Y - CHILENA_LOB_PEAK_MARGIN - 1.5);
+      }
+    }
+    // The browser lob contacts (y about 400-440) still launch steeply upward.
+    expect(resolveLobChilenaRiseSpeed({ ballY: 400, frictionAir: 0.0035 })).toBeGreaterThan(11);
+    expect(resolveLobChilenaLaunch({ riseSpeed: 13 }).vy).toBe(-13);
   });
 
   it('mirrors one backward turn toward the attacked goal', () => {

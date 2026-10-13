@@ -1,6 +1,7 @@
 import { readFile } from 'node:fs/promises';
 import { fileURLToPath } from 'node:url';
 import { defineConfig } from 'vite';
+import { precacheManifestPlugin } from './scripts/precache-manifest.mjs';
 
 // Phaser build flags. Phaser tests them as `typeof FLAG` and its own webpack
 // build replaces that whole expression (esbuild's `define` cannot), so the
@@ -61,7 +62,7 @@ const phaserCustomEsbuildPlugin = {
 export default defineConfig({
   // Keep the game portable when copied below another site's public directory.
   base: './',
-  plugins: [phaserCustomPlugin],
+  plugins: [phaserCustomPlugin, precacheManifestPlugin()],
   resolve: {
     // Only the bare specifier; deep phaser/src/* imports resolve normally.
     alias: [{ find: /^phaser$/, replacement: phaserSourceEntry }],

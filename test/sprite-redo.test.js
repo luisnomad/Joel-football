@@ -1,7 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
   CHARACTER_FRAMES,
-  CHARACTER_GAMEPLAY_HEIGHT,
   CHARACTER_GROUND_ANCHOR_Y,
   CHARACTER_LAYOUTS,
   KICK_VISUAL_SECONDS,
@@ -25,17 +24,23 @@ import {
   HIT_RECOVER_SECONDS,
 } from '../src/game/pure/characterAnimation.js';
 import {
+  CHILENA_APEX_TOLERANCE,
+  CHILENA_BODY_HALF_WIDTH,
   CHILENA_CONTACT_MAX_SECONDS,
   CHILENA_CONTACT_MIN_SECONDS,
   CHILENA_CONTACT_SLOP,
   CHILENA_FORGIVE_RADIUS,
-  CHILENA_FRAMED_MIN_UPWARD_RATIO,
   CHILENA_GUIDE_MAX_SECONDS,
+  CHILENA_TAKEOFF_VELOCITY,
   chilenaContactTargetSeconds,
-  evaluateChilenaEligibility,
+  chilenaFlightLimits,
+  evaluateFramedChilenaEligibility,
+  framedChilenaZone,
+  normalJumpRise,
   planFramedChilena,
   resolveChilenaContact,
 } from '../src/game/pure/chilena.js';
+import { PLAYER_TUNING } from '../src/game/constants.js';
 import { readFileSync, existsSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { CHARACTERS, getCharacter } from '../src/game/content/characters.js';
@@ -210,142 +215,201 @@ describe('framed chilena guidance', () => {
       .toBe('missed');
   });
 
-  // A character's measured contact boot relative to (body x, body bottom),
-  // world px. The sweeps run for every roster character: the boot height
-  // differs a lot (Mum y=70 .. Luna y=156 in the 480 px cell).
-  const contactOf = (id) => getCharacter(id).chilenaContact;
-  const bootOffset = (facing, contact = contactOf('bob')) => ({
-    x: (contact.x - v2.frameWidth / 2) * (280 / 480) * facing,
-    y: (contact.y - CHARACTER_GROUND_ANCHOR_Y) * (280 / 480),
+  // Framed chilena zone (owner decision 2026-10-12, every character): the
+  // ball must be overhead (at or above head level, within a body width of the
+  // body or boot) and close enough that the boot reaches it on the
+  // character's ordinary jump; the flight never climbs above that jump.
+  // Geometry below mirrors Fighter: body bottom on the pitch, body centre 70 px
+  // above it, head top from the collision profile, boot from chilenaContact.
+  const GROUND = 636;
+  const BODY_BOTTOM_OFFSET = 70;
+  const BODY_X = 640;
+  const BODY_Y = GROUND - BODY_BOTTOM_OFFSET;
+  const SCALE = 280 / 480;
+  const jumpRiseOf = (id) => normalJumpRise({
+    // Fighter: scaled(PLAYER_TUNING.jumpVelocity, stats.jump) = base * (0.9 + 0.1 * stat).
+    launchVelocity: PLAYER_TUNING.jumpVelocity * (0.9 + 0.1 * getCharacter(id).stats.jump),
   });
-  const plan = ({ ballDx, ballUp, ballVx = 0, ballVy = 0, facing = -1, contact }) => {
-    const fighter = { x: 640, y: 566, bodyBottomOffset: 70 };
-    const ball = { x: fighter.x + ballDx, y: fighter.y - ballUp, vx: ballVx, vy: ballVy, radius: 22 };
-    const eligibility = evaluateChilenaEligibility({
-      fighter: { x: fighter.x, y: fighter.y, height: CHARACTER_GAMEPLAY_HEIGHT, grounded: true },
+  const bootOffset = (id, facing) => {
+    const contact = getCharacter(id).chilenaContact;
+    return {
+      x: (contact.x - v2.frameWidth / 2) * SCALE * facing,
+      y: (contact.y - CHARACTER_GROUND_ANCHOR_Y) * SCALE,
+    };
+  };
+  const zoneOf = (id, facing) => framedChilenaZone({
+    bodyX: BODY_X,
+    bodyBottomY: GROUND,
+    headTopY: GROUND - getFootballCollisionGeometry(getCharacter(id)).headTop,
+    bootOffset: bootOffset(id, facing),
+    jumpRise: jumpRiseOf(id),
+  });
+  /** Gate, then (when allowed) the forward plan with the game's caps. */
+  const attempt = (id, facing, ball) => {
+    const gate = evaluateFramedChilenaEligibility({
+      fighter: { x: BODY_X, y: BODY_Y, grounded: true },
       ball,
       kickPresses: 2,
+      zone: zoneOf(id, facing),
     });
-    if (!eligibility.allowed) return null;
-    return planFramedChilena({
-      fighter,
-      ball,
-      bootOffset: bootOffset(facing, contact),
-      groundY: 636,
-      targetSeconds: chilenaContactTargetSeconds({
-        upwardDistance: eligibility.upwardDistance,
-        height: eligibility.maximumDistance,
-      }),
+    if (!gate.allowed) return { gate, plan: null };
+    const takeoffVx = Math.min(2.4, Math.max(-2.4, (ball.x - BODY_X) * 0.025));
+    const plan = planFramedChilena({
+      fighter: { x: BODY_X, y: BODY_Y, vx: takeoffVx, bodyBottomOffset: BODY_BOTTOM_OFFSET },
+      ball: { radius: 22, ...ball },
+      bootOffset: bootOffset(id, facing),
+      groundY: GROUND,
+      targetSeconds: chilenaContactTargetSeconds({ upwardDistance: gate.bootRiseNeeded, height: gate.maxRise }),
+      maxRise: gate.maxRise,
+      maxSideTravel: gate.maxSideTravel,
+      takeoffVelocityY: Math.max(
+        CHILENA_TAKEOFF_VELOCITY,
+        chilenaFlightLimits({ maxRise: gate.maxRise, maxSideTravel: gate.maxSideTravel }).minVy,
+      ),
     });
+    return { gate, plan };
   };
+  const MOTIONS = [[0, 0], [2, -3], [-2, 3], [3, 0], [-3, 0], [0, -4], [0, 5], [4, 2]];
+  const ids = CHARACTERS.map(({ id }) => id);
 
-  it('meets every still ball above head height with the boot of the contact drawing', () => {
-    // Eligibility starts at 43 px above the body centre (chest height); balls
-    // that low cannot be met by an overhead boot and stay ordinary kicks.
-    const contact = contactOf('bob');
-    for (let ballUp = 76; ballUp <= 236; ballUp += 16) {
-      for (let ballDx = -108; ballDx <= 108; ballDx += 12) {
-        for (const facing of [-1, 1]) {
-          const result = plan({ ballDx, ballUp, facing, contact });
-          if (!result) continue;
-          expect(result, JSON.stringify({ ballDx, ballUp, facing })).toMatchObject({ reachable: true });
-          expect(result.surfaceDistance).toBeLessThanOrEqual(CHILENA_FORGIVE_RADIUS);
-          expect(result.contactSeconds).toBeLessThanOrEqual(CHILENA_GUIDE_MAX_SECONDS);
-        }
-      }
+  it('replays an ordinary jump: about 80 px of rise, a little more for better jumpers', () => {
+    for (const id of ids) {
+      expect(jumpRiseOf(id), id).toBeGreaterThan(75);
+      expect(jumpRiseOf(id), id).toBeLessThan(85);
+    }
+    expect(jumpRiseOf('bob')).toBeGreaterThan(jumpRiseOf('dad'));
+  });
+
+  it('caps the climb so the body cannot pass the normal jump apex, and sideways travel to half a body width', () => {
+    expect(chilenaFlightLimits({ rise: 80, maxRise: 80 }).minVy).toBe(0);
+    expect(chilenaFlightLimits({ rise: 90, maxRise: 80 }).minVy).toBe(0);
+    // From the ground the cap is an ordinary jump's climb rate, not the old -15.
+    const fromGround = chilenaFlightLimits({ rise: 0, maxRise: 80 }).minVy;
+    expect(fromGround).toBeGreaterThan(-11);
+    expect(fromGround).toBeLessThan(-9);
+    expect(chilenaFlightLimits({ sideOffset: CHILENA_BODY_HALF_WIDTH, maxSideTravel: CHILENA_BODY_HALF_WIDTH }).maxVx)
+      .toBe(0);
+    expect(chilenaFlightLimits({ sideOffset: -40, maxSideTravel: CHILENA_BODY_HALF_WIDTH }).minVx).toBe(-3);
+  });
+
+  it.each(ids)('derives %s\'s zone from head, contact boot and normal jump', (id) => {
+    const headTop = getFootballCollisionGeometry(getCharacter(id)).headTop;
+    for (const facing of [-1, 1]) {
+      const zone = zoneOf(id, facing);
+      const bootUp = GROUND - zone.bootY;
+      // Lowest: head level. Highest: boot at the normal apex plus a touch.
+      expect(GROUND - zone.lowestBallY).toBe(headTop);
+      expect(GROUND - zone.highestBallY).toBeCloseTo(bootUp + jumpRiseOf(id) + 22 + CHILENA_CONTACT_SLOP, 6);
+      expect(zone.highestBallY).toBeLessThan(zone.lowestBallY);
+      // Never chases a ball near the top of the screen (the scoreboard is above 160).
+      expect(zone.highestBallY).toBeGreaterThan(300);
+      // Within one body width of the body or the boot, never beyond it.
+      expect(zone.left).toBe(Math.min(BODY_X, zone.bootX) - CHILENA_BODY_HALF_WIDTH);
+      expect(zone.right).toBe(Math.max(BODY_X, zone.bootX) + CHILENA_BODY_HALF_WIDTH);
+      expect(zone.right - zone.left).toBeLessThan(2 * CHILENA_BODY_HALF_WIDTH + 50);
+      expect(zone.maxRise).toBe(jumpRiseOf(id));
     }
   });
 
-  it('keeps most of the eligible zone reachable and only starts chilenas that connect', () => {
-    const contact = contactOf('bob');
-    let eligible = 0;
-    let reachable = 0;
-    for (let ballUp = 44; ballUp <= 240; ballUp += 8) {
-      for (let ballDx = -108; ballDx <= 108; ballDx += 12) {
-        for (const [ballVx, ballVy] of [[0, 0], [3, -2], [-3, 4], [0, 6], [4, 0], [-4, 0]]) {
-          for (const facing of [-1, 1]) {
-            const result = plan({ ballDx, ballUp, ballVx, ballVy, facing, contact });
-            if (!result) continue;
-            eligible += 1;
-            if (!result.reachable) continue;
-            reachable += 1;
-            expect(result.surfaceDistance).toBeLessThanOrEqual(CHILENA_FORGIVE_RADIUS);
+  it.each(ids)('connects every chilena %s starts, with the body no higher than a normal jump', (id) => {
+    const rise = jumpRiseOf(id);
+    let started = 0;
+    let stillInZone = 0;
+    let stillStarted = 0;
+    let movingInZone = 0;
+    for (const facing of [-1, 1]) {
+      const zone = zoneOf(id, facing);
+      for (let ballY = zone.highestBallY - 6; ballY <= zone.lowestBallY + 6; ballY += 3) {
+        for (let ballX = zone.left - 12; ballX <= zone.right + 12; ballX += 4) {
+          for (const [vx, vy] of MOTIONS) {
+            const ball = { x: ballX, y: ballY, vx, vy };
+            const { gate, plan } = attempt(id, facing, ball);
+            const inside = ballY <= zone.lowestBallY && ballY >= zone.highestBallY
+              && ballX >= zone.left && ballX <= zone.right;
+            expect(gate.allowed, JSON.stringify({ id, facing, ball })).toBe(inside);
+            if (!inside) continue;
+            if (vx === 0 && vy === 0) stillInZone += 1;
+            else movingInZone += 1;
+            const label = JSON.stringify({ id, facing, ball, plan });
+            // (d) The whole move, contact and fall included, stays inside an
+            // ordinary jump, and sideways inside half a body width.
+            expect(plan.apexRise, label).toBeLessThanOrEqual(rise + CHILENA_APEX_TOLERANCE);
+            expect(plan.sideTravel, label).toBeLessThanOrEqual(CHILENA_BODY_HALF_WIDTH + 0.5);
+            if (!plan.reachable) continue;
+            // (a) A started chilena connects: the boot touches the ball.
+            started += 1;
+            if (vx === 0 && vy === 0) stillStarted += 1;
+            expect(plan.surfaceDistance, label).toBeLessThanOrEqual(CHILENA_FORGIVE_RADIUS);
+            expect(plan.contactSeconds, label).toBeLessThanOrEqual(CHILENA_GUIDE_MAX_SECONDS);
           }
         }
       }
     }
-    expect(eligible).toBeGreaterThan(5000);
-    expect(reachable / eligible).toBeGreaterThan(0.85);
+    // Every still ball in the zone is reachable: the zone is honest.
+    expect(stillInZone, id).toBeGreaterThan(400);
+    expect(stillStarted, id).toBe(stillInZone);
+    // Moving balls are planned; most of them still connect.
+    expect(started - stillStarted, id).toBeGreaterThan(0.85 * movingInZone);
   });
 
-  it('refuses a low ball that is already falling away from the overhead boot', () => {
-    expect(plan({ ballDx: -108, ballUp: 44, ballVx: -3, ballVy: 4, facing: 1 })).toMatchObject({
-      reachable: false,
+  it.each(ids)('refuses %s\'s balls below the head, too high, or too far sideways', (id) => {
+    for (const facing of [-1, 1]) {
+      const zone = zoneOf(id, facing);
+      const middleX = (zone.left + zone.right) / 2;
+      const middleY = (zone.lowestBallY + zone.highestBallY) / 2;
+      for (const [vx, vy] of MOTIONS) {
+        // (b) Below head level: chest-high, shoulder-high, just under the head top.
+        for (const below of [1, 10, 40, 80]) {
+          expect(attempt(id, facing, { x: middleX, y: zone.lowestBallY + below, vx, vy }).gate.reason)
+            .toBe('ball-not-overhead');
+        }
+        // (c) Beyond the boot's normal-jump reach, up to the top of the screen.
+        for (const above of [1, 10, 40, 120]) {
+          expect(attempt(id, facing, { x: middleX, y: zone.highestBallY - above, vx, vy }).gate.reason)
+            .toBe('ball-too-high-or-far');
+        }
+        for (const ballY of [120, 180, 240]) {
+          expect(attempt(id, facing, { x: BODY_X, y: ballY, vx, vy }).gate.allowed).toBe(false);
+        }
+        // (c) Too far sideways at an otherwise ideal height.
+        for (const beyond of [1, 20, 60]) {
+          expect(attempt(id, facing, { x: zone.left - beyond, y: middleY, vx, vy }).gate.reason)
+            .toBe('ball-too-far-sideways');
+          expect(attempt(id, facing, { x: zone.right + beyond, y: middleY, vx, vy }).gate.reason)
+            .toBe('ball-too-far-sideways');
+        }
+      }
+    }
+  });
+
+  it('would no longer fly to a high ball even if the planner were asked to', () => {
+    // A ball hanging near the top of the screen (y = 200, at the top of its
+    // arc). The capped flight cannot get the boot there and never climbs past
+    // the normal jump; the old uncapped guidance chased it.
+    const rise = jumpRiseOf('bob');
+    const ball = { x: BODY_X - 20, y: 200, vx: 0, vy: 0, radius: 22 };
+    const plan = planFramedChilena({
+      fighter: { x: BODY_X, y: BODY_Y, bodyBottomOffset: BODY_BOTTOM_OFFSET },
+      ball,
+      bootOffset: bootOffset('bob', -1),
+      groundY: GROUND,
+      targetSeconds: CHILENA_CONTACT_MAX_SECONDS,
+      maxRise: rise,
+      maxSideTravel: CHILENA_BODY_HALF_WIDTH,
     });
-  });
-
-  it('starts a framed chilena only where every still ball is reachable (B2)', () => {
-    const contact = contactOf('bob');
-    const minimum = CHARACTER_GAMEPLAY_HEIGHT * CHILENA_FRAMED_MIN_UPWARD_RATIO;
-    expect(minimum).toBeGreaterThanOrEqual(76);
-    let eligible = 0;
-    for (let ballUp = 40; ballUp <= 236; ballUp += 4) {
-      for (let ballDx = -108; ballDx <= 108; ballDx += 12) {
-        for (const facing of [-1, 1]) {
-          const fighter = { x: 640, y: 566, bodyBottomOffset: 70 };
-          const ball = { x: fighter.x + ballDx, y: fighter.y - ballUp, vx: 0, vy: 0, radius: 22 };
-          const gate = evaluateChilenaEligibility({
-            fighter: { x: fighter.x, y: fighter.y, height: CHARACTER_GAMEPLAY_HEIGHT, grounded: true },
-            ball,
-            kickPresses: 2,
-            minimumUpwardRatio: CHILENA_FRAMED_MIN_UPWARD_RATIO,
-          });
-          if (ballUp < minimum) {
-            expect(gate.allowed).toBe(false);
-            expect(gate.reason).toBe('ball-not-overhead');
-          }
-          if (!gate.allowed) continue;
-          eligible += 1;
-          const result = planFramedChilena({
-            fighter,
-            ball,
-            bootOffset: bootOffset(facing, contact),
-            groundY: 636,
-            targetSeconds: chilenaContactTargetSeconds({
-              upwardDistance: gate.upwardDistance,
-              height: gate.maximumDistance,
-            }),
-          });
-          expect(result.reachable, JSON.stringify({ ballDx, ballUp, facing })).toBe(true);
-        }
-      }
-    }
-    expect(eligible).toBeGreaterThan(400);
-  });
-
-  it.each(CHARACTERS.map(({ id }) => id))('meets every still ball at or above %s\'s standing contact boot', (id) => {
-    // Each character's contact drawing holds the boot at a different height
-    // (Mum's boot is 41 px higher than Bob's). Any still ball in the trigger
-    // window that is level with or above that boot, as drawn on a standing
-    // player, must connect; lower balls are left to the planner, which turns
-    // an unreachable press into an ordinary kick.
-    const contact = contactOf(id);
-    // Boot height above the body centre (the body bottom is 70 px below it).
-    const standingBootUp = -bootOffset(1, contact).y - 70;
-    let eligible = 0;
-    for (let ballUp = Math.ceil(standingBootUp); ballUp <= 240; ballUp += 2) {
-      for (let ballDx = -108; ballDx <= 108; ballDx += 6) {
-        for (const facing of [-1, 1]) {
-          const result = plan({ ballDx, ballUp, facing, contact });
-          if (!result) continue;
-          eligible += 1;
-          expect(result, JSON.stringify({ id, ballDx, ballUp, facing })).toMatchObject({ reachable: true });
-          expect(result.surfaceDistance).toBeLessThanOrEqual(CHILENA_FORGIVE_RADIUS);
-          expect(result.contactSeconds).toBeLessThanOrEqual(CHILENA_GUIDE_MAX_SECONDS);
-        }
-      }
-    }
-    expect(eligible, id).toBeGreaterThan(400);
+    expect(plan.reachable).toBe(false);
+    expect(plan.apexRise).toBeLessThanOrEqual(rise + CHILENA_APEX_TOLERANCE);
+    // Uncapped (the old guidance), the same plan reaches it by climbing
+    // more than three times as high as an ordinary jump.
+    const uncapped = planFramedChilena({
+      fighter: { x: BODY_X, y: BODY_Y, bodyBottomOffset: BODY_BOTTOM_OFFSET },
+      ball,
+      bootOffset: bootOffset('bob', -1),
+      groundY: GROUND,
+      targetSeconds: CHILENA_CONTACT_MAX_SECONDS,
+    });
+    expect(uncapped.reachable).toBe(true);
+    expect(uncapped.apexRise).toBeGreaterThan(3 * rise);
   });
 });
 

@@ -769,12 +769,43 @@ try {
   state = await readState(page);
   assert.equal(state.match.remainingSeconds, pausedTime, 'the match clock must stop while paused');
   await capture(page, '06-pause');
+  // Leave asks first, like Football and Kickfall; Escape backs out of the question.
+  // Phaser registers newly created buttons on its next game step, so let two
+  // animation frames pass once the dialog appears or closes.
+  const waitForModal = async (modal) => {
+    await page.waitForFunction(
+      (expected) => JSON.parse(window.render_game_to_text()).modal === expected,
+      modal,
+      { timeout: 5_000 },
+    );
+    await page.evaluate(() => new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve))));
+  };
+  // The shared confirmation panel is centred on the stage; its buttons sit 76 px below.
+  const confirmButtonY = (await page.evaluate(() => (
+    window.__SKYHEAD_GAME__.scene.getScene('DiscHockey').stageLayout.height
+  ))) / 2 + 76;
+  await clickLogical(page, 640, 470);
+  await waitForModal('leave-confirm');
+  state = await readState(page);
+  assert.equal(state.minigame, 'discHockey', 'pause-menu Leave must not leave straight away');
+  assert.equal(state.mode, 'paused');
+  await capture(page, '06b-leave-confirm');
   await page.keyboard.press('Escape');
-  assert.notEqual((await readState(page)).mode, 'paused');
+  await waitForModal(null);
+  assert.equal((await readState(page)).mode, 'paused', 'dismissing should return to the pause menu');
+  await clickLogical(page, 640, 470);
+  await waitForModal('leave-confirm');
+  await clickLogical(page, 520, confirmButtonY);
+  await waitForModal(null);
+  assert.equal((await readState(page)).mode, 'paused', 'Stay should return to the pause menu');
+  await page.keyboard.press('Escape');
+  await page.waitForFunction(() => JSON.parse(window.render_game_to_text()).mode !== 'paused');
 
-  await page.evaluate(() => (
-    window.__SKYHEAD_GAME__.scene.getScene('DiscHockey').leaveToSetup()
-  ));
+  await page.evaluate(() => window.__SKYHEAD_GAME__.scene.getScene('DiscHockey').pauseGame('manual'));
+  await page.evaluate(() => new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve))));
+  await clickLogical(page, 640, 470);
+  await waitForModal('leave-confirm');
+  await clickLogical(page, 760, confirmButtonY);
   await page.waitForFunction(() => JSON.parse(window.render_game_to_text()).gameId === 'discHockey');
   await clickLogical(page, 800, 216);
   await page.waitForFunction(() => JSON.parse(window.render_game_to_text()).playMode === 'computer');
@@ -882,6 +913,75 @@ try {
   await capture(page, '07-hard-ai-breaks-stalemate');
   await advance(page, 4350);
   await capture(page, '07-ice-computer');
+
+  // Playtest 2026-10-12: one finger repeating a simple push scored the same
+  // goal 5 s after every restart on Normal (7 goals in ~15 s of clock). The
+  // computer must return to its goal after a restart and stop that loop.
+  const restartLoop = await page.evaluate(() => {
+    const scene = window.__SKYHEAD_GAME__.scene.getScene('DiscHockey');
+    const debug = window.__DISC_HOCKEY_DEBUG__;
+    const results = {};
+    for (const difficulty of ['easy', 'normal', 'hard']) {
+      scene.difficulty = difficulty;
+      debug.restart();
+      let claimed = false;
+      let playStart = null;
+      let recoveredAt = null;
+      let previousLeft = 0;
+      const goalsAfterRestart = [];
+      const recoveryTargets = [];
+      for (let step = 0, seconds = 0; step < 60 * 30; step += 1, seconds += 1 / 60) {
+        const state = JSON.parse(window.render_game_to_text());
+        if (state.mode === 'playing') {
+          if (playStart === null) playStart = seconds;
+          if (state.computerAi.recovering) recoveryTargets.push(state.computerAi.target.x);
+          else recoveredAt ??= seconds - playStart;
+          const { puck } = state;
+          const me = state.players.left;
+          let x;
+          let y;
+          if (puck.x < 650) {
+            const lined = me.x < puck.x - 20 && Math.hypot(puck.x - 45 - me.x, puck.y - me.y) < 70;
+            x = lined ? puck.x + 80 : puck.x - 55;
+            y = lined ? puck.y + (383 - puck.y) * 0.3 : puck.y;
+          } else {
+            x = 300;
+            y = Math.max(240, Math.min(520, puck.y));
+          }
+          x = Math.max(140, Math.min(630, x));
+          y = Math.max(130, Math.min(600, y));
+          if (claimed) debug.movePointer(1, x, y);
+          else debug.claimPointer(1, x, y);
+          claimed = true;
+        } else {
+          if (claimed) debug.releasePointer(1);
+          claimed = false;
+          if (state.mode === 'countdown') playStart = null;
+        }
+        if (state.score.left !== previousLeft) {
+          goalsAfterRestart.push(Number((seconds - playStart).toFixed(2)));
+          previousLeft = state.score.left;
+        }
+        window.advanceTime(1000 / 60);
+      }
+      if (claimed) debug.releasePointer(1);
+      results[difficulty] = {
+        goalsAfterRestart,
+        recoveredAt: recoveredAt === null ? null : Number(recoveredAt.toFixed(2)),
+        recoveryTargetX: Math.round(Math.max(...recoveryTargets)),
+      };
+    }
+    scene.difficulty = 'hard';
+    return results;
+  });
+  for (const [difficulty, result] of Object.entries(restartLoop)) {
+    assert.ok(result.recoveryTargetX >= 1030, `${difficulty} AI should head back to its goal after a restart: ${JSON.stringify(result)}`);
+    assert.ok(
+      result.goalsAfterRestart.every((seconds) => seconds >= 8),
+      `${difficulty} AI conceded the restart loop goal too soon: ${JSON.stringify(result)}`,
+    );
+  }
+  console.log(`Disc Hockey restart loop (goals by s after restart): ${JSON.stringify(restartLoop)}`);
 
   await page.evaluate(() => (
     window.__SKYHEAD_GAME__.scene.getScene('DiscHockey').leaveToSetup()

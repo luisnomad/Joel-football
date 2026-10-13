@@ -1,6 +1,10 @@
 import { normalizeExternalUrl, PLATFORM_EVENTS, PlatformServices } from './PlatformServices.js';
 import { createWebAppInfo } from '../appMetadata.js';
 
+// Must match WORKER_VERSION in public/sw.js; a worker registered with any other
+// value clears its caches and unregisters itself.
+export const SERVICE_WORKER_VERSION = '13';
+
 export class WebPlatformServices extends PlatformServices {
   constructor({
     documentRef = globalThis.document,
@@ -133,9 +137,17 @@ export class WebPlatformServices extends PlatformServices {
     }
 
     const serviceWorkerUrl = `${import.meta.env.BASE_URL}sw.js`;
-    await serviceWorker.register(`${serviceWorkerUrl}?v=12`, {
+    const registration = await serviceWorker.register(`${serviceWorkerUrl}?v=${SERVICE_WORKER_VERSION}`, {
       scope: import.meta.env.BASE_URL,
       updateViaCache: 'none',
-    }).catch(() => {});
+    }).catch(() => null);
+    if (!registration) return;
+    // The worker caches the shell and bundles at install; the art and sounds
+    // follow in the background. Asking on every start resumes a fill the
+    // browser stopped (for example when the tab closed during the first visit).
+    // Not awaited: `ready` never settles if installation fails.
+    serviceWorker.ready?.then?.((ready) => {
+      ready?.active?.postMessage?.({ type: 'precache-media' });
+    }).catch?.(() => {});
   }
 }

@@ -44,8 +44,9 @@ The mode should create a repeating pressure-and-release rhythm:
 - Loaded code and textures may remain cached for the rest of the session so a
   retry or second visit is immediate. The requirement is deferred initial
   loading, not forced unloading after every round.
-- The service worker continues caching requested files on demand; Kickfall
-  assets are not added to its installation shell.
+- Kickfall assets are not part of the service worker's install-time shell;
+  the worker fetches them in the background after the first visit so the game
+  works offline (see [Development](DEVELOPMENT.md#offline-web-play)).
 
 ## Art direction and asset contract
 
