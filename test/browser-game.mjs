@@ -1839,7 +1839,7 @@ try {
   await touchControl(page, 44, 48, 30);
   await page.waitForFunction(() => JSON.parse(window.render_game_to_text()).modal === 'about');
   state = await readState(page);
-  assert.equal(state.modalAppInfo.version, '1.6.0');
+  assert.equal(state.modalAppInfo.version, '1.6.1');
   assert.equal(state.modalAppInfo.build, 'web');
   assert.deepEqual(state.modalCreatorCharacter, { id: 'dad' });
   assert.deepEqual(state.modalAbout, {

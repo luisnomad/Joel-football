@@ -163,7 +163,7 @@ export const createCompactInfoOverlay = (scene, {
       }).setDepth(depth + 0.8),
       scene.add.ellipse(340, 568, 190, 34, 0x000000, 0.52).setDepth(depth + 0.78),
       scene.add.image(340, 430, creator.portraitTexture).setDisplaySize(300, 300).setDepth(depth + 0.8),
-      scene.add.text(340, 610, `${t(language, 'about.version')} ${appInfo?.version ?? '1.6.0'}`, compactTextStyle(20, '#a9bdd8'))
+      scene.add.text(340, 610, `${t(language, 'about.version')} ${appInfo?.version ?? '1.6.1'}`, compactTextStyle(20, '#a9bdd8'))
         .setOrigin(0.5).setDepth(depth + 0.8),
       scene.add.text(850, 180, 'www.arkdbox.com', compactTextStyle(34, '#7ce8ff'))
         .setOrigin(0.5).setDepth(depth + 0.8),

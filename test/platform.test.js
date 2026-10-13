@@ -36,7 +36,7 @@ describe('WebPlatformServices', () => {
 
     await service.haptic('medium');
     expect(navigatorRef.vibrate).toHaveBeenCalledWith(22);
-    expect(await service.getAppInfo()).toMatchObject({ name: 'Joel Football', version: '1.6.0', build: 'web' });
+    expect(await service.getAppInfo()).toMatchObject({ name: 'Joel Football', version: '1.6.1', build: 'web' });
     await service.destroy();
     expect(documentRef.removeEventListener).toHaveBeenCalledWith('visibilitychange', service.onVisibilityChange);
   });

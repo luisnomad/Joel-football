@@ -129,7 +129,7 @@ const createAboutContent = (scene, language, appInfo, depth, onOpenExternal) => 
     ...youtubeButton,
     ...privacyButton,
     ...supportButton,
-    scene.add.text(720, 614, `${t(language, 'about.version')} ${appInfo?.version ?? '1.6.0'}${buildLabel}`, textStyle(16, '#a9bdd8')).setOrigin(0.5).setDepth(depth),
+    scene.add.text(720, 614, `${t(language, 'about.version')} ${appInfo?.version ?? '1.6.1'}${buildLabel}`, textStyle(16, '#a9bdd8')).setOrigin(0.5).setDepth(depth),
   ];
 };
 
