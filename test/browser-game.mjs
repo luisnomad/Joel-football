@@ -1919,7 +1919,7 @@ try {
   await touchControl(page, 44, 48, 30);
   await page.waitForFunction(() => JSON.parse(window.render_game_to_text()).modal === 'about');
   state = await readState(page);
-  assert.equal(state.modalAppInfo.version, '1.6.0');
+  assert.equal(state.modalAppInfo.version, '1.6.1');
   assert.equal(state.modalAppInfo.build, 'web');
   assert.deepEqual(state.modalCreatorCharacter, { id: 'dad' });
   assert.deepEqual(state.modalAbout, {
@@ -1931,8 +1931,8 @@ try {
   });
   assert.deepEqual(state.modalExternalLinks, {
     youtube: 'https://www.youtube.com/@luisnomad',
-    privacy: 'https://notjustprompts.ai/games/legal/',
-    support: 'https://notjustprompts.ai/games/support/?game=joel-football',
+    privacy: 'https://arkdbox.com/legal/',
+    support: 'https://arkdbox.com/support/?game=joel-football',
   });
   await capture(page, `${output}/01-about.png`);
   // Check the URL each link asks the popup to open (the app's contract), not
@@ -1961,8 +1961,8 @@ try {
     /youtube\.com.*luisnomad/i,
     'the YouTube link must open the Luis Nomad channel',
   );
-  assert.match(await openExternalPopup(614, 565), /^https:\/\/notjustprompts\.ai\/games\/legal\/?/);
-  assert.match(await openExternalPopup(824, 565), /^https:\/\/notjustprompts\.ai\/games\/support\/?\?game=joel-football/);
+  assert.match(await openExternalPopup(614, 565), /^https:\/\/arkdbox\.com\/legal\/?/);
+  assert.match(await openExternalPopup(824, 565), /^https:\/\/arkdbox\.com\/support\/?\?game=joel-football/);
   await page.evaluate(() => window.__SKYHEAD_PLATFORM_DEBUG__.backForTesting());
   await page.waitForFunction(() => JSON.parse(window.render_game_to_text()).modal === null);
 

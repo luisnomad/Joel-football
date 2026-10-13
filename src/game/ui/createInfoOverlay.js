@@ -13,9 +13,9 @@ const HELP_PANEL_WIDTH = 890;
 
 export const ABOUT_LINKS = Object.freeze({
   youtube: 'https://www.youtube.com/@luisnomad',
-  // Shared NJP games pages (the old /joel-football/legal and /support 301 here).
-  privacy: 'https://notjustprompts.ai/games/legal/',
-  support: 'https://notjustprompts.ai/games/support/?game=joel-football',
+  // Shared ARKD BOX pages (arkdbox.com, the home of the game).
+  privacy: 'https://arkdbox.com/legal/',
+  support: 'https://arkdbox.com/support/?game=joel-football',
 });
 
 const textStyle = (size, color = '#ffffff', extra = {}) => ({
@@ -70,7 +70,7 @@ const createAboutContent = (scene, language, appInfo, depth, onOpenExternal) => 
     .setDisplaySize(235, 235)
     .setFlipX(creatorCharacter.nativeFacing !== 1)
     .setDepth(depth);
-  const website = scene.add.text(720, 344, 'NotJustPrompts.ai', textStyle(20, '#7ce8ff', {
+  const website = scene.add.text(720, 344, 'www.arkdbox.com', textStyle(20, '#7ce8ff', {
     fontStyle: 'bold',
   })).setOrigin(0.5).setDepth(depth + 0.1);
   const youtubeButton = createAboutLinkButton(scene, {
@@ -129,7 +129,7 @@ const createAboutContent = (scene, language, appInfo, depth, onOpenExternal) => 
     ...youtubeButton,
     ...privacyButton,
     ...supportButton,
-    scene.add.text(720, 614, `${t(language, 'about.version')} ${appInfo?.version ?? '1.6.0'}${buildLabel}`, textStyle(16, '#a9bdd8')).setOrigin(0.5).setDepth(depth),
+    scene.add.text(720, 614, `${t(language, 'about.version')} ${appInfo?.version ?? '1.6.1'}${buildLabel}`, textStyle(16, '#a9bdd8')).setOrigin(0.5).setDepth(depth),
   ];
 };
 

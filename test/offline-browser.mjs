@@ -79,7 +79,13 @@ try {
     if (message.type() === 'error') errors.push(`console: ${message.text()}`);
   });
   page.on('requestfailed', (request) => {
-    if (offline && request.url().startsWith(url)) failedRequests.push(`${request.url()} ${request.failure()?.errorText ?? ''}`);
+    if (!offline || !request.url().startsWith(url)) return;
+    const errorText = request.failure()?.errorText ?? '';
+    // A media element that stops (scene change) cancels its own range request:
+    // ERR_ABORTED is the page aborting, not the file being unavailable. Sound
+    // availability is asserted directly below (warmAll + <audio> canplay).
+    if (request.resourceType() === 'media' && errorText === 'net::ERR_ABORTED') return;
+    failedRequests.push(`${request.url()} ${errorText}`);
   });
 
   // One online visit, no gesture, no other scene visited.

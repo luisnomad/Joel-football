@@ -179,11 +179,9 @@ The layout was rebalanced after the owner's playtest to animate sprint and hit
   it yet (kid vs adult).
 - **Video source:** Dreamina has no H3 (Seedance only). Cloud H3 is PixVerse
   `minimax-h3`, at 150 credits per 5 s clip.
-- **Website links:** `notjustprompts.ai/joel-football/{legal,support}` now 301 to the
-  shared `/games/legal` and `/games/support?game=joel-football`. The rules are in the
-  NJP repo `netlify.toml`, added in commit 8044f2a (2026-09-13, "Added Mummy Scape"),
-  and they cover `/es/` too. The links still resolve; the e2e assertions predate the
-  change.
+- **Website links:** the game now links to the shared ARKD BOX pages,
+  `arkdbox.com/legal/` and `arkdbox.com/support/?game=joel-football` (moved on main,
+  commits 5a9a7d2 and 14edd37).
 
 ## 8. Ball and super-shot effects (2026-10-08)
 
